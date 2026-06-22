@@ -1,0 +1,49 @@
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&display=swap');
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  --obsidiana: #080b09;
+  --jade: #1D9E75;
+  --jade-light: #5DCAA5;
+  --ocre: #E8D5A3;
+  --ocre-dim: #a8955e;
+  --piedra: #1a1f1b;
+  --texto: #c8d4c9;
+  --texto-dim: #6b7d6c;
+}
+
+body {
+  background: var(--obsidiana);
+  color: var(--texto);
+  font-family: system-ui, sans-serif;
+  min-height: 100vh;
+}
+
+.tona-app {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  gap: 1rem;
+}
+
+h1 {
+  font-family: 'Cinzel', serif;
+  font-size: 72px;
+  font-weight: 700;
+  letter-spacing: 0.5em;
+  color: var(--ocre);
+}
+
+p {
+  font-size: 14px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--jade-light);
+}
