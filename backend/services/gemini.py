@@ -42,3 +42,21 @@ def crear_sesion(historial: list =None):
     if historial:
         return modelo.start_chat(history=historial)
     return modelo.start_chat()
+
+
+async def enviar_mensaje(sesion, mensaje: str) -> str:
+    try:
+        respuesta=await sesion.send_message(mensaje)
+        return respuesta.text
+    except Exception as e:
+        return f"Error al procesar tu mensaje: {str(e)}"
+    
+
+async def generar_respuesta_rapida(mensaje:str, contexto: str ="") -> str:
+    modelo=crear_modelo()
+    prompt=f"{contexto}\nUsuario: {mensaje}" if contexto else mensaje
+    try:
+        respuesta=modelo.generate_content(prompt)
+        return respuesta.text
+    except Exception as e:
+        return f"Error: {str(e)}"

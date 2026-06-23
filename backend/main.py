@@ -2,6 +2,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from config import settings 
 from routers import auth, agent, tasks, users
+from services.db import init_db
+
 
 app= FastAPI(
     title="Tona API",
@@ -17,6 +19,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+init_db
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(agent.router, prefix="/agent", tags=["agent"])
 app.include_router(tasks.router, prefix="/tasks", tags=["tasks"])
