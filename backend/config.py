@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "tona_dev_secret_2026"
     FRONTEND_URL: str = "http://localhost:5173"
     ENVIRONMENT: str = "development"
+    GOOGLE_TTS_KEY: str = ""
 
     class Config:
         env_file = ".env"

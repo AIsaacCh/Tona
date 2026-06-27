@@ -7,6 +7,7 @@ import EstrellasFugaces from '../components/EstrellasFugaces'
 import Aves from '../components/Aves'
 import EsferaTona from '../components/EsferaTona'
 import audioEngine from '../services/audioEngine'
+import AgenteTona from '../components/AgenteTona'
 
 const SERVICIOS = [
   { id: 'classroom', label: 'Classroom', color: '#1D9E75', colorOscuro: '#0F6E56' },
@@ -81,6 +82,7 @@ const TEMAS = {
 export default function Dashboard() {
   const [params] = useSearchParams()
   const nombre = (params.get('name') || 'Isaac').split(' ')[0]
+  const userId = params.get('user_id') || 'demo'
   const tiempo = getTiempo()
   const tema = TEMAS[tiempo]
 
@@ -98,6 +100,7 @@ export default function Dashboard() {
   const [textoFase, setTextoFase] = useState('saludo')
   const [panelCreciendo, setPanelCreciendo] = useState(false)
   const [mostrarEsfera, setMostrarEsfera] = useState(false)
+  
 
   const threeRef = useRef(null)
   const rendererRef = useRef(null)
@@ -588,6 +591,18 @@ export default function Dashboard() {
           </div>
         </div>
 
+{mostrarEsfera && (
+  <div style={{
+    position: 'absolute',
+    bottom: '2rem',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    zIndex: 20,
+  }}>
+    <AgenteTona userId={userId} tema={tema} />
+  </div>
+)}
+
         {serviciosActivos.length >= 2 && (
           <div style={{
             marginTop: '1.5rem',
@@ -631,20 +646,20 @@ export default function Dashboard() {
           </div>
         )}
       </div>
-
-      <div style={{
-        position: 'fixed',
-        bottom: 0, left: 0, right: 0,
-        padding: '1rem 2rem 1.5rem',
-        background: `linear-gradient(to top, ${tema.bg} 60%, transparent)`,
-        display: 'flex',
-        justifyContent: 'center',
-        gap: 'clamp(8px, 2vw, 20px)',
-        opacity: iconosVisible ? 1 : 0,
-        transform: iconosVisible ? 'translateY(0)' : 'translateY(20px)',
-        transition: 'all 0.4s cubic-bezier(.16,1,.3,1)',
-        zIndex: 10,
-      }}>
+<div style={{
+  position: 'fixed',
+  bottom: 0, left: 0, right: 0,
+  padding: '1rem 2rem 1.5rem',
+  background: `linear-gradient(to top, ${tema.bg} 60%, transparent)`,
+  display: 'flex',
+  justifyContent: 'center',
+  gap: 'clamp(8px, 2vw, 20px)',
+  opacity: iconosVisible && !mostrarEsfera ? 1 : 0,
+  transform: iconosVisible && !mostrarEsfera ? 'translateY(0)' : 'translateY(20px)',
+  transition: 'all 0.4s cubic-bezier(.16,1,.3,1)',
+  zIndex: 10,
+  pointerEvents: mostrarEsfera ? 'none' : 'auto',
+}}>
         {SERVICIOS.map(s => (
           <GotaServicio
             key={s.id}

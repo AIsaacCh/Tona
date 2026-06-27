@@ -11,6 +11,7 @@ router = APIRouter()
 
 # Permitir HTTP en desarrollo
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+os.environ['OAUTHLIB_RELAX_TOKEN_SCOPE'] = '1'
 
 SCOPES = [
     "openid",
@@ -20,6 +21,7 @@ SCOPES = [
     "https://www.googleapis.com/auth/classroom.courses.readonly",
     "https://www.googleapis.com/auth/classroom.coursework.me",
     "https://www.googleapis.com/auth/classroom.coursework.me.readonly",
+    "https://www.googleapis.com/auth/classroom.student-submissions.me.readonly",
     "https://www.googleapis.com/auth/drive.readonly",
     "https://www.googleapis.com/auth/gmail.send",
 ]
@@ -59,7 +61,7 @@ async def google_callback(code: str, state: str):
         raise HTTPException(status_code=400, detail="Estado inválido o expirado")
 
     try:
-        flow.fetch_token(code=code)
+        flow.fetch_token(code=code, check=False)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error al obtener token: {str(e)}")
 

@@ -1,62 +1,74 @@
-import google.generativeai as genai
-from config import settings 
+from google import genai
+from google.genai import types
+from config import settings
 
-genai.configure(api_key=settings.GEMINI_API_KEY)
+cliente = genai.Client(api_key=settings.GEMINI_API_KEY)
 
-SYSTEM_PROMPT="""
+SYSTEM_PROMPT = """
 Eres Tona, un agente de estudio proactivo y compañero académico.
-Tu nombre viene del Tonalpohualli, el calendario sagrado náhuatl — 
+Tu nombre viene del Tonalpohualli, el calendario sagrado náhuatl —
 eres la energía vital que organiza el tiempo del usuario.
+
 
 Tu personalidad:
 - Sereno y directo, nunca condescendiente
 - Hablas en español mexicano natural, sin formalismos exagerados
 - Eres proactivo: anticipas lo que el usuario necesita antes de que lo pida
 - Eres conciso: respuestas cortas y accionables, no párrafos largos
-- Tienes memoria del contexto de la conversación actual
 
 Tus capacidades:
 - Gestionar tareas y deadlines de Google Classroom
-- Revisar y organizar el calendario de Google Calendar  
+- Revisar y organizar el calendario de Google Calendar
 - Resumir y analizar documentos de Google Drive
-- Enviar recordatorios por Gmail
 - Responder preguntas académicas con contexto del usuario
 
-Reglas importantes:
+
+Reglas:
 - Si el usuario tiene tareas urgentes, mencionarlas proactivamente
 - Nunca inventes fechas o información que no tengas
-- Si no puedes hacer algo, di exactamente qué necesitas del usuario
-- Responde siempre en español, a menos que el usuario escriba en otro idioma
-- Sé el nagual digital del usuario — actúa en el plano donde él no puede estar
+- Responde siempre en español a menos que el usuario escriba en otro idioma
+- Sé el nagual digital del usuario
+- NUNCA inventes tareas, fechas, materias o información académica que no tengas confirmada
+- Si no tienes tareas reales del usuario, di: "No veo tareas pendientes por ahora"
+- Habla natural, no uses mayúsculas para énfasis, no uses markdown en respuestas de voz
 """
 
-
-def crear_modelo():
-    return genai.GenerativeModel(
-        model_name="gemini-2.0-flash-exp",
-        system_instruction=SYSTEM_PROMPT,
-    )
-
-def crear_sesion(historial: list =None):
-    modelo=crear_modelo()
-    if historial:
-        return modelo.start_chat(history=historial)
-    return modelo.start_chat()
-
-
-async def enviar_mensaje(sesion, mensaje: str) -> str:
+async def enviar_mensaje(historial: list, mensaje: str) -> str:
     try:
-        respuesta=await sesion.send_message(mensaje)
+        contenido = []
+        for msg in historial[-20:]:
+            role = "user" if msg["role"] == "user" else "model"
+            contenido.append(
+                types.Content(role=role, parts=[types.Part(text=msg["content"])])
+            )
+        contenido.append(
+            types.Content(role="user", parts=[types.Part(text=mensaje)])
+        )
+
+        respuesta = cliente.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=contenido,
+            config=types.GenerateContentConfig(
+                system_instruction=SYSTEM_PROMPT,
+                max_output_tokens=1024,
+                temperature=0.7,
+            ),
+        )
         return respuesta.text
     except Exception as e:
         return f"Error al procesar tu mensaje: {str(e)}"
-    
 
-async def generar_respuesta_rapida(mensaje:str, contexto: str ="") -> str:
-    modelo=crear_modelo()
-    prompt=f"{contexto}\nUsuario: {mensaje}" if contexto else mensaje
+async def generar_respuesta_rapida(mensaje: str, contexto: str = "") -> str:
     try:
-        respuesta=modelo.generate_content(prompt)
+        prompt = f"{contexto}\n\n{mensaje}" if contexto else mensaje
+        respuesta = cliente.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=SYSTEM_PROMPT,
+                max_output_tokens=512,
+            ),
+        )
         return respuesta.text
     except Exception as e:
         return f"Error: {str(e)}"
