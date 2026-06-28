@@ -1,7 +1,7 @@
-// EsferaTona.jsx — versión optimizada
-
-import { useEffect, useRef } from "react";
+// EsferaTona.jsx — con respiración al hablar
+import { useEffect, useRef, useState } from "react";
 import anime from "animejs";
+import vozService from "../services/vozService";
 
 const CX = 250;
 const CY = 250;
@@ -57,9 +57,15 @@ const LAYERS = [
   { id: "l10", rx: 88,  ry: 90, tilt: 115, arcStart: -30, arcEnd: 75,  color: "#A07840", width: 0.8, opacity: 0.45, floatAmp: 2.0, floatFreq: 0.00015, phaseY: 3.6,  phaseX: 4.2, satellites: [{ t: 0.55, size: 2.5 }] },
 ];
 
-export default function EsferaTona({ size = 500 }) {
-  const svgRef  = useRef(null);
-  const rafRef  = useRef(null);
+export default function EsferaTona({ size = 500, className = "" }) {
+  const svgRef = useRef(null);
+  const rafRef = useRef(null);
+  const sizeAnimRef = useRef(null);
+  const unsubscribeRef = useRef(null);
+  
+  // ✅ Estado para controlar la animación de tamaño
+  const [escala, setEscala] = useState(1);
+  const [estaHablando, setEstaHablando] = useState(false);
 
   const layerData = LAYERS.map((layer) => {
     const arcMain  = buildArc(layer.rx, layer.ry, layer.tilt, layer.arcStart, layer.arcEnd);
@@ -75,15 +81,76 @@ export default function EsferaTona({ size = 500 }) {
     return { ...layer, arcMain, arcInner, arcOuter, ticks, accentS, accentE, satPos };
   });
 
+  // ✅ Suscribirse a los estados de vozService con el nuevo sistema
+  useEffect(() => {
+    // Suscribirse a cambios de estado
+    unsubscribeRef.current = vozService.suscribirEstado((estado) => {
+      console.log('🔊 Esfera recibió estado:', estado);
+      const hablando = estado === "hablando" || estado === "escuchando" || estado === "procesando";
+      setEstaHablando(hablando);
+      
+      // Si está hablando o escuchando, animar tamaño
+      if (hablando) {
+        // Cancelar animación anterior
+        if (sizeAnimRef.current) {
+          anime.remove(sizeAnimRef.current);
+        }
+        
+        // Si está procesando, pulso más suave
+        const amplitud = estado === "procesando" ? 1.04 : 1.08;
+        const duracion = estado === "procesando" ? 600 : 800;
+        
+        // Crear nueva animación de "respiración"
+        sizeAnimRef.current = anime({
+          targets: { val: 1 },
+          val: [1, amplitud, 1],
+          duration: duracion,
+          loop: true,
+          easing: "easeInOutSine",
+          update: function(anim) {
+            setEscala(anim.animatables[0].currentValue);
+          }
+        });
+      } else {
+        // Volver al tamaño normal
+        if (sizeAnimRef.current) {
+          anime.remove(sizeAnimRef.current);
+          sizeAnimRef.current = null;
+        }
+        
+        // Animación suave de regreso
+        anime({
+          targets: { val: escala },
+          val: [escala, 1],
+          duration: 400,
+          easing: "easeOutQuad",
+          update: function(anim) {
+            setEscala(anim.animatables[0].currentValue);
+          }
+        });
+      }
+    });
+
+    return () => {
+      // Desuscribirse
+      if (unsubscribeRef.current) {
+        unsubscribeRef.current();
+      }
+      if (sizeAnimRef.current) {
+        anime.remove(sizeAnimRef.current);
+        sizeAnimRef.current = null;
+      }
+    };
+  }, []);
+
+  // ✅ Animación de flotación y capas (sin cambios)
   useEffect(() => {
     const svg = svgRef.current;
     if (!svg) return;
 
-    // Cache de referencias DOM — evita querySelector en cada frame
     const groupEls = LAYERS.map((l) => svg.querySelector(`#group-${l.id}`));
     const ringEl   = svg.querySelector("#nuc-ring");
 
-    // Anime.js solo para núcleo — pocos elementos, vale la pena
     anime({
       targets: "#nuc-halo",
       r: [24, 40, 24],
@@ -101,7 +168,6 @@ export default function EsferaTona({ size = 500 }) {
       easing: "easeInOutQuad",
     });
 
-    // Pulso de satélites — uno por satélite, pocos elementos
     LAYERS.forEach((layer) => {
       layer.satellites.forEach(({ size: sz }, i) => {
         anime({
@@ -116,7 +182,6 @@ export default function EsferaTona({ size = 500 }) {
       });
     });
 
-    // Reveal rayos — una sola vez
     anime({
       targets: ".ray",
       strokeDashoffset: [anime.setDashoffset, 0],
@@ -126,17 +191,12 @@ export default function EsferaTona({ size = 500 }) {
       easing: "easeOutCubic",
     });
 
-    // Un solo rAF para todo el movimiento de capas + anillo
     let ringAngle = 0;
 
     function tick(ts) {
-      // Anillo decorativo del núcleo
       ringAngle += 0.18;
       if (ringEl) ringEl.setAttribute("transform", `rotate(${ringAngle},${CX},${CY})`);
 
-      // Flotación de capas — Math.sin con fase única por capa
-      // will-change: transform en el SVG group permite que el navegador
-      // use la GPU para este transform sin rasterizar el contenido SVG
       LAYERS.forEach((layer, idx) => {
         const el = groupEls[idx];
         if (!el) return;
@@ -166,7 +226,14 @@ export default function EsferaTona({ size = 500 }) {
       height={size}
       viewBox="0 0 500 500"
       xmlns="http://www.w3.org/2000/svg"
-      style={{ display: "block", willChange: "transform" }}
+      style={{
+        display: "block",
+        transform: `scale(${escala})`,
+        transformOrigin: "center center",
+        transition: "transform 0.05s ease",
+        willChange: "transform",
+      }}
+      className={className}
       aria-label="Esfera TONA"
       role="img"
     >
@@ -181,7 +248,6 @@ export default function EsferaTona({ size = 500 }) {
           <stop offset="0%"   stopColor="#C8A96E" stopOpacity="0.06" />
           <stop offset="100%" stopColor="#0A0C0E" stopOpacity="0" />
         </radialGradient>
-        {/* Filtro solo en el núcleo — eliminado de las capas */}
         <filter id="fNuc" x="-120%" y="-120%" width="340%" height="340%">
           <feGaussianBlur stdDeviation="7" result="b1" />
           <feGaussianBlur stdDeviation="2.5" result="b2" in="SourceGraphic" />
@@ -199,7 +265,6 @@ export default function EsferaTona({ size = 500 }) {
 
       <circle cx={CX} cy={CY} r="220" fill="url(#gAmbient)" />
 
-      {/* Rayos */}
       {layerData.flatMap((layer) =>
         layer.satPos.map((pos, i) => (
           <line
@@ -216,7 +281,6 @@ export default function EsferaTona({ size = 500 }) {
         ))
       )}
 
-      {/* Capas — sin filtro, solo stroke — exterior a interior */}
       {[...layerData].reverse().map((layer) => (
         <g
           key={layer.id}
@@ -232,7 +296,6 @@ export default function EsferaTona({ size = 500 }) {
         </g>
       ))}
 
-      {/* Satélites — filtro solo aquí, son pocos elementos */}
       {layerData.flatMap((layer) =>
         layer.satPos.map((pos, i) => (
           <circle
@@ -247,7 +310,6 @@ export default function EsferaTona({ size = 500 }) {
         ))
       )}
 
-      {/* Núcleo */}
       <circle id="nuc-halo" cx={CX} cy={CY} r="26" fill="none" stroke="#C8A96E" strokeWidth="1.2" opacity="0.05" filter="url(#fNuc)" />
       <circle cx={CX} cy={CY} r="20" fill="#060808" />
       <circle cx={CX} cy={CY} r="20" fill="url(#gNuc)" filter="url(#fNuc)" />

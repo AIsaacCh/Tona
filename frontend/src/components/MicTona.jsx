@@ -5,22 +5,23 @@ import vozService from "../services/vozService";
 
 export default function MicTona({ size = 120, onToggle, userId = "demo" }) {
   const [active, setActive] = useState(false);
-  const [estadoVoz, setEstadoVoz] = useState("reposo"); // reposo, escuchando, procesando, hablando, error
+  const [estadoVoz, setEstadoVoz] = useState("reposo");
   const svgRef = useRef(null);
   const rafRef = useRef(null);
   const activeRef = useRef(false);
   const glowAnim = useRef(null);
   const bounceAnim = useRef(null);
+  const isProcessingRef = useRef(false); // ✅ Prevenir múltiples llamadas
 
   // ✅ Suscribirse a los estados de vozService
   useEffect(() => {
-    const handleEstado = (estado) => {
+    const unsubscribe = vozService.suscribirEstado((estado) => {
       setEstadoVoz(estado);
       
-      // Si es "escuchando" o "hablando", el micrófono está activo
       const isActive = estado === "escuchando" || estado === "hablando";
+      
+      // Solo actualizar si cambió el estado
       if (isActive !== activeRef.current) {
-        // Sincronizar estado visual con el estado real
         if (isActive) {
           activarAnimaciones();
         } else {
@@ -30,13 +31,10 @@ export default function MicTona({ size = 120, onToggle, userId = "demo" }) {
         setActive(isActive);
         onToggle?.(isActive);
       }
-    };
+    });
 
-    // Guardar referencia
-    vozService.onEstado = handleEstado;
-    
     return () => {
-      vozService.onEstado = null;
+      if (unsubscribe) unsubscribe();
     };
   }, [onToggle]);
 
@@ -45,7 +43,6 @@ export default function MicTona({ size = 120, onToggle, userId = "demo" }) {
     const svg = svgRef.current;
     if (!svg) return;
 
-    // Ovalo salta suavemente
     bounceAnim.current = anime({
       targets: "#mic-oval",
       translateY: [-6, 0],
@@ -53,7 +50,6 @@ export default function MicTona({ size = 120, onToggle, userId = "demo" }) {
       easing: "easeOutElastic(1, 0.5)",
     });
 
-    // Contorno del ovalo se ilumina con pulso continuo
     glowAnim.current = anime({
       targets: "#mic-oval",
       strokeWidth: [3, 5, 3],
@@ -63,7 +59,6 @@ export default function MicTona({ size = 120, onToggle, userId = "demo" }) {
       easing: "easeInOutSine",
     });
 
-    // Arco inferior pulsa
     anime({
       targets: "#mic-arc",
       strokeWidth: [3, 4.5, 3],
@@ -73,7 +68,6 @@ export default function MicTona({ size = 120, onToggle, userId = "demo" }) {
       easing: "easeInOutSine",
     });
 
-    // Base
     anime({
       targets: ["#mic-stem", "#mic-base"],
       opacity: [0.5, 0.7],
@@ -81,7 +75,6 @@ export default function MicTona({ size = 120, onToggle, userId = "demo" }) {
       easing: "easeOutQuad",
     });
 
-    // Luz líquida
     let t = 0;
     function liquidTick() {
       if (!activeRef.current) return;
@@ -109,7 +102,6 @@ export default function MicTona({ size = 120, onToggle, userId = "demo" }) {
     }
     rafRef.current = requestAnimationFrame(liquidTick);
 
-    // Relleno líquido
     anime({
       targets: "#mic-fill",
       opacity: [0, 1],
@@ -165,9 +157,19 @@ export default function MicTona({ size = 120, onToggle, userId = "demo" }) {
 
   // ✅ Click: inicia/desactiva la escucha
   const handleClick = async () => {
+    // Evitar múltiples clics mientras se procesa
+    if (isProcessingRef.current) {
+      console.log("⏳ Ya está procesando, espera...");
+      return;
+    }
+
     // Si está activo, detener
     if (activeRef.current) {
+      isProcessingRef.current = true;
       vozService.detener();
+      setTimeout(() => {
+        isProcessingRef.current = false;
+      }, 300);
       return;
     }
 
@@ -179,15 +181,43 @@ export default function MicTona({ size = 120, onToggle, userId = "demo" }) {
 
     // Iniciar escucha
     try {
+      isProcessingRef.current = true;
+      
+      // ✅ Verificar si ya está escuchando
+      if (vozService.escuchando) {
+        console.log("⚠️ Ya está escuchando, deteniendo...");
+        vozService.detener();
+        setTimeout(() => {
+          isProcessingRef.current = false;
+        }, 300);
+        return;
+      }
+
       const texto = await vozService.activar(userId);
+      
       if (texto?.trim()) {
         // Enviar al chat
         await vozService.enviarMensaje(userId, texto);
       }
     } catch (error) {
-      console.error("Error en micrófono:", error);
+      console.error("❌ Error en micrófono:", error);
+      // Si el error es "recognition already started", simplemente detener y resetear
+      if (error?.name === 'InvalidStateError') {
+        console.log("🔄 Reiniciando reconocimiento...");
+        vozService.detener();
+        // Intentar de nuevo después de un breve momento
+        setTimeout(() => {
+          isProcessingRef.current = false;
+          handleClick();
+        }, 500);
+        return;
+      }
       setEstadoVoz("error");
       setTimeout(() => setEstadoVoz("reposo"), 2000);
+    } finally {
+      setTimeout(() => {
+        isProcessingRef.current = false;
+      }, 500);
     }
   };
 
@@ -202,7 +232,6 @@ export default function MicTona({ size = 120, onToggle, userId = "demo" }) {
   const colorActive = "#C8A96E";
   const colorIdle = "rgba(237,235,230,0.55)";
 
-  // Determinar estado visual
   const isActive = estadoVoz === "escuchando" || estadoVoz === "hablando";
   const isError = estadoVoz === "error";
   const colorActual = isError ? "#F87171" : (isActive ? colorActive : colorIdle);

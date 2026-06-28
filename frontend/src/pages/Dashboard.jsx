@@ -7,7 +7,7 @@ import CajonWidgets from "../components/CajonWidgets";
 import EstrellasFugaces from "../components/EstrellasFugaces";
 import Aves from "../components/Aves";
 import { T } from "../tokens";
-import { agenteBus, detectarCierre, simular } from "../components/AgenteTona";
+import { agenteBus, detectarCierre, simular, enviarMensajeChat } from "../components/AgenteTona";
 import { useSearchParams } from "react-router-dom";
 import { FlashMensaje, ConfirmacionAccion, IndicadorPensando } from "../components/agentes/Categoria1";
 import { VistaListaTareas, VistaCalendario, VistaHorario, VistaCalificaciones, VistaMaterias } from "../components/agentes/Categoria2";
@@ -29,8 +29,6 @@ import {
   WidgetAcciones,      WidgetAccionesSm,
 } from "../components/widgets/index";
 
-
-
 function getTiempo() {
   const h = new Date().getHours();
   if (h >= 5 && h < 13) return "manana";
@@ -51,9 +49,9 @@ const TEMAS = {
   tarde: {
     saludo:    "Buenas tardes",
     frase:     "La tarde es tuya para construir.",
-    acento:    "#C084FC",
+    acento:    "#ffffff",
     jade:      "#34D399",
-    textoDim:  "#5a4a70",
+    textoDim:  "#ffffff",
     luz1:      "rgba(160,80,255,0.05)",
     luz2:      "rgba(80,30,180,0.03)",
   },
@@ -67,8 +65,6 @@ const TEMAS = {
     luz2:      "rgba(10,60,40,0.03)",
   },
 };
-
-// ── Widget map ────────────────────────────────────────────────────────────────
 
 const WIDGET_MAP = {
   tareas:         { Md: WidgetTareas,            Sm: WidgetTareasSm,              titulo: "Tareas",           categoria: "productividad" },
@@ -88,12 +84,10 @@ const WIDGET_MAP = {
 
 let nextId = 1;
 
-// ── Componente ────────────────────────────────────────────────────────────────
-
 export default function Dashboard() {
   const [params]   = useSearchParams();
   const nombre = (params.get("name") || "Isaac").split(" ")[0];
-  const userId = params.get("user_id") || "demo"; // ✅ Añade esta línea
+  const userId = params.get("user_id") || "demo";
   const tiempo     = getTiempo();
   const tema       = TEMAS[tiempo];
 
@@ -103,14 +97,13 @@ export default function Dashboard() {
   const [editMode, setEditMode]           = useState(false);
   const [widgets, setWidgets]             = useState([]);
   const [hayContenido, setHayContenido]   = useState(false);
+  const [enviando, setEnviando]           = useState(false);
   const btnCerrarRef                      = useRef(null);
 
-  
   useEffect(() => {
     setHayContenido(widgets.length > 0);
   }, [widgets]);
 
-  // Animar botón limpiar
   useEffect(() => {
     if (!btnCerrarRef.current) return;
     anime({
@@ -122,7 +115,6 @@ export default function Dashboard() {
     });
   }, [hayContenido]);
 
-  // Reloj
   useEffect(() => {
     function tick() {
       const now = new Date();
@@ -135,26 +127,46 @@ export default function Dashboard() {
     return () => clearInterval(id);
   }, []);
 
-  // Acciones del agente
-  useEffect(() => {
-    const acciones = {
-      mostrar_tareas:         () => agregarWidget("tareas"),
-      mostrar_recordatorios:  () => agregarWidget("recordatorios"),
-      mostrar_calendario:     () => agregarWidget("calendario"),
-      mostrar_materias:       () => agregarWidget("materias"),
-      mostrar_calificaciones: () => agregarWidget("calificaciones"),
-      mostrar_horario:        () => agregarWidget("horario"),
-      mostrar_notas:          () => agregarWidget("notas"),
-      mostrar_archivos:       () => agregarWidget("archivos"),
-      mostrar_clima:          () => agregarWidget("clima"),
-      mostrar_estadisticas:   () => agregarWidget("estadisticas"),
-      mostrar_acciones:       () => agregarWidget("acciones"),
-      convertir_a_widget:     ({ tipo }) => agregarWidget(tipo),
-      cerrar_todo:            () => setWidgets([]),
-    };
-    const offs = Object.entries(acciones).map(([e, fn]) => agenteBus.on(e, fn));
-    return () => offs.forEach((off) => off());
-  }, []);
+  const agregarWidgetRef = useRef(agregarWidget);
+useEffect(() => {
+  agregarWidgetRef.current = agregarWidget;
+}, [widgets]);
+
+useEffect(() => {
+  const acciones = {
+    mostrar_tareas:         () => agregarWidgetRef.current("tareas"),
+    mostrar_recordatorios:  () => agregarWidgetRef.current("recordatorios"),
+    mostrar_calendario:     () => agregarWidgetRef.current("calendario"),
+    mostrar_materias:       () => agregarWidgetRef.current("materias"),
+    mostrar_calificaciones: () => agregarWidgetRef.current("calificaciones"),
+    mostrar_horario:        () => agregarWidgetRef.current("horario"),
+    mostrar_notas:          () => agregarWidgetRef.current("notas"),
+    mostrar_archivos:       () => agregarWidgetRef.current("archivos"),
+    mostrar_clima:          () => agregarWidgetRef.current("clima"),
+    mostrar_estadisticas:   () => agregarWidgetRef.current("estadisticas"),
+    mostrar_acciones:       () => agregarWidgetRef.current("acciones"),
+    convertir_a_widget:     ({ tipo }) => agregarWidgetRef.current(tipo),
+    cerrar_todo:            () => setWidgets([]),
+    tona_habla: async ({ texto }) => {
+      try {
+        const resp = await fetch("http://localhost:8000/agent/hablar", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ texto }),
+        })
+        const blob = await resp.blob()
+        const url = URL.createObjectURL(blob)
+        const audio = new Audio(url)
+        audio.onended = () => URL.revokeObjectURL(url)
+        audio.play()
+      } catch {
+        // fallback silencioso
+      }
+    },
+  };
+  const offs = Object.entries(acciones).map(([e, fn]) => agenteBus.on(e, fn));
+  return () => offs.forEach((off) => off());
+}, []);
 
   function cerrarTodo() {
     agenteBus.emit("cerrar_todo", {});
@@ -184,31 +196,51 @@ export default function Dashboard() {
     setWidgets((prev) => prev.map((w) => w.id === id ? { ...w, size } : w));
   }
 
+  // ✅ FUNCIÓN PARA ENVIAR MENSAJE DE TEXTO
+  async function handleSendMessage(texto) {
+  console.log("🚀 handleSendMessage llamado con:", texto)
+  if (!texto.trim() || enviando) {
+    console.log("⛔ Bloqueado:", { texto, enviando })
+    return;
+  }
+  if (detectarCierre(texto)) {
+    cerrarTodo();
+    agenteBus.emit("flash", { mensaje: "Pantalla limpiada", tipo: "info" });
+    setInput("");
+    return;
+  }
+  setEnviando(true);
+  try {
+    await enviarMensajeChat(userId, texto);
+  } catch (error) {
+    console.error("Error enviando mensaje:", error);
+    agenteBus.emit("flash", { mensaje: "Error al enviar mensaje", tipo: "error" });
+  } finally {
+    setEnviando(false);
+    setInput("");
+  }
+}
+
   function handleInput(e) {
     const val = e.target.value;
     setInput(val);
+    // Detectar cierre en tiempo real para feedback visual
     if (detectarCierre(val)) {
-      setTimeout(() => {
-        cerrarTodo();
-        setInput("");
-        agenteBus.emit("flash", { mensaje: "Pantalla limpiada", tipo: "info" });
-      }, 300);
+      // Solo feedback visual, la acción se ejecuta en handleKeyDown
     }
   }
 
   function handleKeyDown(e) {
-    if (e.key === "Enter") {
-      if (detectarCierre(input)) {
-        cerrarTodo();
-        agenteBus.emit("flash", { mensaje: "Pantalla limpiada", tipo: "info" });
-      }
-      setInput("");
-    }
+  console.log("⌨️ KeyDown:", e.key)
+  if (e.key === "Enter") {
+    e.preventDefault();
+    handleSendMessage(input);
   }
+}
+
 
   return (
     <div style={s.root}>
-
       {/* Fondo ambiental por tema */}
       <div style={{
         position:   "absolute", inset: 0, zIndex: 0,
@@ -218,17 +250,16 @@ export default function Dashboard() {
       }} />
 
       {/* Efectos de fondo por tiempo del día */}
-           {tiempo === "noche" && <EstrellasFugaces color={tema.acento} colorAlt={tema.jade} />}
-            {(tiempo === "manana" || tiempo === "tarde") && <Aves color={tema.textoDim} />}
-
+      {tiempo === "noche" && <EstrellasFugaces color={tema.acento} colorAlt={tema.jade} />}
+      {(tiempo === "manana" || tiempo === "tarde") && <Aves color={tema.textoDim} />}
 
       {/* Cajón de widgets */}
-       <CajonWidgets
-  lado="izquierdo"
-  visible={editMode}
-  onAgregar={agregarWidget}
-  widgetsActivos={widgets}
-/> 
+      <CajonWidgets
+        lado="izquierdo"
+        visible={editMode}
+        onAgregar={agregarWidget}
+        widgetsActivos={widgets}
+      /> 
 
       {/* Info top-left */}
       <div style={s.infoTL}>
@@ -238,43 +269,7 @@ export default function Dashboard() {
         <span style={s.clock}>{hora}</span>
       </div>
 
-      {/* Panel de pruebas — quitar cuando el backend esté listo */}
-      <div style={{
-        position: "absolute", top: 70, left: 28,
-        display: "flex", flexDirection: "column", gap: 5,
-        zIndex: 20,
-      }}>
-        {[
-          ["flash ✓",         () => simular("flash", { mensaje: "Tarea marcada como entregada", tipo: "exito" })],
-          ["flash urgente",   () => simular("flash", { mensaje: "Examen mañana a las 7am", tipo: "urgente" })],
-          ["confirmar",       () => simular("confirmar", { pregunta: "¿Eliminar esta tarea?", onSi: "eliminar_tarea", onNo: null })],
-          ["pensando 3s",     () => { simular("pensando_inicio", {}); setTimeout(() => simular("pensando_fin", {}), 3000); }],
-          ["ver tareas",      () => simular("ver_tareas", null)],
-          ["ver calendario",  () => simular("ver_calendario", { mes: 5, año: 2026 })],
-          ["ver horario",     () => simular("ver_horario", null)],
-          ["ver califs",      () => simular("ver_calificaciones", null)],
-          ["ver materia",     () => simular("ver_materia", null)],
-          ["nueva tarea",     () => simular("nueva_tarea", { titulo: "Práctica Física", fecha: "2026-06-27", prioridad: "Alta" })],
-          ["nuevo record.",   () => simular("nuevo_recordatorio", { texto: "Asesoría Cálculo", fecha: "2026-06-27", hora: "17:00" })],
-          ["nueva nota",      () => simular("nueva_nota", { titulo: "Ideas", contenido: "" })],
-          ["tarjeta examen",  () => simular("tarjeta_examen", { materia: "Cálculo", fecha: "2026-06-28", hora: "09:00" })],
-          ["tarjeta archivo", () => simular("tarjeta_archivo", { nombre: "Proyecto_TONA.pdf", tamaño: "2.4 MB", modificado: "Hoy 17:45" })],
-          ["notif. urgente",  () => simular("notificacion_urgente", { mensaje: "Examen de Física mañana a las 7:00am" })],
-          ["widget tareas",   () => simular("mostrar_tareas", {})],
-          ["limpiar todo",    () => simular("cerrar_todo", {})],
-        ].map(([label, fn]) => (
-          <button key={label} onClick={fn} style={{
-            background:    "rgba(200,169,110,0.06)",
-            border:        "1px solid rgba(200,169,110,0.15)",
-            borderRadius:  5, padding: "3px 9px",
-            color:         "rgba(200,169,110,0.6)",
-            fontSize:      9, fontFamily: T.mono,
-            cursor:        "pointer", letterSpacing: "0.5px", textAlign: "left",
-          }}>
-            {label}
-          </button>
-        ))}
-      </div>
+      
 
       {/* Top-right */}
       <div style={s.infoTR}>
@@ -314,29 +309,47 @@ export default function Dashboard() {
         <EsferaTona size={480} />
       </div>
 
-      {/* Bottom — mic + input  */}
-      <div style={s.bottomWrap}>
-        <div style={s.micWrap}>
-          <MicTona size={72} userId={userId} onToggle={setMicActivo} />
-        </div>
-        <div style={{
-          ...s.inputWrap,
-          borderColor: micActivo
-            ? `${tema.acento}55`
-            : "rgba(237,235,230,0.07)",
-        }}>
-          <input
-            style={s.input}
-            type="text"
-            placeholder={micActivo ? "escuchando..." : `${tema.frase}`}
-            value={input}
-            onChange={handleInput}
-            onKeyDown={handleKeyDown}
-            aria-label="Habla con TONA"
-          />
-        </div>
-      </div>
-     
+      {/* Bottom — mic + input */}
+<div style={s.bottomWrap}>
+  <div style={s.micWrap}>
+    <MicTona size={72} userId={userId} onToggle={setMicActivo} />
+  </div>
+  <div style={{
+    ...s.inputWrap,
+    borderColor: micActivo ? `${tema.acento}55` : "rgba(237,235,230,0.07)",
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+  }}>
+    <input
+      style={s.input}
+      type="text"
+      placeholder={enviando ? "enviando..." : (micActivo ? "escuchando..." : `${tema.frase}`)}
+      value={input}
+      onChange={handleInput}
+      onKeyDown={handleKeyDown}
+      disabled={enviando}
+      autoFocus              // ← agrega esto
+      aria-label="Habla con TONA"
+    />
+    <button
+      onClick={() => handleSendMessage(input)}
+      disabled={enviando || !input.trim()}
+      style={{
+        background:    "transparent",
+        border:        "none",
+        color:         input.trim() ? "rgba(200,169,110,0.7)" : "rgba(237,235,230,0.15)",
+        fontSize:      16,
+        cursor:        input.trim() ? "pointer" : "default",
+        padding:       "0 4px",
+        flexShrink:    0,
+        transition:    "color 0.2s",
+      }}
+    >
+      ↑
+    </button>
+  </div>
+</div>
 
       {/* Widgets flotantes */}
       {widgets.map((w) => {
@@ -361,7 +374,7 @@ export default function Dashboard() {
       <FlashMensaje /> 
       <ConfirmacionAccion />
       <IndicadorPensando /> 
-       <VistaListaTareas />
+      <VistaListaTareas />
       <VistaCalendario />
       <VistaHorario />
       <VistaCalificaciones />
@@ -372,7 +385,6 @@ export default function Dashboard() {
       <TarjetaExamen />
       <TarjetaArchivo />
       <NotificacionUrgente />
-
     </div>
   );
 }

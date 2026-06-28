@@ -1,9 +1,9 @@
-// componentes_aislados/agentes/Categoria2.jsx
+// Categoria2.jsx — completo
+
 import { useEffect, useState, useRef, useCallback } from "react";
 import anime from "animejs";
 import { T } from "../../tokens";
 import { agenteBus } from "../AgenteTona";
-
 
 // ── VistaShell ────────────────────────────────────────────────────────────────
 
@@ -17,36 +17,11 @@ export function VistaShell({ titulo, categoria = "info", ancho = 420, alto = 480
 
   useEffect(() => {
     if (!ref.current) return;
-
-    // 1. Overlay entra
     anime({ targets: overlayRef.current, opacity: [0, 1], duration: 300, easing: "easeOutQuart" });
-
-    // 2. Borde se dibuja primero
     anime.timeline({ easing: "easeOutQuart" })
-      .add({
-        targets:  ref.current,
-        opacity:  [0, 1],
-        scaleX:   [0.6, 1],
-        scaleY:   [0.6, 1],
-        duration: 300,
-      })
-      // 3. Contenido aparece después
-      .add({
-        targets:   ref.current.querySelector?.(".vista-content"),
-        opacity:   [0, 1],
-        translateY:[8, 0],
-        duration:  280,
-      });
-
-    // 4. Línea superior se ilumina
-    anime({
-      targets:  borderRef.current,
-      opacity:  [0, 1],
-      width:    ["0%", "100%"],
-      duration: 500,
-      delay:    150,
-      easing:   "easeOutQuart",
-    });
+      .add({ targets: ref.current, opacity: [0, 1], scaleX: [0.6, 1], scaleY: [0.6, 1], duration: 300 })
+      .add({ targets: ref.current.querySelector?.(".vista-content"), opacity: [0, 1], translateY: [8, 0], duration: 280 });
+    anime({ targets: borderRef.current, opacity: [0, 1], width: ["0%", "100%"], duration: 500, delay: 150, easing: "easeOutQuart" });
   }, []);
 
   const cerrar = useCallback(() => {
@@ -56,23 +31,19 @@ export function VistaShell({ titulo, categoria = "info", ancho = 420, alto = 480
   }, [onCerrar]);
 
   const fijar = useCallback(() => {
-    // Contrae la vista hacia esquina y desaparece el overlay
-    const rect = ref.current?.getBoundingClientRect();
     anime.timeline({ easing: "easeInOutQuart" })
       .add({ targets: overlayRef.current, opacity: 0, duration: 300 })
       .add({
-        targets:   ref.current,
-        width:     [ancho, 240],
-        height:    [alto,  240],
-        translateX:[0, (window.innerWidth * 0.3)],
-        translateY:[0, -(window.innerHeight * 0.25)],
-        opacity:   [1, 0],
-        duration:  500,
-        complete:  () => onFijar?.(rect),
+        targets: ref.current,
+        width: [ancho, 240], height: [alto, 240],
+        translateX: [0, window.innerWidth * 0.3],
+        translateY: [0, -(window.innerHeight * 0.25)],
+        opacity: [1, 0],
+        duration: 500,
+        complete: () => onFijar?.(),
       }, "-=200");
   }, [onFijar, ancho, alto]);
 
-  // Escucha cerrar_todo
   useEffect(() => {
     return agenteBus.on("cerrar_todo", cerrar);
   }, [cerrar]);
@@ -81,31 +52,24 @@ export function VistaShell({ titulo, categoria = "info", ancho = 420, alto = 480
     <div ref={overlayRef} style={{
       position: "fixed", inset: 0, zIndex: 400,
       display: "flex", alignItems: "center", justifyContent: "center",
-      background: "rgba(0,0,0,0.3)", backdropFilter: "blur(4px)",
-      opacity: 0,
+      background: "rgba(0,0,0,0.3)", backdropFilter: "blur(4px)", opacity: 0,
     }}>
       <div ref={ref} style={{
         width: ancho, maxHeight: alto,
-        background:     "rgba(9,11,13,0.97)",
-        border:         `1px solid ${accent}22`,
-        borderTop:      `1px solid ${accent}55`,
-        borderRadius:   16,
-        backdropFilter: "blur(20px)",
-        display:        "flex", flexDirection: "column",
-        overflow:       "hidden",
-        boxShadow:      `0 8px 64px rgba(0,0,0,0.7), 0 0 40px ${accent}08`,
-        opacity:        0,
-        position:       "relative",
+        background: "rgba(9,11,13,0.97)",
+        border: `1px solid ${accent}22`, borderTop: `1px solid ${accent}55`,
+        borderRadius: 16, backdropFilter: "blur(20px)",
+        display: "flex", flexDirection: "column",
+        overflow: "hidden",
+        boxShadow: `0 8px 64px rgba(0,0,0,0.7), 0 0 40px ${accent}08`,
+        opacity: 0, position: "relative",
       }}>
-        {/* Línea animada superior */}
         <div ref={borderRef} style={{
-          position:   "absolute", top: 0, left: 0,
-          height:     1, width:  "0%",
+          position: "absolute", top: 0, left: 0,
+          height: 1, width: "0%",
           background: `linear-gradient(90deg, transparent, ${accent}, transparent)`,
-          opacity:    0,
+          opacity: 0,
         }} />
-
-        {/* Header */}
         <div style={{
           display: "flex", justifyContent: "space-between", alignItems: "center",
           padding: "14px 18px", borderBottom: `1px solid ${accent}18`, flexShrink: 0,
@@ -118,21 +82,16 @@ export function VistaShell({ titulo, categoria = "info", ancho = 420, alto = 480
               background: `${accent}15`, border: `1px solid ${accent}35`,
               borderRadius: 6, padding: "3px 9px", color: accent,
               fontSize: 9, fontFamily: T.mono, cursor: "pointer", letterSpacing: "0.5px",
-            }}>
-              FIJAR
-            </button>
+            }}>FIJAR</button>
             <button onClick={cerrar} style={{
               background: "transparent", border: "none",
               color: `${T.amaranto}55`, fontSize: 12, cursor: "pointer",
             }}>✕</button>
           </div>
         </div>
-
-        {/* Contenido */}
         <div className="vista-content" style={{ flex: 1, overflow: "auto", padding: "16px 18px", opacity: 0 }}>
           {children}
         </div>
-
         <div style={{ height: 1, background: `linear-gradient(90deg,transparent,${accent}33,transparent)`, flexShrink: 0 }} />
       </div>
     </div>
@@ -145,6 +104,8 @@ const rowStyle = { display: "flex", alignItems: "center", gap: 10, padding: "8px
 const txt = (op = 0.55, sz = 12) => ({ fontSize: sz, color: `rgba(237,235,230,${op})`, fontWeight: 300, fontFamily: T.sans });
 const badge = (color) => ({ fontSize: 9, padding: "2px 7px", borderRadius: 4, background: `${color}22`, color, letterSpacing: "0.3px" });
 const PRIORIDAD_COLOR = { Alta: T.amaranto, Media: T.copal, Baja: T.jade };
+
+// ── Mocks ─────────────────────────────────────────────────────────────────────
 
 const TAREAS_MOCK = [
   { id: 1, texto: "Práctica de Física",     prioridad: "Alta",  done: false },
@@ -186,19 +147,20 @@ export function VistaListaTareas() {
   const [filtro, setFiltro] = useState("todas");
 
   useEffect(() => {
-    const off1 = agenteBus.on("ver_tareas", (p) => setData(p || TAREAS_MOCK));
+    const off1 = agenteBus.on("ver_tareas", (p) => {
+      const payload = Array.isArray(p) && p.length > 0 ? p : TAREAS_MOCK;
+      setData(payload);
+    });
     const off2 = agenteBus.on("cerrar_todo", () => setData(null));
     return () => { off1(); off2(); };
   }, []);
 
   if (!data) return null;
-
   const filtradas = filtro === "todas" ? data : data.filter((t) => t.prioridad === filtro);
 
   return (
     <VistaShell
-      titulo="TONA · TAREAS PENDIENTES"
-      categoria="productividad"
+      titulo="TONA · TAREAS PENDIENTES" categoria="productividad"
       ancho={400} alto={500}
       onCerrar={() => setData(null)}
       onFijar={() => { agenteBus.emit("convertir_a_widget", { tipo: "tareas" }); setData(null); }}
@@ -229,7 +191,9 @@ export function VistaCalendario() {
   const [data, setData] = useState(null);
 
   useEffect(() => {
-    const off1 = agenteBus.on("ver_calendario", (p) => setData(p || { mes: new Date().getMonth(), año: new Date().getFullYear() }));
+    const off1 = agenteBus.on("ver_calendario", (p) => {
+      setData(p && p.mes !== undefined ? p : { mes: new Date().getMonth(), año: new Date().getFullYear() });
+    });
     const off2 = agenteBus.on("cerrar_todo", () => setData(null));
     return () => { off1(); off2(); };
   }, []);
@@ -282,7 +246,10 @@ export function VistaHorario() {
   const [data, setData] = useState(null);
 
   useEffect(() => {
-    const off1 = agenteBus.on("ver_horario", (p) => setData(p || HORARIO_MOCK));
+    const off1 = agenteBus.on("ver_horario", (p) => {
+      const payload = Array.isArray(p) && p.length > 0 ? p : HORARIO_MOCK;
+      setData(payload);
+    });
     const off2 = agenteBus.on("cerrar_todo", () => setData(null));
     return () => { off1(); off2(); };
   }, []);
@@ -319,7 +286,10 @@ export function VistaCalificaciones() {
   const [data, setData] = useState(null);
 
   useEffect(() => {
-    const off1 = agenteBus.on("ver_calificaciones", (p) => setData(p || CALS_MOCK));
+    const off1 = agenteBus.on("ver_calificaciones", (p) => {
+      const payload = Array.isArray(p) && p.length > 0 ? p : CALS_MOCK;
+      setData(payload);
+    });
     const off2 = agenteBus.on("cerrar_todo", () => setData(null));
     return () => { off1(); off2(); };
   }, []);
@@ -362,7 +332,9 @@ export function VistaMaterias() {
   const [data, setData] = useState(null);
 
   useEffect(() => {
-    const off1 = agenteBus.on("ver_materia", (p) => setData(p || MATERIA_MOCK));
+    const off1 = agenteBus.on("ver_materia", (p) => {
+      setData(p && p.nombre ? p : MATERIA_MOCK);
+    });
     const off2 = agenteBus.on("cerrar_todo", () => setData(null));
     return () => { off1(); off2(); };
   }, []);
@@ -378,7 +350,7 @@ export function VistaMaterias() {
     >
       <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
         {[
-          { val: data.promedio, label: "promedio",   color: T.jade     },
+          { val: data.promedio, label: "promedio",    color: T.jade     },
           { val: `${data.progreso}%`, label: "avance", color: T.copal  },
           { val: data.pendientes, label: "pendientes", color: T.amaranto },
         ].map(({ val, label, color }) => (

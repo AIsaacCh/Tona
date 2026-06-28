@@ -8,40 +8,48 @@ class VozService {
     this.escuchando = false
     this.onTranscripcion = null
     this.onRespuesta = null
-    this.onEstado = null
     this.audioActual = null
     this.inicializado = false
     this.userId = 'demo'
+    this.audioContext = null
+    this.audioBufferSource = null
     this.audioUnlocked = false
     this.isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
+    
+    // ✅ LISTA DE SUSCRIPTORES
+    this._listeners = []
+    this._estadoActual = 'reposo'
     
     console.log('🔍 Navegador:', this.isSafari ? 'Safari' : 'Otro')
   }
 
-  inicializar() {
-    if (this.inicializado) return true
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
-    if (!SpeechRecognition) {
-      console.warn('Web Speech API no disponible')
-      return false
+  // ✅ SUSCRIBIRSE A CAMBIOS DE ESTADO
+  suscribirEstado(callback) {
+    if (typeof callback === 'function') {
+      this._listeners.push(callback)
+      // Llamar inmediatamente con el estado actual
+      callback(this._estadoActual)
+      // Devolver función para desuscribirse
+      return () => {
+        this._listeners = this._listeners.filter(cb => cb !== callback)
+      }
     }
-    this.recognition = new SpeechRecognition()
-    this.recognition.lang = 'es-MX'
-    this.recognition.continuous = false
-    this.recognition.interimResults = true
-    this.recognition.maxAlternatives = 1
-    this.inicializado = true
-    return true
+    return () => {}
+  }
+
+  // ✅ NOTIFICAR A TODOS LOS SUSCRIPTORES
+  _notificar(estado) {
+    this._estadoActual = estado
+    this._listeners.forEach(cb => {
+      try { cb(estado) } catch (e) {}
+    })
   }
 
   unlockAudio() {
-    if (this.audioUnlocked) {
-      return true
-    }
+    if (this.audioUnlocked) return true
     
     try {
       console.log('🔓 Desbloqueando audio en Safari...')
-      
       const audio = document.createElement('audio')
       const silentMP3 = 'data:audio/mpeg;base64,//MkxAAHiAADWABAFhG8F//8N//9v/+//v/+//v/+//v/+//v/+//v/+//v/+//v/+//v/+//v/+//v/+//v/+'
       audio.src = silentMP3
@@ -57,7 +65,6 @@ class VozService {
           this.unlockWithAudioContext()
         })
       }
-      
       this.unlockWithAudioContext()
       return true
     } catch (e) {
@@ -80,9 +87,23 @@ class VozService {
           osc.stop(ctx.currentTime + 0.01)
         })
       }
-    } catch (e) {
-      // Ignorar
+    } catch (e) {}
+  }
+
+  inicializar() {
+    if (this.inicializado) return true
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SpeechRecognition) {
+      console.warn('Web Speech API no disponible')
+      return false
     }
+    this.recognition = new SpeechRecognition()
+    this.recognition.lang = 'es-MX'
+    this.recognition.continuous = false
+    this.recognition.interimResults = true
+    this.recognition.maxAlternatives = 1
+    this.inicializado = true
+    return true
   }
 
   async activar(userId) {
@@ -101,7 +122,7 @@ class VozService {
     }
 
     this.escuchando = true
-    this.onEstado?.('escuchando')
+    this._notificar('escuchando')
 
     return new Promise((resolve, reject) => {
       this.recognition.onresult = (e) => {
@@ -119,15 +140,12 @@ class VozService {
 
       this.recognition.onerror = (e) => {
         this.escuchando = false
-        this.onEstado?.('error')
+        this._notificar('error')
         reject(e.error)
       }
 
       this.recognition.onend = () => {
         this.escuchando = false
-        if (this.onEstado && this.escuchando) {
-          this.onEstado?.('procesando')
-        }
       }
 
       this.recognition.start()
@@ -135,37 +153,41 @@ class VozService {
   }
 
   async enviarMensaje(userId, texto) {
-    try {
-      this.userId = userId || this.userId
-      this.onEstado?.('procesando')
-      
-      console.log('📡 Enviando mensaje al chat...')
-      const resp = await api.post('/agent/chat', {
-        user_id: userId,
-        mensaje: texto,
-      })
-      
-      const respuestaTexto = resp.data.respuesta
-      console.log('💬 Respuesta recibida:', respuestaTexto.substring(0, 50) + '...')
-      
-      this.onRespuesta?.(respuestaTexto, resp.data.acciones || [])
-      
-      await this.hablar(respuestaTexto)
-      return respuestaTexto
-    } catch (e) {
-      console.error('Error enviando mensaje:', e)
-      this.onEstado?.('error')
-      setTimeout(() => this.onEstado?.('reposo'), 2000)
+  try {
+    this.userId = userId || this.userId
+    this._notificar('procesando')
+    
+    const resp = await api.post('/agent/chat', {
+      user_id: userId,
+      mensaje: texto,
+    })
+    
+    // ← cambio aquí: antes era resp.data.respuesta
+    const { accion, payload, mensaje } = resp.data
+    
+    // Emitir la acción al bus
+    const { agenteBus } = await import('../components/AgenteTona')
+    agenteBus.emit(accion, payload)
+    
+    // Hablar si hay mensaje
+    if (mensaje) {
+      await this.hablar(mensaje)
     }
+    
+    return resp.data
+  } catch (e) {
+    console.error('Error enviando mensaje:', e)
+    this._notificar('error')
+    setTimeout(() => this._notificar('reposo'), 2000)
   }
+}
 
   async hablar(texto) {
     console.log(`🔊 TTS: "${texto.substring(0, 40)}..."`)
     
-    // ✅ Detener audio anterior (esto puede generar AbortError, lo manejamos)
     this.detenerAudio()
     this.sintetizando = true
-    this.onEstado?.('hablando')
+    this._notificar('hablando')
 
     try {
       console.log('📡 Solicitando audio a la API...')
@@ -181,20 +203,19 @@ class VozService {
       
       this.audioActual.onended = () => {
         this.sintetizando = false
-        this.onEstado?.('reposo')
+        this._notificar('reposo')
         URL.revokeObjectURL(url)
         console.log('⏹️ Audio terminado')
       }
       
       this.audioActual.onerror = (e) => {
-        // ✅ Ignorar AbortError (es normal cuando se interrumpe)
         if (e.type === 'abort' || e.target?.error?.code === 25) {
           console.log('⏹️ Audio interrumpido (normal)')
         } else {
           console.error('❌ Error en audio:', e)
         }
         this.sintetizando = false
-        this.onEstado?.('reposo')
+        this._notificar('reposo')
         URL.revokeObjectURL(url)
       }
       
@@ -202,11 +223,10 @@ class VozService {
         await this.audioActual.play()
         console.log('▶️ Audio reproduciendo')
       } catch (playError) {
-        // ✅ Si es AbortError, es normal (se interrumpió)
         if (playError.name === 'AbortError') {
           console.log('⏹️ Reproducción abortada (normal)')
           this.sintetizando = false
-          this.onEstado?.('reposo')
+          this._notificar('reposo')
           return
         }
         
@@ -225,11 +245,10 @@ class VozService {
       }
       
     } catch (e) {
-      // ✅ Si es AbortError, es normal
       if (e.name === 'AbortError') {
         console.log('⏹️ Operación abortada (normal)')
         this.sintetizando = false
-        this.onEstado?.('reposo')
+        this._notificar('reposo')
         return
       }
       
@@ -243,7 +262,7 @@ class VozService {
     console.log('📢 Fallback: TTS navegador')
     
     if (!window.speechSynthesis) {
-      this.onEstado?.('reposo')
+      this._notificar('reposo')
       return
     }
     
@@ -260,15 +279,15 @@ class VozService {
     
     u.onend = () => {
       this.sintetizando = false
-      this.onEstado?.('reposo')
+      this._notificar('reposo')
     }
     
     u.onerror = () => {
       this.sintetizando = false
-      this.onEstado?.('reposo')
+      this._notificar('reposo')
     }
     
-    this.onEstado?.('hablando')
+    this._notificar('hablando')
     window.speechSynthesis.speak(u)
   }
 
@@ -276,21 +295,21 @@ class VozService {
     if (this.audioActual) {
       try {
         this.audioActual.pause()
-        // ✅ Ignorar errores al detener
-      } catch (e) {
-        // Ignorar
-      }
+      } catch (e) {}
       this.audioActual = null
     }
     window.speechSynthesis?.cancel()
     this.sintetizando = false
+    this._notificar('reposo')
   }
 
   detener() {
-    this.recognition?.stop()
+    if (this.recognition) {
+      try { this.recognition.stop() } catch (e) {}
+    }
     this.detenerAudio()
     this.escuchando = false
-    this.onEstado?.('reposo')
+    this._notificar('reposo')
   }
 }
 

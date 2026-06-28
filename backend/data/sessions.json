@@ -136,11 +136,11 @@
     "historial": [
       {
         "role": "user",
-        "content": "Hola"
+        "content": "hola"
       },
       {
         "role": "model",
-        "content": "\u00a1Hola, Cortes! Soy Tona.\n\nHoy es s\u00e1bado 27 de junio, 15:03. No veo tareas pendientes por ahora. \u00bfQuieres que veamos tu calendario, revisemos algo en Drive o tienes alguna pregunta?"
+        "content": "Error: 'tuple' object has no attribute 'text'"
       },
       {
         "role": "user",
@@ -148,7 +148,95 @@
       },
       {
         "role": "model",
-        "content": "\u00a1Hola, Cortes! Soy Tona.\n\nHoy es s\u00e1bado 27 de junio, 15:04. No veo tareas pendientes por ahora. \u00bfQuieres que veamos tu calendario, revisemos algo en Drive o tienes alguna pregunta?"
+        "content": "Error: 'tuple' object has no attribute 'text'"
+      },
+      {
+        "role": "user",
+        "content": "como estas?"
+      },
+      {
+        "role": "model",
+        "content": "Error: 'tuple' object has no attribute 'text'"
+      },
+      {
+        "role": "user",
+        "content": "hola"
+      },
+      {
+        "role": "model",
+        "content": "Hola. Estoy operativo."
+      },
+      {
+        "role": "user",
+        "content": "muestrame mi calendario "
+      },
+      {
+        "role": "model",
+        "content": "Aqu\u00ed est\u00e1 su calendario."
+      },
+      {
+        "role": "user",
+        "content": "muestrame mis tareas"
+      },
+      {
+        "role": "model",
+        "content": "Lo siento, hubo un error al procesar tu solicitud."
+      },
+      {
+        "role": "user",
+        "content": "hola"
+      },
+      {
+        "role": "model",
+        "content": "Hola, \u00bfen qu\u00e9 puedo asistirle?"
+      },
+      {
+        "role": "user",
+        "content": "muestrame mi calendario"
+      },
+      {
+        "role": "model",
+        "content": "Aqu\u00ed est\u00e1 su calendario."
+      },
+      {
+        "role": "user",
+        "content": "muestrame mis tareas"
+      },
+      {
+        "role": "model",
+        "content": "Aqu\u00ed est\u00e1n sus tareas pendientes."
+      },
+      {
+        "role": "user",
+        "content": "muestrame mis calificaciones"
+      },
+      {
+        "role": "model",
+        "content": "Aqu\u00ed est\u00e1n sus calificaciones."
+      },
+      {
+        "role": "user",
+        "content": "Mu\u00e9strame mi horario"
+      },
+      {
+        "role": "model",
+        "content": "Aqu\u00ed est\u00e1 su horario."
+      },
+      {
+        "role": "user",
+        "content": "Cierra todo"
+      },
+      {
+        "role": "model",
+        "content": "Cerrando todas las ventanas."
+      },
+      {
+        "role": "user",
+        "content": "Qui\u00e9n eres"
+      },
+      {
+        "role": "model",
+        "content": "Soy Tona, su asistente acad\u00e9mico personal. Mi funci\u00f3n es organizar su tiempo e informaci\u00f3n."
       },
       {
         "role": "user",
@@ -156,145 +244,57 @@
       },
       {
         "role": "model",
-        "content": "\u00a1Hola, Cortes! Soy Tona.\n\nHoy es s\u00e1bado 27 de junio, 15:05. No veo tareas pendientes por ahora. \u00bfQuieres que veamos tu calendario, revisemos algo en Drive o tienes alguna pregunta?"
+        "content": "Hola, \u00bfen qu\u00e9 puedo asistirle?"
       },
       {
         "role": "user",
-        "content": "Hola"
+        "content": "Mu\u00e9strame mis tareas"
       },
       {
         "role": "model",
-        "content": "\u00a1Hola, Cortes! Soy Tona.\n\nHoy es s\u00e1bado 27 de junio, 15:06. No veo tareas pendientes por ahora. \u00bfQuieres que veamos tu calendario, revisemos algo en Drive o tienes alguna pregunta?"
+        "content": "Aqu\u00ed est\u00e1n sus tareas pendientes."
       },
       {
         "role": "user",
-        "content": "Hola"
+        "content": "Mu\u00e9strame en mi calendario"
       },
       {
         "role": "model",
-        "content": "\u00a1Hola, Cortes! Soy Tona.\n\nHoy es s\u00e1bado 27 de junio, 15:08. No veo tareas pendientes por ahora. \u00bfQuieres que veamos tu calendario, revisemos algo en Drive o tienes alguna pregunta?"
+        "content": "Aqu\u00ed est\u00e1 su calendario."
       },
       {
         "role": "user",
-        "content": "Hola"
+        "content": "Mu\u00e9strame mi horario"
       },
       {
         "role": "model",
-        "content": "\u00a1Hola, Cortes! Soy Tona.\n\nHoy es s\u00e1bado 27 de junio, 15:09. No veo tareas pendientes por ahora. \u00bfQuieres que veamos tu calendario, revisemos algo en Drive o tienes alguna pregunta?"
+        "content": "Aqu\u00ed est\u00e1 su horario."
       },
       {
         "role": "user",
-        "content": "Hola"
+        "content": "Cierra todo por favor"
       },
       {
         "role": "model",
-        "content": "\u00a1Hola, Cortes! Soy Tona.\n\nHoy es s\u00e1bado 27 de junio, 15:10. No veo tareas pendientes por ahora. \u00bfQuieres que veamos tu calendario, revisemos algo en Drive o tienes alguna pregunta?"
+        "content": "Cerrando todas las ventanas."
       },
       {
         "role": "user",
-        "content": "Hola"
+        "content": "como estas amigo?"
       },
       {
         "role": "model",
-        "content": "\u00a1Hola, Cortes! Soy Tona.\n\nHoy es s\u00e1bado 27 de junio, 15:13. No veo tareas pendientes por ahora. \u00bfQuieres que veamos tu calendario, revisemos algo en Drive o tienes alguna pregunta?"
+        "content": "Estoy operativo y listo para asistirle."
       },
       {
         "role": "user",
-        "content": "Hola"
+        "content": "como deber\u00eda llamarte?"
       },
       {
         "role": "model",
-        "content": "\u00a1Hola, Cortes! Soy Tona.\n\nHoy es s\u00e1bado 27 de junio, 15:14. No veo tareas pendientes por ahora. \u00bfQuieres que veamos tu calendario, revisemos algo en Drive o tienes alguna pregunta?"
-      },
-      {
-        "role": "user",
-        "content": "Hola"
-      },
-      {
-        "role": "model",
-        "content": "\u00a1Hola, Cortes! Soy Tona.\n\nHoy es s\u00e1bado 27 de junio, 15:15. No veo tareas pendientes por ahora. \u00bfQuieres que veamos tu calendario, revisemos algo en Drive o tienes alguna pregunta?"
-      },
-      {
-        "role": "user",
-        "content": "Hola"
-      },
-      {
-        "role": "model",
-        "content": "\u00a1Hola, Cortes! Soy Tona.\n\nHoy es s\u00e1bado 27 de junio, 15:15. No veo tareas pendientes por ahora. \u00bfQuieres que veamos tu calendario, revisemos algo en Drive o tienes alguna pregunta?"
-      },
-      {
-        "role": "user",
-        "content": "Hola"
-      },
-      {
-        "role": "model",
-        "content": "\u00a1Hola, Cortes! Soy Tona.\n\nHoy es s\u00e1bado 27 de junio, 15:16. No veo tareas pendientes por ahora. \u00bfQuieres que veamos tu calendario, revisemos algo en Drive o tienes alguna pregunta?"
-      },
-      {
-        "role": "user",
-        "content": "\u00bfQu\u00e9 tengo pendiente?"
-      },
-      {
-        "role": "model",
-        "content": "\u00a1Hola, Cortes! Soy Tona.\n\nHoy es s\u00e1bado 27 de junio, 18:09. No veo tareas pendientes por ahora. \u00bfQuieres que veamos tu calendario, revisemos algo en Drive o tienes alguna pregunta?"
-      },
-      {
-        "role": "user",
-        "content": "Hola"
-      },
-      {
-        "role": "model",
-        "content": "\u00a1Hola, Cortes! Soy Tona.\n\nHoy es s\u00e1bado 27 de junio, 18:16. No veo tareas pendientes por ahora. \u00bfQuieres que veamos tu calendario, revisemos algo en Drive o tienes alguna pregunta?"
-      },
-      {
-        "role": "user",
-        "content": "Hola"
-      },
-      {
-        "role": "model",
-        "content": "Usuario. Es s\u00e1bado 27 de junio, 18:18. No hay tareas pendientes. \u00bfDesea revisar el calendario, buscar en Drive o tiene alguna pregunta?"
-      },
-      {
-        "role": "user",
-        "content": "C\u00f3mo est\u00e1s"
-      },
-      {
-        "role": "model",
-        "content": "Usuario. Soy un asistente de IA. Mi funci\u00f3n es organizar su tiempo e informaci\u00f3n. \u00bfEn qu\u00e9 puedo asistirle?"
-      },
-      {
-        "role": "user",
-        "content": "Hola"
-      },
-      {
-        "role": "model",
-        "content": "Hola, Cortes. Soy Tona.\n\nEs s\u00e1bado 27 de junio, 18:20. No hay tareas pendientes. \u00bfDesea revisar el calendario, buscar en Drive o"
-      },
-      {
-        "role": "user",
-        "content": "C\u00f3mo est\u00e1s"
-      },
-      {
-        "role": "model",
-        "content": "Cortes. Soy un asistente de IA. Mi funci\u00f3n es organizar su tiempo e informaci\u00f3n. \u00bfEn qu\u00e9 puedo asistirle?"
-      },
-      {
-        "role": "user",
-        "content": "Hola"
-      },
-      {
-        "role": "model",
-        "content": "Cortes. Es s\u00e1bado 27 de junio, 18:23. No hay tareas pendientes. \u00bfDesea revisar el calendario, buscar en Drive o tiene alguna pregunta?"
-      },
-      {
-        "role": "user",
-        "content": "Buenos d\u00edas qui\u00e9n eres"
-      },
-      {
-        "role": "model",
-        "content": "Soy Tona, su asistente acad\u00e9mico personal. Mi funci\u00f3n es organizar su tiempo y su informaci\u00f3n con precisi\u00f3n. \u00bfEn qu\u00e9 puedo asistirle, Cortes?"
+        "content": "Puede llamarme Tona."
       }
     ],
-    "updated_at": "2026-06-27T18:24:23.861979"
+    "updated_at": "2026-06-28T15:01:14.698023"
   }
 }
