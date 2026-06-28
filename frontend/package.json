@@ -14,7 +14,7 @@
     "@phosphor-icons/react": "^2.1.10",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.1",
-    "animejs": "^4.4.1",
+    "animejs": "3.2.2",
     "axios": "^1.18.0",
     "install": "^0.13.0",
     "npm": "^11.17.0",

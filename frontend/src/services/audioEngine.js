@@ -11,7 +11,7 @@ class AudioEngine {
     if (this.iniciado) return
     await Tone.start()
 
-    // Reverb larga — para la esfera, sensación de espacio infinito
+    
     this.reverb = new Tone.Reverb({ decay: 4.5, wet: 0.35 }).toDestination()
     await this.reverb.ready
 
@@ -62,7 +62,7 @@ class AudioEngine {
 campanaCristal({ urgencia = 'media' } = {}) {
   if (!this.listo) return
 
-  // Mismo lenguaje sonoro que whooshAire — suave, sin golpe, solo aire
+  
   const ruido = new Tone.Noise({ type: 'pink', volume: -26 })
   const filtro = new Tone.Filter({ frequency: 900, type: 'bandpass', Q: 0.6 })
   const env = new Tone.AmplitudeEnvelope({

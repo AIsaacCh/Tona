@@ -1,271 +1,263 @@
-import { useEffect, useRef, useState } from 'react'
-import * as THREE from 'three'
-import audioEngine from '../services/audioEngine'
+// EsferaTona.jsx — versión optimizada
 
-const COLORES_TEMA = {
-  manana: { primario: 0xF5C87A, secundario: 0x2EC990 },
-  tarde:  { primario: 0xC084FC, secundario: 0x34D399 },
-  noche:  { primario: 0xE8D5A3, secundario: 0x1D9E75 },
+import { useEffect, useRef } from "react";
+import anime from "animejs";
+
+const CX = 250;
+const CY = 250;
+const D2R = Math.PI / 180;
+
+function ePoint(rx, ry, tiltDeg, angleDeg) {
+  const a = angleDeg * D2R;
+  const t = tiltDeg * D2R;
+  const lx = rx * Math.cos(a);
+  const ly = ry * Math.sin(a);
+  return {
+    x: CX + lx * Math.cos(t) - ly * Math.sin(t),
+    y: CY + lx * Math.sin(t) + ly * Math.cos(t),
+  };
 }
 
-export default function EsferaTona({ tiempo = 'noche', size = 460, iniciar = true }) {
-  const mountRef = useRef(null)
+function buildArc(rx, ry, tilt, startDeg, endDeg, steps = 60) {
+  let d = "";
+  for (let i = 0; i <= steps; i++) {
+    const angle = startDeg + ((endDeg - startDeg) * i) / steps;
+    const p = ePoint(rx, ry, tilt, angle);
+    d += `${i === 0 ? "M" : "L"}${p.x.toFixed(2)},${p.y.toFixed(2)} `;
+  }
+  return d.trim();
+}
+
+function buildTicks(rx, ry, tilt, startDeg, endDeg, count, len = 8) {
+  let d = "";
+  for (let i = 0; i <= count; i++) {
+    const angle = startDeg + ((endDeg - startDeg) * i) / count;
+    const outer = ePoint(rx, ry, tilt, angle);
+    const inner = ePoint(rx * 0.88, ry * 0.88, tilt, angle);
+    const dx = inner.x - outer.x;
+    const dy = inner.y - outer.y;
+    const mag = Math.sqrt(dx * dx + dy * dy) || 1;
+    const tickLen = i % 5 === 0 ? len : len * 0.45;
+    d += `M${outer.x.toFixed(2)},${outer.y.toFixed(2)} `;
+    d += `L${(outer.x + (dx / mag) * tickLen).toFixed(2)},${(outer.y + (dy / mag) * tickLen).toFixed(2)} `;
+  }
+  return d.trim();
+}
+
+const LAYERS = [
+  { id: "l1",  rx: 132, ry: 52, tilt: 15,  arcStart: 188, arcEnd: 322, color: "#C8A96E", width: 2.4, opacity: 0.92, floatAmp: 3.0, floatFreq: 0.00016, phaseY: 0.0,  phaseX: 1.2, satellites: [{ t: 0.18, size: 4 }, { t: 0.58, size: 3 }, { t: 0.86, size: 3.5 }] },
+  { id: "l2",  rx: 92,  ry: 70, tilt: 72,  arcStart: -42, arcEnd: 62,  color: "#B8955A", width: 1.8, opacity: 0.85, floatAmp: 2.5, floatFreq: 0.00012, phaseY: 0.8,  phaseX: 2.0, satellites: [{ t: 0.32, size: 3.5 }, { t: 0.74, size: 4 }] },
+  { id: "l3",  rx: 158, ry: 48, tilt: 138, arcStart: 148, arcEnd: 258, color: "#A07840", width: 1.4, opacity: 0.75, floatAmp: 3.5, floatFreq: 0.00010, phaseY: 1.6,  phaseX: 0.4, satellites: [{ t: 0.28, size: 3 }, { t: 0.65, size: 2.5 }] },
+  { id: "l4",  rx: 104, ry: 78, tilt: 48,  arcStart: 198, arcEnd: 292, color: "#956830", width: 1.2, opacity: 0.68, floatAmp: 2.0, floatFreq: 0.00013, phaseY: 2.4,  phaseX: 3.1, satellites: [{ t: 0.42, size: 3 }, { t: 0.82, size: 3.5 }] },
+  { id: "l5",  rx: 170, ry: 62, tilt: 102, arcStart: 28,  arcEnd: 142, color: "#7A5828", width: 1.0, opacity: 0.55, floatAmp: 2.8, floatFreq: 0.00009, phaseY: 3.2,  phaseX: 1.8, satellites: [{ t: 0.5,  size: 3 }] },
+  { id: "l6",  rx: 78,  ry: 85, tilt: 88,  arcStart: 248, arcEnd: 362, color: "#C8A96E", width: 0.9, opacity: 0.42, floatAmp: 2.2, floatFreq: 0.00011, phaseY: 4.0,  phaseX: 0.9, satellites: [] },
+  { id: "l7",  rx: 118, ry: 60, tilt: 25,  arcStart: 30,  arcEnd: 148, color: "#B8955A", width: 1.3, opacity: 0.62, floatAmp: 2.6, floatFreq: 0.00014, phaseY: 0.5,  phaseX: 2.5, satellites: [{ t: 0.45, size: 3 }] },
+  { id: "l8",  rx: 145, ry: 55, tilt: 162, arcStart: 200, arcEnd: 310, color: "#9A6A38", width: 1.1, opacity: 0.58, floatAmp: 3.2, floatFreq: 0.00008, phaseY: 1.1,  phaseX: 3.8, satellites: [{ t: 0.3,  size: 2.5 }, { t: 0.7, size: 3 }] },
+  { id: "l9",  rx: 182, ry: 58, tilt: 55,  arcStart: 160, arcEnd: 300, color: "#6A5020", width: 0.7, opacity: 0.38, floatAmp: 2.4, floatFreq: 0.00007, phaseY: 2.0,  phaseX: 1.1, satellites: [] },
+  { id: "l10", rx: 88,  ry: 90, tilt: 115, arcStart: -30, arcEnd: 75,  color: "#A07840", width: 0.8, opacity: 0.45, floatAmp: 2.0, floatFreq: 0.00015, phaseY: 3.6,  phaseX: 4.2, satellites: [{ t: 0.55, size: 2.5 }] },
+];
+
+export default function EsferaTona({ size = 500 }) {
+  const svgRef  = useRef(null);
+  const rafRef  = useRef(null);
+
+  const layerData = LAYERS.map((layer) => {
+    const arcMain  = buildArc(layer.rx, layer.ry, layer.tilt, layer.arcStart, layer.arcEnd);
+    const arcInner = buildArc(layer.rx * 0.90, layer.ry * 0.86, layer.tilt, layer.arcStart + 8, layer.arcEnd - 8);
+    const arcOuter = buildArc(layer.rx * 1.04, layer.ry * 1.04, layer.tilt, layer.arcStart + 4, layer.arcEnd - 4);
+    const ticks    = buildTicks(layer.rx, layer.ry, layer.tilt, layer.arcStart, layer.arcEnd, 22, 8);
+    const accentS  = buildArc(layer.rx, layer.ry, layer.tilt, layer.arcStart, layer.arcStart + 12, 6);
+    const accentE  = buildArc(layer.rx, layer.ry, layer.tilt, layer.arcEnd - 12, layer.arcEnd, 6);
+    const satPos   = layer.satellites.map(({ t }) => {
+      const angle = layer.arcStart + (layer.arcEnd - layer.arcStart) * t;
+      return ePoint(layer.rx, layer.ry, layer.tilt, angle);
+    });
+    return { ...layer, arcMain, arcInner, arcOuter, ticks, accentS, accentE, satPos };
+  });
 
   useEffect(() => {
-    const container = mountRef.current
-    if (!container) return
+    const svg = svgRef.current;
+    if (!svg) return;
 
-    const colores = COLORES_TEMA[tiempo] || COLORES_TEMA.noche
+    // Cache de referencias DOM — evita querySelector en cada frame
+    const groupEls = LAYERS.map((l) => svg.querySelector(`#group-${l.id}`));
+    const ringEl   = svg.querySelector("#nuc-ring");
 
-    const scene = new THREE.Scene()
-    const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 100)
-    camera.position.z = 4.2
+    // Anime.js solo para núcleo — pocos elementos, vale la pena
+    anime({
+      targets: "#nuc-halo",
+      r: [24, 40, 24],
+      opacity: [0.04, 0.15, 0.04],
+      duration: 4000,
+      loop: true,
+      easing: "easeInOutSine",
+    });
+    anime({
+      targets: "#nuc-core",
+      r: [4, 7.5, 4],
+      opacity: [0.7, 1, 0.7],
+      duration: 2600,
+      loop: true,
+      easing: "easeInOutQuad",
+    });
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
-    renderer.setSize(size, size)
-    renderer.setClearColor(0x000000, 0)
-    container.appendChild(renderer.domElement)
+    // Pulso de satélites — uno por satélite, pocos elementos
+    LAYERS.forEach((layer) => {
+      layer.satellites.forEach(({ size: sz }, i) => {
+        anime({
+          targets: `#sat-${layer.id}-${i}`,
+          r: [sz * 0.65, sz * 1.35, sz * 0.65],
+          opacity: [0.3, 0.95, 0.3],
+          duration: 2200 + i * 300 + LAYERS.indexOf(layer) * 150,
+          loop: true,
+          delay: i * 450,
+          easing: "easeInOutSine",
+        });
+      });
+    });
 
-    const grupo = new THREE.Group()
-    scene.add(grupo)
+    // Reveal rayos — una sola vez
+    anime({
+      targets: ".ray",
+      strokeDashoffset: [anime.setDashoffset, 0],
+      opacity: [0, 0.42],
+      duration: 2000,
+      delay: anime.stagger(100, { start: 300 }),
+      easing: "easeOutCubic",
+    });
 
-    const RADIO = 1.6
-    const NUM_ANILLOS_LAT = 7
-    const NUM_ANILLOS_LON = 5
-    const NUM_PARTICULAS = 90
+    // Un solo rAF para todo el movimiento de capas + anillo
+    let ringAngle = 0;
 
-    function colorMezcla(t) {
-      const c1 = new THREE.Color(colores.primario)
-      const c2 = new THREE.Color(colores.secundario)
-      return c1.clone().lerp(c2, t)
+    function tick(ts) {
+      // Anillo decorativo del núcleo
+      ringAngle += 0.18;
+      if (ringEl) ringEl.setAttribute("transform", `rotate(${ringAngle},${CX},${CY})`);
+
+      // Flotación de capas — Math.sin con fase única por capa
+      // will-change: transform en el SVG group permite que el navegador
+      // use la GPU para este transform sin rasterizar el contenido SVG
+      LAYERS.forEach((layer, idx) => {
+        const el = groupEls[idx];
+        if (!el) return;
+        const ty = Math.sin(ts * layer.floatFreq * Math.PI * 2 + layer.phaseY) * layer.floatAmp;
+        const tx = Math.sin(ts * layer.floatFreq * Math.PI * 2 * 0.6 + layer.phaseX) * layer.floatAmp * 0.4;
+        el.style.transform = `translate(${tx.toFixed(2)}px, ${ty.toFixed(2)}px)`;
+      });
+
+      rafRef.current = requestAnimationFrame(tick);
     }
 
-    // ── Núcleo central ──────────────────────────────────
-    const nucleoGeo = new THREE.SphereGeometry(0.12, 16, 16)
-    const nucleoMat = new THREE.MeshBasicMaterial({
-      color: colores.primario, transparent: true, opacity: 0,
-    })
-    const nucleo = new THREE.Mesh(nucleoGeo, nucleoMat)
-    nucleo.scale.setScalar(0.01)
-    scene.add(nucleo)
-
-    const glowGeo = new THREE.SphereGeometry(0.28, 16, 16)
-    const glowMat = new THREE.MeshBasicMaterial({
-      color: colores.primario, transparent: true, opacity: 0,
-    })
-    const glow = new THREE.Mesh(glowGeo, glowMat)
-    glow.scale.setScalar(0.01)
-    scene.add(glow)
-
-    // ── Anillos de latitud ──────────────────────────────
-    const anillosLat = []
-    for (let i = 0; i < NUM_ANILLOS_LAT; i++) {
-      const lat = (i / (NUM_ANILLOS_LAT - 1) - 0.5) * Math.PI * 0.85
-      const r = Math.cos(lat) * RADIO
-      const y = Math.sin(lat) * RADIO
-      const puntos = []
-      const segments = 64
-      for (let j = 0; j <= segments; j++) {
-        const a = (j / segments) * Math.PI * 2
-        puntos.push(new THREE.Vector3(Math.cos(a) * r, y, Math.sin(a) * r))
-      }
-      const geo = new THREE.BufferGeometry().setFromPoints(puntos)
-      const mat = new THREE.LineBasicMaterial({
-        color: colorMezcla(i / NUM_ANILLOS_LAT), transparent: true, opacity: 0,
-      })
-      const linea = new THREE.LineLoop(geo, mat)
-      linea.scale.setScalar(0.3)
-      grupo.add(linea)
-      anillosLat.push({ mesh: linea, offset: i })
-    }
-
-    // ── Anillos de longitud ─────────────────────────────
-    const anillosLon = []
-    for (let i = 0; i < NUM_ANILLOS_LON; i++) {
-      const rotY = (i / NUM_ANILLOS_LON) * Math.PI
-      const puntos = []
-      const segments = 64
-      for (let j = 0; j <= segments; j++) {
-        const a = (j / segments) * Math.PI * 2
-        puntos.push(new THREE.Vector3(
-          Math.cos(a) * RADIO * Math.cos(rotY),
-          Math.sin(a) * RADIO,
-          Math.cos(a) * RADIO * Math.sin(rotY)
-        ))
-      }
-      const geo = new THREE.BufferGeometry().setFromPoints(puntos)
-      const mat = new THREE.LineBasicMaterial({
-        color: colorMezcla(0.5 + i / NUM_ANILLOS_LON * 0.5), transparent: true, opacity: 0,
-      })
-      const linea = new THREE.LineLoop(geo, mat)
-      linea.scale.setScalar(0.3)
-      grupo.add(linea)
-      anillosLon.push({ mesh: linea, offset: i })
-    }
-
-    // ── Partículas ──────────────────────────────────────
-    const posiciones = new Float32Array(NUM_PARTICULAS * 3)
-    const datosParticula = []
-    for (let i = 0; i < NUM_PARTICULAS; i++) {
-      const r = RADIO * (0.5 + Math.random() * 0.9)
-      const theta = Math.random() * Math.PI * 2
-      const phi = Math.acos(2 * Math.random() - 1)
-      posiciones[i * 3]     = r * Math.sin(phi) * Math.cos(theta)
-      posiciones[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta)
-      posiciones[i * 3 + 2] = r * Math.cos(phi)
-      datosParticula.push({
-        baseR: r, theta, phi,
-        velocidad: 0.2 + Math.random() * 0.4,
-        fase: Math.random() * Math.PI * 2,
-      })
-    }
-    const particulasGeo = new THREE.BufferGeometry()
-    particulasGeo.setAttribute('position', new THREE.BufferAttribute(posiciones, 3))
-    const particulasMat = new THREE.PointsMaterial({
-      color: colores.secundario, size: 0.035, transparent: true, opacity: 0, sizeAttenuation: true,
-    })
-    const particulas = new THREE.Points(particulasGeo, particulasMat)
-    grupo.add(particulas)
-
-    // ── Líneas de convergencia ──────────────────────────
-    const lineasConvergencia = []
-    for (let i = 0; i < 12; i++) {
-      const idx = Math.floor(Math.random() * NUM_PARTICULAS)
-      const geo = new THREE.BufferGeometry()
-      const mat = new THREE.LineBasicMaterial({
-        color: colores.primario, transparent: true, opacity: 0,
-      })
-      const linea = new THREE.Line(geo, mat)
-      grupo.add(linea)
-      lineasConvergencia.push({ mesh: linea, idx })
-    }
-
-    scene.add(new THREE.AmbientLight(0xffffff, 0.6))
-
-    // ── Construcción progresiva ─────────────────────────
-    let faseConstruccion = iniciar ? 0 : -1
-    let tConstruccion = 0
-    const DURACION_FASE = 0.9
-
-    // Flags — cada sonido suena una sola vez
-    const sonidosDisparados = { nucleo: false, lat: false, lon: false, particulas: false }
-
-    function lerp(a, b, t) { return a + (b - a) * Math.min(Math.max(t, 0), 1) }
-    function easeOut(t) { return 1 - Math.pow(1 - t, 3) }
-
-    let t = 0
-    let frameId
-
-    function animar(dt) {
-      frameId = requestAnimationFrame(animar)
-      t += 0.012
-
-      grupo.rotation.y += 0.0022
-      grupo.rotation.x = Math.sin(t * 0.15) * 0.08
-
-      if (faseConstruccion >= 0) {
-        tConstruccion += 0.016
-
-        // Fase 1 — núcleo
-        const p1 = easeOut(Math.min(tConstruccion / DURACION_FASE, 1))
-        if (p1 > 0.01 && !sonidosDisparados.nucleo) {
-          audioEngine.capaEsfera({ tipo: 'nucleo' })
-          sonidosDisparados.nucleo = true
-        }
-        nucleo.material.opacity = lerp(0, 0.9, p1)
-        nucleo.scale.setScalar(lerp(0.01, 1, p1) * (1 + Math.sin(t * 1.8) * 0.12))
-        glow.material.opacity = lerp(0, 0.15, p1)
-        glow.scale.setScalar(lerp(0.01, 1.3, p1))
-
-        // Fase 2 — anillos de latitud
-        const inicio2 = DURACION_FASE * 0.6
-        if (tConstruccion > inicio2) {
-          if (!sonidosDisparados.lat) {
-            audioEngine.capaEsfera({ tipo: 'latitud' })
-            sonidosDisparados.lat = true
-          }
-          anillosLat.forEach((a, i) => {
-            const delayLocal = i * 0.08
-            const p = easeOut(Math.min(Math.max((tConstruccion - inicio2 - delayLocal) / DURACION_FASE, 0), 1))
-            a.mesh.material.opacity = lerp(0, 0.35, p)
-            a.mesh.scale.setScalar(lerp(0.3, 1, p))
-          })
-        }
-
-        // Fase 3 — anillos de longitud
-        const inicio3 = inicio2 + DURACION_FASE * 0.9
-        if (tConstruccion > inicio3) {
-          if (!sonidosDisparados.lon) {
-            audioEngine.capaEsfera({ tipo: 'longitud' })
-            sonidosDisparados.lon = true
-          }
-          anillosLon.forEach((a, i) => {
-            const delayLocal = i * 0.08
-            const p = easeOut(Math.min(Math.max((tConstruccion - inicio3 - delayLocal) / DURACION_FASE, 0), 1))
-            a.mesh.material.opacity = lerp(0, 0.28, p)
-            a.mesh.scale.setScalar(lerp(0.3, 1, p))
-          })
-        }
-
-        // Fase 4 — partículas y shimmer final
-        const inicio4 = inicio3 + DURACION_FASE * 0.9
-        if (tConstruccion > inicio4) {
-          if (!sonidosDisparados.particulas) {
-            audioEngine.capaEsfera({ tipo: 'particulas' })
-            audioEngine.shimmer()
-            sonidosDisparados.particulas = true
-          }
-          const p4 = easeOut(Math.min(Math.max((tConstruccion - inicio4) / DURACION_FASE, 0), 1))
-          particulasMat.opacity = lerp(0, 0.7, p4)
-          lineasConvergencia.forEach(l => {
-            l.mesh.material.opacity = lerp(0, 0.18, p4)
-          })
-        }
-      }
-
-      // Partículas respirando
-      if (particulasMat.opacity > 0.01) {
-        const posArr = particulasGeo.attributes.position.array
-        for (let i = 0; i < NUM_PARTICULAS; i++) {
-          const d = datosParticula[i]
-          const respiro = 1 + Math.sin(t * d.velocidad + d.fase) * 0.15
-          const r = d.baseR * respiro
-          posArr[i * 3]     = r * Math.sin(d.phi) * Math.cos(d.theta)
-          posArr[i * 3 + 1] = r * Math.sin(d.phi) * Math.sin(d.theta)
-          posArr[i * 3 + 2] = r * Math.cos(d.phi)
-        }
-        particulasGeo.attributes.position.needsUpdate = true
-
-        lineasConvergencia.forEach((l, i) => {
-          const px = posArr[l.idx * 3]
-          const py = posArr[l.idx * 3 + 1]
-          const pz = posArr[l.idx * 3 + 2]
-          l.mesh.geometry.setFromPoints([
-            new THREE.Vector3(px, py, pz),
-            new THREE.Vector3(0, 0, 0),
-          ])
-        })
-      }
-
-      anillosLat.forEach((a) => {
-        if (a.mesh.material.opacity > 0.01) {
-          const escala = 1 + Math.sin(t * 0.5 + a.offset) * 0.02
-          a.mesh.scale.setScalar(a.mesh.scale.x * 0 + escala * (a.mesh.scale.x > 0.95 ? 1 : a.mesh.scale.x))
-        }
-      })
-
-      renderer.render(scene, camera)
-    }
-    animar()
+    rafRef.current = requestAnimationFrame(tick);
 
     return () => {
-      cancelAnimationFrame(frameId)
-      renderer.dispose()
-      if (container.contains(renderer.domElement)) {
-        container.removeChild(renderer.domElement)
-      }
-    }
-  }, [tiempo, size, iniciar])
+      cancelAnimationFrame(rafRef.current);
+      anime.remove(["#nuc-halo", "#nuc-core", ".ray"]);
+      LAYERS.forEach((layer) => {
+        layer.satellites.forEach((_, i) => anime.remove(`#sat-${layer.id}-${i}`));
+      });
+    };
+  }, []);
 
-  return <div ref={mountRef} style={{ width: size, height: size }} />
+  return (
+    <svg
+      ref={svgRef}
+      width={size}
+      height={size}
+      viewBox="0 0 500 500"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ display: "block", willChange: "transform" }}
+      aria-label="Esfera TONA"
+      role="img"
+    >
+      <defs>
+        <radialGradient id="gNuc" cx="36%" cy="30%" r="68%">
+          <stop offset="0%"   stopColor="#F5EDD5" />
+          <stop offset="25%"  stopColor="#D4A85A" />
+          <stop offset="60%"  stopColor="#6A3A10" />
+          <stop offset="100%" stopColor="#080A08" />
+        </radialGradient>
+        <radialGradient id="gAmbient" cx="50%" cy="50%">
+          <stop offset="0%"   stopColor="#C8A96E" stopOpacity="0.06" />
+          <stop offset="100%" stopColor="#0A0C0E" stopOpacity="0" />
+        </radialGradient>
+        {/* Filtro solo en el núcleo — eliminado de las capas */}
+        <filter id="fNuc" x="-120%" y="-120%" width="340%" height="340%">
+          <feGaussianBlur stdDeviation="7" result="b1" />
+          <feGaussianBlur stdDeviation="2.5" result="b2" in="SourceGraphic" />
+          <feMerge>
+            <feMergeNode in="b1" /><feMergeNode in="b2" /><feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+        <filter id="fSat" x="-200%" y="-200%" width="500%" height="500%">
+          <feGaussianBlur stdDeviation="4" result="b" />
+          <feMerge>
+            <feMergeNode in="b" /><feMergeNode in="b" /><feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+      </defs>
+
+      <circle cx={CX} cy={CY} r="220" fill="url(#gAmbient)" />
+
+      {/* Rayos */}
+      {layerData.flatMap((layer) =>
+        layer.satPos.map((pos, i) => (
+          <line
+            key={`ray-${layer.id}-${i}`}
+            id={`ray-${layer.id}-${i}`}
+            className="ray"
+            x1={CX} y1={CY}
+            x2={pos.x} y2={pos.y}
+            stroke={layer.color}
+            strokeWidth="0.7"
+            strokeDasharray="4 6"
+            opacity="0"
+          />
+        ))
+      )}
+
+      {/* Capas — sin filtro, solo stroke — exterior a interior */}
+      {[...layerData].reverse().map((layer) => (
+        <g
+          key={layer.id}
+          id={`group-${layer.id}`}
+          style={{ willChange: "transform" }}
+        >
+          <path d={layer.arcOuter} fill="none" stroke={layer.color} strokeWidth="0.4" strokeLinecap="round" opacity="0.13" />
+          <path d={layer.arcMain}  fill="none" stroke={layer.color} strokeWidth={layer.width} strokeLinecap="round" opacity={layer.opacity} />
+          <path d={layer.arcInner} fill="none" stroke={layer.color} strokeWidth="0.6" strokeLinecap="round" opacity="0.22" />
+          <path d={layer.ticks}    fill="none" stroke={layer.color} strokeWidth="0.5" strokeLinecap="round" opacity="0.34" />
+          <path d={layer.accentS}  fill="none" stroke="#EED898" strokeWidth="3.0" strokeLinecap="round" opacity="0.88" />
+          <path d={layer.accentE}  fill="none" stroke="#EED898" strokeWidth="1.6" strokeLinecap="round" opacity="0.40" />
+        </g>
+      ))}
+
+      {/* Satélites — filtro solo aquí, son pocos elementos */}
+      {layerData.flatMap((layer) =>
+        layer.satPos.map((pos, i) => (
+          <circle
+            key={`sat-${layer.id}-${i}`}
+            id={`sat-${layer.id}-${i}`}
+            cx={pos.x} cy={pos.y}
+            r={layer.satellites[i].size}
+            fill="#E8D090"
+            opacity="0.4"
+            filter="url(#fSat)"
+          />
+        ))
+      )}
+
+      {/* Núcleo */}
+      <circle id="nuc-halo" cx={CX} cy={CY} r="26" fill="none" stroke="#C8A96E" strokeWidth="1.2" opacity="0.05" filter="url(#fNuc)" />
+      <circle cx={CX} cy={CY} r="20" fill="#060808" />
+      <circle cx={CX} cy={CY} r="20" fill="url(#gNuc)" filter="url(#fNuc)" />
+      <circle cx={CX} cy={CY} r="20" fill="none" stroke="#C8A96E" strokeWidth="0.5" opacity="0.28" />
+      <g id="nuc-ring">
+        <circle cx={CX} cy={CY} r="24" fill="none" stroke="#C8A96E" strokeWidth="0.5" strokeDasharray="2 9" opacity="0.18" />
+      </g>
+      <circle id="nuc-core" cx={CX} cy={CY} r="5" fill="#F5EDD5" opacity="0.88" filter="url(#fNuc)" />
+      <circle cx={CX - 6} cy={CY - 7} r="2.5" fill="white" opacity="0.5" />
+      <circle cx={CX - 4} cy={CY - 5} r="1.0" fill="white" opacity="0.85" />
+    </svg>
+  );
 }

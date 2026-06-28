@@ -92,7 +92,6 @@ class AudioCache:
     def get(self, key: str) -> Optional[bytes]:
         """Obtener audio del caché"""
         if key in self.cache:
-            # Mover al final (más recientemente usado)
             self.cache.move_to_end(key)
             return self.cache[key]
         return None
@@ -103,12 +102,10 @@ class AudioCache:
             self.cache.move_to_end(key)
         else:
             if len(self.cache) >= self.max_size:
-                # Eliminar el primero (menos recientemente usado)
                 self.cache.popitem(last=False)
         self.cache[key] = audio_bytes
     
     def clear(self):
-        """Limpiar caché"""
         self.cache.clear()
     
     def size(self) -> int:
@@ -117,13 +114,11 @@ class AudioCache:
     def keys(self) -> List[str]:
         return list(self.cache.keys())
 
-# Instancia global del caché
 audio_cache = AudioCache(max_size=50)
 
 # --- Endpoints Principales ---
 @router.post("/chat", response_model=MensajeResponse)
 async def chat(request: MensajeRequest):
-    """Endpoint principal de chat con Gemini"""
     logger.info(f"Chat request from user: {request.user_id}")
     
     usuario = obtener_usuario(request.user_id)
@@ -149,7 +144,6 @@ async def chat(request: MensajeRequest):
 
 @router.get("/contexto/{user_id}")
 async def obtener_contexto(user_id: str):
-    """Obtiene el contexto actual del usuario"""
     usuario = obtener_usuario(user_id)
     if not usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
@@ -169,40 +163,34 @@ async def obtener_contexto(user_id: str):
 
 @router.delete("/historial/{user_id}")
 async def limpiar_historial(user_id: str):
-    """Limpia el historial de chat del usuario"""
     guardar_historial(user_id, [])
     return {"mensaje": "Historial limpiado correctamente"}
 
 # --- Endpoints de Caché ---
 @router.delete("/cache/audio")
 async def limpiar_cache_audio():
-    """Limpia el caché de audio"""
     audio_cache.clear()
     logger.info("Cache de audio limpiado")
     return {"mensaje": "Cache limpiado correctamente", "size": 0}
 
 @router.get("/cache/audio/stats")
 async def stats_cache_audio():
-    """Estadísticas del caché de audio"""
     return {
         "size": audio_cache.size(),
         "max_size": audio_cache.max_size,
-        "keys": audio_cache.keys()[:10]  # Mostrar solo 10
+        "keys": audio_cache.keys()[:10]
     }
 
-# --- Endpoint de Texto a Voz (TTS) con Caché ---
 @router.post("/hablar")
 async def texto_a_voz(request: TextoRequest):
     """
     Convierte texto a voz usando Google TTS API
-    Retorna audio en formato MP3 con caché integrado
+    Voz: es-US-Wavenet-C (fluida, menos expresiva que Neural2)
     """
     if not request.texto:
         raise HTTPException(status_code=400, detail="El texto no puede estar vacío")
 
-    # Generar hash del texto para usar como clave de caché
     texto_hash = hashlib.md5(request.texto.encode('utf-8')).hexdigest()
-    
     
     if not request.regenerate:
         cached_audio = audio_cache.get(texto_hash)
@@ -221,34 +209,30 @@ async def texto_a_voz(request: TextoRequest):
     try:
         logger.info(f"🎵 Generando nuevo audio: {request.texto[:50]}...")
         
-        
         api_key = settings.GOOGLE_TTS_KEY
         if not api_key:
             logger.error("GOOGLE_TTS_KEY no configurada")
             raise HTTPException(status_code=500, detail="Configuración de TTS incompleta")
 
-        
         url = f"https://texttospeech.googleapis.com/v1/text:synthesize?key={api_key}"
         
         payload = {
             "input": {"text": request.texto},
             "voice": {
                 "languageCode": "es-US",
-                "name": "es-US-Neural2-C",
+                "name": "es-US-Wavenet-C",  # ✅ WaveNet (menos expresiva)
                 "ssmlGender": "MALE"
             },
             "audioConfig": {
                 "audioEncoding": "MP3",
                 "speakingRate": 0.92,
-                "pitch": -1.5,
+                "pitch": -0.5,  # Tono más natural, menos grave
             }
         }
 
-        # Hacer petición a Google
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(url, json=payload)
 
-        # Verificar respuesta
         if response.status_code != 200:
             logger.error(f"Google TTS Error: {response.text}")
             raise HTTPException(
@@ -256,7 +240,6 @@ async def texto_a_voz(request: TextoRequest):
                 detail=f"Error del servicio de voz: {response.text}"
             )
 
-        # Procesar respuesta
         data = response.json()
         audio_content = data.get("audioContent")
         
@@ -264,15 +247,11 @@ async def texto_a_voz(request: TextoRequest):
             logger.error("No se recibió contenido de audio de Google")
             raise HTTPException(status_code=500, detail="No se pudo generar el audio")
 
-        # Decodificar audio
         audio_bytes = base64.b64decode(audio_content)
-        
-        # Guardar en caché
         audio_cache.set(texto_hash, audio_bytes)
         
         logger.info(f"✅ Audio generado: {len(audio_bytes)} bytes - Guardado en caché (total: {audio_cache.size()})")
 
-        # Retornar audio como streaming
         return StreamingResponse(
             io.BytesIO(audio_bytes),
             media_type="audio/mpeg",
