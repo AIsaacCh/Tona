@@ -128,19 +128,155 @@
       {
         "role": "model",
         "content": "Qu\u00e9 onda, Isaac. Soy Tona, tu asistente.\n\nEstoy aqu\u00ed para apoyar tu organizaci\u00f3n acad\u00e9mica.\n\nNo hay tareas pendientes en tu contexto actual. \u00bfNecesitas revisar algo?"
+      },
+      {
+        "role": "user",
+        "content": "quiero agregar un evento al calendario"
+      },
+      {
+        "role": "model",
+        "content": "\u00bfCu\u00e1l es el t\u00edtulo del evento?"
+      },
+      {
+        "role": "user",
+        "content": "quiero agregar un evento al calendario"
+      },
+      {
+        "role": "model",
+        "content": "\u00bfCu\u00e1l es el t\u00edtulo del evento?"
       }
     ],
-    "updated_at": "2026-06-27T18:16:05.224293"
+    "updated_at": "2026-06-29T11:16:22.425435"
   },
   "hXHsJbNh6gbEetYiPeGkiw": {
     "historial": [
       {
         "role": "user",
-        "content": "hola"
+        "content": "habre el editor para trabajar con documentos"
       },
       {
         "role": "model",
-        "content": "Error: 'tuple' object has no attribute 'text'"
+        "content": "Claro, Cortes. Aqu\u00ed est\u00e1n tus documentos."
+      },
+      {
+        "role": "user",
+        "content": "hola amigo "
+      },
+      {
+        "role": "model",
+        "content": "\u00a1Hola, Cortes! Son las 12:32 de este s\u00e1bado. \u00bfC\u00f3mo te puedo ayudar?"
+      },
+      {
+        "role": "user",
+        "content": "hola amigo"
+      },
+      {
+        "role": "model",
+        "content": "\u00a1Hola, Cortes! Son las 12:37 de este s\u00e1bado. \u00bfC\u00f3mo te puedo ayudar?"
+      },
+      {
+        "role": "user",
+        "content": "Quiero trabajar con un nuevo archivo ll\u00e1male prueba dos"
+      },
+      {
+        "role": "model",
+        "content": "Abriendo editor para 'prueba dos'..."
+      },
+      {
+        "role": "user",
+        "content": "Buenos d\u00edas quiero trabajar con un nuevo archivo ponle prueba dos"
+      },
+      {
+        "role": "model",
+        "content": "Abriendo editor para 'prueba dos'..."
+      },
+      {
+        "role": "user",
+        "content": "Necesito que trabajar con un nuevo documento ponle de nombre prueba dos"
+      },
+      {
+        "role": "model",
+        "content": "Abriendo editor para 'prueba dos'..."
+      },
+      {
+        "role": "user",
+        "content": "Quiero trabajar con un nuevo documento ponle prueba tres"
+      },
+      {
+        "role": "model",
+        "content": "Abriendo editor para 'prueba tres'..."
+      },
+      {
+        "role": "user",
+        "content": "Necesito que elimines el archivo prueba tres"
+      },
+      {
+        "role": "model",
+        "content": "Lo siento, Cortes, no tengo la funci\u00f3n para eliminar archivos directamente."
+      },
+      {
+        "role": "user",
+        "content": "Necesito que elimines el archivo prueba tres"
+      },
+      {
+        "role": "model",
+        "content": "Encontr\u00e9 el documento 'prueba tres', abri\u00e9ndolo."
+      },
+      {
+        "role": "user",
+        "content": "Abre el documento prueba tres"
+      },
+      {
+        "role": "model",
+        "content": "Encontr\u00e9 el documento 'prueba tres', abri\u00e9ndolo."
+      },
+      {
+        "role": "user",
+        "content": "Elimina el documento prueba tres"
+      },
+      {
+        "role": "model",
+        "content": "Encontr\u00e9 el documento 'prueba tres', abri\u00e9ndolo."
+      },
+      {
+        "role": "user",
+        "content": "Necesito que elimines el archivo prueba tres"
+      },
+      {
+        "role": "model",
+        "content": "He eliminado el documento 'prueba tres'."
+      },
+      {
+        "role": "user",
+        "content": "Quiero trabajar con un nuevo archivo ll\u00e1malo a prueba tres"
+      },
+      {
+        "role": "model",
+        "content": "Abriendo editor para 'prueba tres'..."
+      },
+      {
+        "role": "user",
+        "content": "Necesito que abras el archivo prueba tres"
+      },
+      {
+        "role": "model",
+        "content": "Encontr\u00e9 el documento 'prueba tres', abri\u00e9ndolo."
+      },
+      {
+        "role": "user",
+        "content": "Elimina el documento prueba tres"
+      },
+      {
+        "role": "model",
+        "content": "He eliminado el documento 'prueba tres'."
+      },
+      {
+        "role": "user",
+        "content": "Necesito trabajar con un nuevo archivo ll\u00e1malo prueba cuatro"
+      },
+      {
+        "role": "model",
+        "content": "Abriendo editor para 'prueba cuatro'..."
       },
       {
         "role": "user",
@@ -148,95 +284,7 @@
       },
       {
         "role": "model",
-        "content": "Error: 'tuple' object has no attribute 'text'"
-      },
-      {
-        "role": "user",
-        "content": "como estas?"
-      },
-      {
-        "role": "model",
-        "content": "Error: 'tuple' object has no attribute 'text'"
-      },
-      {
-        "role": "user",
-        "content": "hola"
-      },
-      {
-        "role": "model",
-        "content": "Hola. Estoy operativo."
-      },
-      {
-        "role": "user",
-        "content": "muestrame mi calendario "
-      },
-      {
-        "role": "model",
-        "content": "Aqu\u00ed est\u00e1 su calendario."
-      },
-      {
-        "role": "user",
-        "content": "muestrame mis tareas"
-      },
-      {
-        "role": "model",
-        "content": "Lo siento, hubo un error al procesar tu solicitud."
-      },
-      {
-        "role": "user",
-        "content": "hola"
-      },
-      {
-        "role": "model",
-        "content": "Hola, \u00bfen qu\u00e9 puedo asistirle?"
-      },
-      {
-        "role": "user",
-        "content": "muestrame mi calendario"
-      },
-      {
-        "role": "model",
-        "content": "Aqu\u00ed est\u00e1 su calendario."
-      },
-      {
-        "role": "user",
-        "content": "muestrame mis tareas"
-      },
-      {
-        "role": "model",
-        "content": "Aqu\u00ed est\u00e1n sus tareas pendientes."
-      },
-      {
-        "role": "user",
-        "content": "muestrame mis calificaciones"
-      },
-      {
-        "role": "model",
-        "content": "Aqu\u00ed est\u00e1n sus calificaciones."
-      },
-      {
-        "role": "user",
-        "content": "Mu\u00e9strame mi horario"
-      },
-      {
-        "role": "model",
-        "content": "Aqu\u00ed est\u00e1 su horario."
-      },
-      {
-        "role": "user",
-        "content": "Cierra todo"
-      },
-      {
-        "role": "model",
-        "content": "Cerrando todas las ventanas."
-      },
-      {
-        "role": "user",
-        "content": "Qui\u00e9n eres"
-      },
-      {
-        "role": "model",
-        "content": "Soy Tona, su asistente acad\u00e9mico personal. Mi funci\u00f3n es organizar su tiempo e informaci\u00f3n."
+        "content": "\u00a1Hola, Cortes! \u00bfC\u00f3mo va tu s\u00e1bado? Ma\u00f1ana tienes un Examen, \u00bfya est\u00e1s listo?"
       },
       {
         "role": "user",
@@ -244,57 +292,25 @@
       },
       {
         "role": "model",
-        "content": "Hola, \u00bfen qu\u00e9 puedo asistirle?"
+        "content": "\u00a1Hola, Cortes! \u00bfC\u00f3mo va tu s\u00e1bado? Ma\u00f1ana tienes un Examen, \u00bfya est\u00e1s listo?"
       },
       {
         "role": "user",
-        "content": "Mu\u00e9strame mis tareas"
+        "content": "Necesito trabajar con un proyecto ll\u00e1malo prueba cinco"
       },
       {
         "role": "model",
-        "content": "Aqu\u00ed est\u00e1n sus tareas pendientes."
+        "content": "Abriendo editor para 'prueba cinco'..."
       },
       {
         "role": "user",
-        "content": "Mu\u00e9strame en mi calendario"
+        "content": "Abre el proyecto prueba cinco"
       },
       {
         "role": "model",
-        "content": "Aqu\u00ed est\u00e1 su calendario."
-      },
-      {
-        "role": "user",
-        "content": "Mu\u00e9strame mi horario"
-      },
-      {
-        "role": "model",
-        "content": "Aqu\u00ed est\u00e1 su horario."
-      },
-      {
-        "role": "user",
-        "content": "Cierra todo por favor"
-      },
-      {
-        "role": "model",
-        "content": "Cerrando todas las ventanas."
-      },
-      {
-        "role": "user",
-        "content": "como estas amigo?"
-      },
-      {
-        "role": "model",
-        "content": "Estoy operativo y listo para asistirle."
-      },
-      {
-        "role": "user",
-        "content": "como deber\u00eda llamarte?"
-      },
-      {
-        "role": "model",
-        "content": "Puede llamarme Tona."
+        "content": "Encontr\u00e9 el documento 'prueba cinco', abri\u00e9ndolo."
       }
     ],
-    "updated_at": "2026-06-28T15:01:14.698023"
+    "updated_at": "2026-07-04T19:32:25.120668"
   }
 }

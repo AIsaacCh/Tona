@@ -1,7 +1,7 @@
 import { useRef, useState, useCallback } from "react";
 import { T } from "../tokens";
 import React from "react";
-
+import MicTona from "./MicTona";
 
 const ACCENT = {
   productividad: T.copal,
@@ -22,14 +22,15 @@ export default function WidgetShell({
   onResize,
   children,
   childrenSm,
+  mostrarMic = false,
 }) {
   const dragRef   = useRef(null);
   const isDragging = useRef(false);
   const offset     = useRef({ x: 0, y: 0 });
   const accent     = ACCENT[categoria] || T.copal;
   const dims       = size === "sm" ? T.W_SM : T.W_MD;
+  const userId     = localStorage.getItem("tona_user_id") || "demo";
 
-  // ── Drag ──────────────────────────────────────────────────────────────────
   const onMouseDown = useCallback((e) => {
     if (e.target.closest("[data-no-drag]")) return;
     isDragging.current = true;
@@ -100,6 +101,13 @@ export default function WidgetShell({
         </span>
 
         <div style={{ display: "flex", alignItems: "center", gap: 8 }} data-no-drag>
+          {/* ✅ Mic embebido opcional — útil para widgets que ocupan la pantalla
+              y opacan el fondo, donde el mic principal queda oculto detrás del overlay */}
+          {mostrarMic && (
+            <div style={{ transform: "scale(0.4)", transformOrigin: "center", marginRight: -6 }}>
+              <MicTona size={48} userId={userId} />
+            </div>
+          )}
           {/* Toggle tamaño */}
           <button
             onClick={() => onResize?.(id, size === "sm" ? "md" : "sm")}

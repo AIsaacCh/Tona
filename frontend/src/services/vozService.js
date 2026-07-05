@@ -1,4 +1,3 @@
-// services/vozService.js
 import api from './api'
 
 class VozService {
@@ -15,21 +14,18 @@ class VozService {
     this.audioBufferSource = null
     this.audioUnlocked = false
     this.isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
-    
-    // ✅ LISTA DE SUSCRIPTORES
+
     this._listeners = []
     this._estadoActual = 'reposo'
-    
+    this.flujoActivo = false
+
     console.log('🔍 Navegador:', this.isSafari ? 'Safari' : 'Otro')
   }
 
-  // ✅ SUSCRIBIRSE A CAMBIOS DE ESTADO
   suscribirEstado(callback) {
     if (typeof callback === 'function') {
       this._listeners.push(callback)
-      // Llamar inmediatamente con el estado actual
       callback(this._estadoActual)
-      // Devolver función para desuscribirse
       return () => {
         this._listeners = this._listeners.filter(cb => cb !== callback)
       }
@@ -37,7 +33,6 @@ class VozService {
     return () => {}
   }
 
-  // ✅ NOTIFICAR A TODOS LOS SUSCRIPTORES
   _notificar(estado) {
     this._estadoActual = estado
     this._listeners.forEach(cb => {
@@ -47,14 +42,12 @@ class VozService {
 
   unlockAudio() {
     if (this.audioUnlocked) return true
-    
     try {
       console.log('🔓 Desbloqueando audio en Safari...')
       const audio = document.createElement('audio')
-      const silentMP3 = 'data:audio/mpeg;base64,//MkxAAHiAADWABAFhG8F//8N//9v/+//v/+//v/+//v/+//v/+//v/+//v/+//v/+//v/+//v/+//v/+//v/+'
+      const silentMP3 = 'data:audio/mpeg;base64,//MkxAAHiAADWABAFhG8F//8N//9v/+//v/+//v/+//v/+//v/+//v/+//v/+//v/+//v/+//v/+//v/+//v/+//v/+'
       audio.src = silentMP3
       audio.volume = 0
-      
       const playPromise = audio.play()
       if (playPromise) {
         playPromise.then(() => {
@@ -108,12 +101,12 @@ class VozService {
 
   async activar(userId) {
     console.log('🎤 Activando micrófono...')
-    
+
     if (this.isSafari && !this.audioUnlocked) {
       this.unlockAudio()
       await new Promise(resolve => setTimeout(resolve, 100))
     }
-    
+
     this.userId = userId || this.userId
     if (!this.inicializar()) return
     if (this.sintetizando) {
@@ -129,10 +122,8 @@ class VozService {
         const transcripcion = Array.from(e.results)
           .map(r => r[0].transcript)
           .join('')
-
         const esFinal = e.results[e.results.length - 1].isFinal
         this.onTranscripcion?.(transcripcion, esFinal)
-
         if (esFinal) {
           resolve(transcripcion)
         }
@@ -153,38 +144,61 @@ class VozService {
   }
 
   async enviarMensaje(userId, texto) {
-  try {
-    this.userId = userId || this.userId
-    this._notificar('procesando')
-    
-    const resp = await api.post('/agent/chat', {
-      user_id: userId,
-      mensaje: texto,
-    })
-    
-    // ← cambio aquí: antes era resp.data.respuesta
-    const { accion, payload, mensaje } = resp.data
-    
-    // Emitir la acción al bus
-    const { agenteBus } = await import('../components/AgenteTona')
-    agenteBus.emit(accion, payload)
-    
-    // Hablar si hay mensaje
-    if (mensaje) {
-      await this.hablar(mensaje)
+    try {
+      this.userId = userId || this.userId
+      this._notificar('procesando')
+
+      const resp = await api.post('/agent/chat', {
+        user_id: userId,
+        mensaje: texto,
+      })
+
+      const { accion, payload, mensaje, flujo_activo } = resp.data
+      this.flujoActivo = !!flujo_activo
+
+      console.log('🔄 flujoActivo actualizado a:', this.flujoActivo)
+
+      const { agenteBus } = await import('../components/AgenteTona')
+      agenteBus.emit(accion, payload)
+
+      if (mensaje) {
+        await this.hablar(mensaje)
+      } else {
+        this._manejarFlujoActivo()
+      }
+
+      return resp.data
+    } catch (e) {
+      console.error('Error enviando mensaje:', e)
+      this.flujoActivo = false
+      this._notificar('error')
+      setTimeout(() => this._notificar('reposo'), 2000)
     }
-    
-    return resp.data
-  } catch (e) {
-    console.error('Error enviando mensaje:', e)
-    this._notificar('error')
-    setTimeout(() => this._notificar('reposo'), 2000)
   }
-}
+
+  _manejarFlujoActivo() {
+    if (this.flujoActivo) {
+      console.log('🎤 Flujo activo detectado — reabriendo micrófono en 600ms...')
+      setTimeout(async () => {
+        if (!this.flujoActivo) return
+        try {
+          const texto = await this.activar(this.userId)
+          if (texto?.trim()) {
+            await this.enviarMensaje(this.userId, texto)
+          }
+        } catch (e) {
+          console.error('❌ Error reabriendo mic en flujo activo:', e)
+          this._notificar('reposo')
+        }
+      }, 600)
+    } else {
+      this._notificar('reposo')
+    }
+  }
 
   async hablar(texto) {
     console.log(`🔊 TTS: "${texto.substring(0, 40)}..."`)
-    
+
     this.detenerAudio()
     this.sintetizando = true
     this._notificar('hablando')
@@ -197,17 +211,21 @@ class VozService {
       )
 
       console.log(`✅ Audio recibido: ${resp.data.size} bytes`)
-      
+
       const url = URL.createObjectURL(resp.data)
       this.audioActual = new Audio(url)
-      
+
       this.audioActual.onended = () => {
         this.sintetizando = false
-        this._notificar('reposo')
         URL.revokeObjectURL(url)
         console.log('⏹️ Audio terminado')
+        // ✅ Notificar fin de audio — VistaShell lo usa para auto-cierre
+        import('../components/AgenteTona').then(({ agenteBus }) => {
+          agenteBus.emit('tona_habla_fin', {})
+        })
+        this._manejarFlujoActivo()
       }
-      
+
       this.audioActual.onerror = (e) => {
         if (e.type === 'abort' || e.target?.error?.code === 25) {
           console.log('⏹️ Audio interrumpido (normal)')
@@ -215,10 +233,14 @@ class VozService {
           console.error('❌ Error en audio:', e)
         }
         this.sintetizando = false
-        this._notificar('reposo')
         URL.revokeObjectURL(url)
+        // ✅ También notificar en error para que el timer de auto-cierre arranque
+        import('../components/AgenteTona').then(({ agenteBus }) => {
+          agenteBus.emit('tona_habla_fin', {})
+        })
+        this._manejarFlujoActivo()
       }
-      
+
       try {
         await this.audioActual.play()
         console.log('▶️ Audio reproduciendo')
@@ -226,12 +248,15 @@ class VozService {
         if (playError.name === 'AbortError') {
           console.log('⏹️ Reproducción abortada (normal)')
           this.sintetizando = false
-          this._notificar('reposo')
+          import('../components/AgenteTona').then(({ agenteBus }) => {
+            agenteBus.emit('tona_habla_fin', {})
+          })
+          this._manejarFlujoActivo()
           return
         }
-        
+
         console.error('❌ Error al reproducir:', playError)
-        
+
         if (this.isSafari) {
           console.log('🔄 Safari: Reintentando desbloquear...')
           this.audioUnlocked = false
@@ -243,15 +268,18 @@ class VozService {
           throw playError
         }
       }
-      
+
     } catch (e) {
       if (e.name === 'AbortError') {
         console.log('⏹️ Operación abortada (normal)')
         this.sintetizando = false
-        this._notificar('reposo')
+        import('../components/AgenteTona').then(({ agenteBus }) => {
+          agenteBus.emit('tona_habla_fin', {})
+        })
+        this._manejarFlujoActivo()
         return
       }
-      
+
       console.error('❌ Error en reproducción:', e)
       this.sintetizando = false
       this._hablarFallback(texto)
@@ -260,33 +288,43 @@ class VozService {
 
   _hablarFallback(texto) {
     console.log('📢 Fallback: TTS navegador')
-    
+
     if (!window.speechSynthesis) {
-      this._notificar('reposo')
+      import('../components/AgenteTona').then(({ agenteBus }) => {
+        agenteBus.emit('tona_habla_fin', {})
+      })
+      this._manejarFlujoActivo()
       return
     }
-    
+
     window.speechSynthesis.cancel()
     const u = new SpeechSynthesisUtterance(texto)
     u.lang = 'es-MX'
     u.rate = 0.88
     u.pitch = 0.9
-    
+
     const voces = window.speechSynthesis.getVoices()
     const voz = voces.find(v => v.name === 'Mónica')
       || voces.find(v => v.lang.includes('es'))
     if (voz) u.voice = voz
-    
+
     u.onend = () => {
       this.sintetizando = false
-      this._notificar('reposo')
+      // ✅ Notificar fin también en fallback
+      import('../components/AgenteTona').then(({ agenteBus }) => {
+        agenteBus.emit('tona_habla_fin', {})
+      })
+      this._manejarFlujoActivo()
     }
-    
+
     u.onerror = () => {
       this.sintetizando = false
-      this._notificar('reposo')
+      import('../components/AgenteTona').then(({ agenteBus }) => {
+        agenteBus.emit('tona_habla_fin', {})
+      })
+      this._manejarFlujoActivo()
     }
-    
+
     this._notificar('hablando')
     window.speechSynthesis.speak(u)
   }
@@ -304,6 +342,7 @@ class VozService {
   }
 
   detener() {
+    this.flujoActivo = false
     if (this.recognition) {
       try { this.recognition.stop() } catch (e) {}
     }

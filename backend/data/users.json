@@ -11,11 +11,15 @@
     "email": "corteshernandezangelisaac@gmail.com",
     "name": "Cortes Hernandez Angel Isaac",
     "picture": "https://lh3.googleusercontent.com/a/ACg8ocKYb_1cr-LJu-iG4DGGIgk8354bqrj0ZFWD3t8kzATCDUxAtdkq=s96-c",
-    "access_token": "ya29.a0AT3oNZ8dBuSFk5_ltFl2uzvqxsOaJdJGELj0OQ_u_z9blrQxFfRmE2Cqo4aLQgxGm3fmcT3ByrQCcX7xcuOjH82ATrjlNlEWNYzGjblyc4Zm1d0yxDqxODZjEIdQPRfcgfufHJuJiSmuYFk4L69ezWT9M0xm2EY9CGFtjE4chjtR1ndvsiEnVjA2JbR1QWQqnhWod4YaCgYKAb4SARISFQHGX2MiW7peyDrD89dVjWor_mE0_w0206",
-    "refresh_token": "1//0fyKfVhQ6CG34CgYIARAAGA8SNwF-L9IrXrSzvrXGa3YIl9mCXuVTofsKr6jWPwQkpojpd43N3oDSWPGYiBNvd9wUhsZOJ2CTScM",
+    "access_token": "ya29.a0AT3oNZ9Nxz1Ob6jm4c04OMYBx3HP_6q0esnrsRJXlcKRwgHLmbSV0qqg3Ns3yCYqTLxuiB-Tn96uOjSsfbDlTkN1sJi8nxY18gc33iKlojn_iRDHT5iF2NgJ_9gUzA9go0LWz6mjTi-lV1y-R8JviPy-woq8IUVim3_33fuYCvmRhTE9MJoo1K0hS_za6O0ibUoaMp4aCgYKARgSARISFQHGX2MiKHJgbet8hWmrtFueKbnLuQ0206",
+    "refresh_token": "1//0f9doSelpWRmSCgYIARAAGA8SNwF-L9IrPzEEqyK6sfBcNH-_dQMT0BgQVQ3HDsG6hnPd72FLRMHhS2KC-B0lzdfgxQfNuvMHC10",
     "tier": "estudiante",
-    "updated_at": "2026-06-28T13:41:43.861674",
+    "updated_at": "2026-07-04T19:30:50.689470",
     "created_at": "2026-06-26T17:08:12.470029",
-    "id": "hXHsJbNh6gbEetYiPeGkiw"
+    "id": "hXHsJbNh6gbEetYiPeGkiw",
+    "onboarding_completado": true,
+    "nombre_preferido": "isaac",
+    "nombre_agente": "tona",
+    "expires_at": "2026-07-05T02:30:49.999995"
   }
 }

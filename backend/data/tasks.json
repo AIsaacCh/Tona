@@ -1,1 +1,42 @@
-{}
+{
+  "hXHsJbNh6gbEetYiPeGkiw": {
+    "tareas": [
+      {
+        "id": "6mea4l3v30j3c3b9cb5cbnorb0",
+        "titulo": "Examen",
+        "resumen": "Calendar \u00b7 2026-07-05",
+        "fecha_limite": "2026-07-05",
+        "urgencia": "alta",
+        "fuente": "calendar",
+        "completada": false
+      },
+      {
+        "id": "778384469760",
+        "titulo": "CORECIONES",
+        "resumen": "SISTEMAS DE INFORMACION 6IM11 \u00b7 Sin fecha",
+        "curso": "SISTEMAS DE INFORMACION 6IM11",
+        "curso_id": "688895180844",
+        "fecha_limite": null,
+        "urgencia": "baja",
+        "fuente": "classroom",
+        "completada": false
+      },
+      {
+        "id": "763588759319",
+        "titulo": "Exposiciones",
+        "resumen": "SISTEMAS DE INFORMACION 6IM11 \u00b7 Sin fecha",
+        "curso": "SISTEMAS DE INFORMACION 6IM11",
+        "curso_id": "688895180844",
+        "fecha_limite": null,
+        "urgencia": "baja",
+        "fuente": "classroom",
+        "completada": false
+      }
+    ],
+    "updated_at": "2026-07-04T19:34:18.609806"
+  },
+  "demo": {
+    "tareas": [],
+    "updated_at": "2026-06-30T13:23:14.103408"
+  }
+}

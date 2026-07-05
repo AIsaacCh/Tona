@@ -1,8 +1,9 @@
 from pydantic_settings import BaseSettings
 from typing import Optional
 
+
 class Settings(BaseSettings):
-    GEMINI_API_KEY: str
+    GEMINI_API_KEY: Optional[str] = None  # ya no es obligatoria si usas Vertex
     GOOGLE_CLIENT_ID: str
     GOOGLE_CLIENT_SECRET: str
     GOOGLE_REDIRECT_URI: str = "http://localhost:8000/auth/callback"
@@ -11,7 +12,13 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     GOOGLE_TTS_KEY: str = ""
 
+    # Vertex
+    GOOGLE_CLOUD_PROJECT: str
+    GOOGLE_CLOUD_LOCATION: str = "us-central1"
+    GOOGLE_GENAI_USE_VERTEXAI: bool = True
+
     class Config:
         env_file = ".env"
+
 
 settings = Settings()

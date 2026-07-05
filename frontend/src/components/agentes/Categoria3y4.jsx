@@ -4,10 +4,11 @@ import anime from "animejs";
 import { T } from "../../tokens";
 import { agenteBus } from "../AgenteTona";
 
+const API = "http://localhost:8000";
 
 // ── FormShell ─────────────────────────────────────────────────────────────────
 
-function FormShell({ titulo, accent = T.copal, onCerrar, onGuardar, children }) {
+function FormShell({ titulo, accent = T.copal, onCerrar, onGuardar, guardando = false, children }) {
   const ref        = useRef(null);
   const overlayRef = useRef(null);
 
@@ -25,9 +26,7 @@ function FormShell({ titulo, accent = T.copal, onCerrar, onGuardar, children }) 
       .add({ targets: ref.current, opacity: 0, translateY: 16, duration: 250, complete: onCerrar }, "-=150");
   }, [onCerrar]);
 
-  useEffect(() => {
-    return agenteBus.on("cerrar_todo", cerrar);
-  }, [cerrar]);
+  useEffect(() => { return agenteBus.on("cerrar_todo", cerrar); }, [cerrar]);
 
   return (
     <div ref={overlayRef} style={{
@@ -48,7 +47,13 @@ function FormShell({ titulo, accent = T.copal, onCerrar, onGuardar, children }) 
         </div>
         <div style={{ padding: "18px 18px 6px" }}>{children}</div>
         <div style={{ display: "flex", gap: 10, padding: "12px 18px 18px" }}>
-          <button onClick={() => { onGuardar?.(); cerrar(); }} style={btnForm(accent)}>Guardar</button>
+          <button
+            onClick={() => { if (!guardando) onGuardar?.(); }}
+            disabled={guardando}
+            style={{ ...btnForm(accent), opacity: guardando ? 0.5 : 1, cursor: guardando ? "wait" : "pointer" }}
+          >
+            {guardando ? "Guardando..." : "Guardar"}
+          </button>
           <button onClick={cerrar} style={btnForm(T.amaranto, true)}>Cancelar</button>
         </div>
       </div>
@@ -93,19 +98,61 @@ export function FormNuevaTarea() {
   const [titulo,    setTitulo]    = useState("");
   const [fecha,     setFecha]     = useState("");
   const [prioridad, setPrioridad] = useState("Media");
+  const [guardando, setGuardando] = useState(false);
+
+  const userId = localStorage.getItem("tona_user_id") || "demo";
 
   useEffect(() => {
-    const off1 = agenteBus.on("nueva_tarea", (p) => { setData(p || {}); setTitulo(p?.titulo || ""); setFecha(p?.fecha || ""); setPrioridad(p?.prioridad || "Media"); });
+    const off1 = agenteBus.on("nueva_tarea", (p) => {
+      setData(p || {});
+      setTitulo(p?.titulo || "");
+      setFecha(p?.fecha || "");
+      setPrioridad(p?.prioridad || "Media");
+    });
     const off2 = agenteBus.on("cerrar_todo", () => setData(null));
     return () => { off1(); off2(); };
   }, []);
 
   if (!data) return null;
 
+  async function guardar() {
+    if (!titulo.trim()) {
+      agenteBus.emit("flash", { mensaje: "El título es obligatorio", tipo: "error" });
+      return;
+    }
+    if (!fecha) {
+      agenteBus.emit("flash", { mensaje: "La fecha es obligatoria", tipo: "error" });
+      return;
+    }
+    setGuardando(true);
+    try {
+      const resp = await fetch(`${API}/tasks/manual/${userId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          titulo: titulo.trim(),
+          fecha_limite: fecha,
+          prioridad: prioridad.toLowerCase(),
+          resumen: titulo.trim(),
+        }),
+      });
+      if (resp.ok) {
+        agenteBus.emit("flash", { mensaje: `"${titulo}" guardada`, tipo: "exito" });
+        setData(null);
+      } else {
+        agenteBus.emit("flash", { mensaje: "No se pudo guardar la tarea", tipo: "error" });
+      }
+    } catch (e) {
+      agenteBus.emit("flash", { mensaje: "Error de conexión", tipo: "error" });
+    } finally {
+      setGuardando(false);
+    }
+  }
+
   return (
-    <FormShell titulo="TONA · NUEVA TAREA" accent={T.copal} onCerrar={() => setData(null)} onGuardar={() => agenteBus.emit("flash", { mensaje: "Tarea guardada", tipo: "exito" })}>
-      <Campo label="TÍTULO"  value={titulo}    onChange={setTitulo}    placeholder="Nombre de la tarea" />
-      <Campo label="FECHA"   value={fecha}     onChange={setFecha}     placeholder="2026-06-27" tipo="date" />
+    <FormShell titulo="TONA · NUEVA TAREA" accent={T.copal} onCerrar={() => setData(null)} onGuardar={guardar} guardando={guardando}>
+      <Campo label="TÍTULO" value={titulo} onChange={setTitulo} placeholder="Nombre de la tarea" />
+      <Campo label="FECHA"  value={fecha}  onChange={setFecha}  placeholder="2026-06-27" tipo="date" />
       <div style={{ marginBottom: 14 }}>
         <div style={{ fontSize: 9, color: "rgba(237,235,230,0.25)", letterSpacing: "1px", marginBottom: 8, fontFamily: T.mono }}>PRIORIDAD</div>
         <div style={{ display: "flex", gap: 8 }}>
@@ -133,17 +180,61 @@ export function FormNuevoRecordatorio() {
   const [texto, setTexto] = useState("");
   const [fecha, setFecha] = useState("");
   const [hora,  setHora]  = useState("");
+  const [guardando, setGuardando] = useState(false);
+
+  const userId = localStorage.getItem("tona_user_id") || "demo";
 
   useEffect(() => {
-    const off1 = agenteBus.on("nuevo_recordatorio", (p) => { setData(p || {}); setTexto(p?.texto || ""); setFecha(p?.fecha || ""); setHora(p?.hora || ""); });
+    const off1 = agenteBus.on("nuevo_recordatorio", (p) => {
+      setData(p || {});
+      setTexto(p?.texto || "");
+      setFecha(p?.fecha || "");
+      setHora(p?.hora || "");
+    });
     const off2 = agenteBus.on("cerrar_todo", () => setData(null));
     return () => { off1(); off2(); };
   }, []);
 
   if (!data) return null;
 
+  async function guardar() {
+    if (!texto.trim()) {
+      agenteBus.emit("flash", { mensaje: "La descripción es obligatoria", tipo: "error" });
+      return;
+    }
+    if (!fecha || !hora) {
+      agenteBus.emit("flash", { mensaje: "Fecha y hora son obligatorias", tipo: "error" });
+      return;
+    }
+    setGuardando(true);
+    try {
+      const resp = await fetch(`${API}/tasks/evento/${userId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          titulo: texto.trim(),
+          fecha,
+          hora,
+          descripcion: "Recordatorio creado desde Tona",
+          duracion_min: 30,
+        }),
+      });
+      if (resp.ok) {
+        agenteBus.emit("flash", { mensaje: "Recordatorio añadido al calendario", tipo: "exito" });
+        setData(null);
+      } else {
+        const err = await resp.json();
+        agenteBus.emit("flash", { mensaje: err.detail || "No se pudo crear el recordatorio", tipo: "error" });
+      }
+    } catch (e) {
+      agenteBus.emit("flash", { mensaje: "Error de conexión", tipo: "error" });
+    } finally {
+      setGuardando(false);
+    }
+  }
+
   return (
-    <FormShell titulo="TONA · NUEVO RECORDATORIO" accent={T.copal} onCerrar={() => setData(null)} onGuardar={() => agenteBus.emit("flash", { mensaje: "Recordatorio guardado", tipo: "exito" })}>
+    <FormShell titulo="TONA · NUEVO RECORDATORIO" accent={T.copal} onCerrar={() => setData(null)} onGuardar={guardar} guardando={guardando}>
       <Campo label="DESCRIPCIÓN" value={texto} onChange={setTexto} placeholder="¿De qué quieres que te recuerde?" />
       <Campo label="FECHA"       value={fecha} onChange={setFecha} placeholder="2026-06-27" tipo="date" />
       <Campo label="HORA"        value={hora}  onChange={setHora}  placeholder="09:00" tipo="time" />
@@ -159,15 +250,28 @@ export function FormNuevaNota() {
   const [contenido, setContenido] = useState("");
 
   useEffect(() => {
-    const off1 = agenteBus.on("nueva_nota", (p) => { setData(p || {}); setTitulo(p?.titulo || ""); setContenido(p?.contenido || ""); });
+    const off1 = agenteBus.on("nueva_nota", (p) => {
+      setData(p || {});
+      setTitulo(p?.titulo || "");
+      setContenido(p?.contenido || "");
+    });
     const off2 = agenteBus.on("cerrar_todo", () => setData(null));
     return () => { off1(); off2(); };
   }, []);
 
   if (!data) return null;
 
+  function guardar() {
+    if (!titulo.trim()) {
+      agenteBus.emit("flash", { mensaje: "El título es obligatorio", tipo: "error" });
+      return;
+    }
+    agenteBus.emit("flash", { mensaje: "Nota guardada", tipo: "exito" });
+    setData(null);
+  }
+
   return (
-    <FormShell titulo="TONA · NUEVA NOTA" accent={T.turquesa} onCerrar={() => setData(null)} onGuardar={() => agenteBus.emit("flash", { mensaje: "Nota guardada", tipo: "exito" })}>
+    <FormShell titulo="TONA · NUEVA NOTA" accent={T.turquesa} onCerrar={() => setData(null)} onGuardar={guardar}>
       <Campo label="TÍTULO" value={titulo} onChange={setTitulo} placeholder="Título de la nota" />
       <div style={{ marginBottom: 14 }}>
         <div style={{ fontSize: 9, color: "rgba(237,235,230,0.25)", letterSpacing: "1px", marginBottom: 6, fontFamily: T.mono }}>CONTENIDO</div>
@@ -211,7 +315,7 @@ export function TarjetaExamen() {
 
   if (!data) return null;
 
-  const diff = new Date(`${data.fecha}T${data.hora}`) - new Date();
+  const diff  = new Date(`${data.fecha}T${data.hora}`) - new Date();
   const dias  = Math.max(0, Math.floor(diff / 86400000));
   const horas = Math.max(0, Math.floor((diff % 86400000) / 3600000));
 
