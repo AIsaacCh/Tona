@@ -4,7 +4,7 @@ import anime from "animejs";
 import { T } from "../tokens";
 import { agenteBus } from "./AgenteTona";
 
-const API = "http://localhost:8000";
+const API = import.meta.env.VITE_API_URL;
 
 export default function PanelConfiguracion({ userId, onCerrar }) {
   const [config,  setConfig]  = useState(null);

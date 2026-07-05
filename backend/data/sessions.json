@@ -152,14 +152,6 @@
     "historial": [
       {
         "role": "user",
-        "content": "habre el editor para trabajar con documentos"
-      },
-      {
-        "role": "model",
-        "content": "Claro, Cortes. Aqu\u00ed est\u00e1n tus documentos."
-      },
-      {
-        "role": "user",
         "content": "hola amigo "
       },
       {
@@ -309,8 +301,16 @@
       {
         "role": "model",
         "content": "Encontr\u00e9 el documento 'prueba cinco', abri\u00e9ndolo."
+      },
+      {
+        "role": "user",
+        "content": "ola"
+      },
+      {
+        "role": "model",
+        "content": "\u00a1Hola, Cortes! \u00bfC\u00f3mo va tu s\u00e1bado? Ma\u00f1ana tienes un Examen, \u00bfya est\u00e1s listo?"
       }
     ],
-    "updated_at": "2026-07-04T19:32:25.120668"
+    "updated_at": "2026-07-04T22:09:19.631786"
   }
 }

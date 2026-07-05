@@ -3,7 +3,7 @@ import anime from "animejs";
 import { T } from "../tokens";
 import { agenteBus } from "./AgenteTona";
 
-const API = "http://localhost:8000";
+const API = import.meta.env.VITE_API_URL;
 
 export default function PanelDocs({ userId, onCerrar }) {
   const [vista,        setVista]        = useState("lista");   // lista | editor
