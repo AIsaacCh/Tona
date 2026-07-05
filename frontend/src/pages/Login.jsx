@@ -1,8 +1,9 @@
+const API = import.meta.env.VITE_API_URL;
+
 export default function Login() {
   const handleGoogleLogin = () => {
     window.location.href = `${API}/auth/google`;
   }
-
   return (
     <div className="tona-app">
       <h1 style={{ fontSize: '36px' }}>TONA</h1>
