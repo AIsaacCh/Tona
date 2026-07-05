@@ -1,4 +1,5 @@
 import vozService from '../services/vozService';
+const API = import.meta.env.VITE_API_URL;
 
 const listeners = {};
 export const agenteBus = {
@@ -25,7 +26,7 @@ export async function enviarMensajeChat(userId, texto) {
   console.log("📨 enviarMensajeChat llamado con:", userId, texto);
   agenteBus.emit("pensando_inicio", {});
   try {
-    const resp = await fetch("http://localhost:8000/agent/chat", {
+    const resp = await fetch(`${API}/agent/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ user_id: userId, mensaje: texto }),
@@ -75,7 +76,7 @@ agenteBus.on("ejecutar_creacion", async ({ accion, payload }) => {
   const userId = localStorage.getItem("tona_user_id") || "demo";
   agenteBus.emit("pensando_inicio", {});
   try {
-    const resp = await fetch("http://localhost:8000/agent/chat", {
+    const resp = await fetch(`${API}/agent/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

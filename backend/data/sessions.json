@@ -152,14 +152,6 @@
     "historial": [
       {
         "role": "user",
-        "content": "hola amigo "
-      },
-      {
-        "role": "model",
-        "content": "\u00a1Hola, Cortes! Son las 12:32 de este s\u00e1bado. \u00bfC\u00f3mo te puedo ayudar?"
-      },
-      {
-        "role": "user",
         "content": "hola amigo"
       },
       {
@@ -309,8 +301,16 @@
       {
         "role": "model",
         "content": "\u00a1Hola, Cortes! \u00bfC\u00f3mo va tu s\u00e1bado? Ma\u00f1ana tienes un Examen, \u00bfya est\u00e1s listo?"
+      },
+      {
+        "role": "user",
+        "content": "hola"
+      },
+      {
+        "role": "model",
+        "content": "\u00a1Hola, Cortes! \u00bfC\u00f3mo va tu s\u00e1bado? Ma\u00f1ana tienes un Examen, \u00bfya est\u00e1s listo?"
       }
     ],
-    "updated_at": "2026-07-04T22:09:19.631786"
+    "updated_at": "2026-07-04T23:01:40.976981"
   }
 }
