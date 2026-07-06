@@ -154,43 +154,33 @@ def enriquecer_payload(accion: str, payload, user_id: str):
 
 
 async def ejecutar_accion_backend(accion: str, payload: dict, user_id: str):
-    BASE = "http://127.0.0.1:8000"
+    from routers.tasks import crear_tarea_manual, crear_evento_calendar, TareaManual, EventoCalendar
 
     if accion == "crear_tarea_real":
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.post(
-                    f"{BASE}/tasks/manual/{user_id}",
-                    json={
-                        "titulo": payload.get("titulo", "Nueva tarea"),
-                        "fecha_limite": payload.get("fecha"),
-                        "prioridad": payload.get("prioridad", "media").lower(),
-                        "resumen": payload.get("resumen", payload.get("titulo", "")),
-                    },
-                )
-            print(f"📡 crear_tarea_real status: {resp.status_code} body: {resp.text[:200]}")
-            if resp.status_code == 200:
-                return resp.json().get("tarea", {})
+            body = TareaManual(
+                titulo=payload.get("titulo", "Nueva tarea"),
+                fecha_limite=payload.get("fecha"),
+                prioridad=payload.get("prioridad", "media").lower(),
+                resumen=payload.get("resumen", payload.get("titulo", "")),
+            )
+            resultado = await crear_tarea_manual(user_id, body)
+            return resultado.get("tarea", {})
         except Exception as e:
             print(f"❌ Error en crear_tarea_real: {e}")
         return None
 
     if accion == "crear_evento_real":
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.post(
-                    f"{BASE}/tasks/evento/{user_id}",
-                    json={
-                        "titulo": payload.get("titulo", "Nuevo evento"),
-                        "fecha": payload.get("fecha"),
-                        "hora": payload.get("hora", "09:00"),
-                        "descripcion": payload.get("descripcion", payload.get("titulo", "")),
-                        "duracion_min": payload.get("duracion_min", 60),
-                    },
-                )
-            print(f"📡 crear_evento_real status: {resp.status_code} body: {resp.text[:200]}")
-            if resp.status_code == 200:
-                return resp.json().get("evento", {})
+            body = EventoCalendar(
+                titulo=payload.get("titulo", "Nuevo evento"),
+                fecha=payload.get("fecha"),
+                hora=payload.get("hora", "09:00"),
+                descripcion=payload.get("descripcion", payload.get("titulo", "")),
+                duracion_min=payload.get("duracion_min", 60),
+            )
+            resultado = await crear_evento_calendar(user_id, body)
+            return resultado.get("evento", {})
         except Exception as e:
             print(f"❌ Error en crear_evento_real: {e}")
         return None
@@ -209,13 +199,13 @@ async def ejecutar_accion_backend(accion: str, payload: dict, user_id: str):
 
 
 async def obtener_archivos_drive_real(user_id: str, query: str = ""):
-    BASE = "http://127.0.0.1:8000"
+    from routers.tasks import obtener_drive
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            params = {"query": query} if query else {}
-            resp = await client.get(f"{BASE}/tasks/drive/{user_id}", params=params)
-        if resp.status_code == 200:
-            return resp.json().get("archivos", [])
+        resultado = await obtener_drive(user_id)
+        archivos = resultado.get("archivos", [])
+        if query:
+            archivos = [a for a in archivos if query.lower() in a.get("nombre", "").lower()]
+        return archivos
     except Exception as e:
         print(f"❌ Error obteniendo archivos Drive: {e}")
     return []
@@ -339,27 +329,18 @@ async def chat(request: MensajeRequest):
         nombre = payload.get("nombre", "")
         if nombre:
             try:
-                BASE = "http://127.0.0.1:8000"
-                async with httpx.AsyncClient() as client:
-                    resp = await client.get(
-                        f"{BASE}/docs/buscar/{request.user_id}?nombre={nombre}"
-                    )
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        docs = data.get("docs", [])
-                        if docs:
-                            doc = docs[0]
-                            accion = "abrir_doc_especifico"
-                            payload = {"doc_id": doc["id"], "titulo": doc["titulo"]}
-                            mensaje = f"Encontré el documento '{doc['titulo']}', abriéndolo."
-                        else:
-                            accion = "flash"
-                            payload = {"mensaje": f"No encontré un documento con '{nombre}'", "tipo": "error"}
-                            mensaje = f"No encontré ningún documento con ese nombre."
-                    else:
-                        accion = "flash"
-                        payload = {"mensaje": "Error buscando documento.", "tipo": "error"}
-                        mensaje = "Error buscando documento."
+                from routers.docs import buscar_doc_por_nombre
+                data = await buscar_doc_por_nombre(request.user_id, nombre)
+                docs = data.get("docs", [])
+                if docs:
+                    doc = docs[0]
+                    accion = "abrir_doc_especifico"
+                    payload = {"doc_id": doc["id"], "titulo": doc["titulo"]}
+                    mensaje = f"Encontré el documento '{doc['titulo']}', abriéndolo."
+                else:
+                    accion = "flash"
+                    payload = {"mensaje": f"No encontré un documento con '{nombre}'", "tipo": "error"}
+                    mensaje = f"No encontré ningún documento con ese nombre."
                 flujo_activo = False
             except Exception as e:
                 print(f"Error buscando doc: {e}")
@@ -372,37 +353,24 @@ async def chat(request: MensajeRequest):
         nombre = payload.get("nombre", "")
         if nombre:
             try:
-                BASE = "http://127.0.0.1:8000"
-                async with httpx.AsyncClient() as client:
-                    # 1. Buscar el documento
-                    resp = await client.get(
-                        f"{BASE}/docs/buscar/{request.user_id}?nombre={nombre}"
-                    )
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        docs = data.get("docs", [])
-                        if docs:
-                            doc = docs[0]
-                            # 2. Eliminar el documento
-                            resp_del = await client.delete(
-                                f"{BASE}/docs/eliminar/{request.user_id}/{doc['id']}"
-                            )
-                            if resp_del.status_code == 200:
-                                accion = "flash"
-                                payload = {"mensaje": f"Documento '{doc['titulo']}' eliminado.", "tipo": "exito"}
-                                mensaje = f"He eliminado el documento '{doc['titulo']}'."
-                            else:
-                                accion = "flash"
-                                payload = {"mensaje": "Error al eliminar el documento.", "tipo": "error"}
-                                mensaje = "No se pudo eliminar el documento."
-                        else:
-                            accion = "flash"
-                            payload = {"mensaje": f"No encontré un documento con '{nombre}'", "tipo": "error"}
-                            mensaje = f"No encontré ningún documento con ese nombre."
-                    else:
+                from routers.docs import buscar_doc_por_nombre, eliminar_doc as eliminar_doc_fn
+                data = await buscar_doc_por_nombre(request.user_id, nombre)
+                docs = data.get("docs", [])
+                if docs:
+                    doc = docs[0]
+                    try:
+                        await eliminar_doc_fn(request.user_id, doc["id"])
                         accion = "flash"
-                        payload = {"mensaje": "Error buscando documento.", "tipo": "error"}
-                        mensaje = "Error buscando documento."
+                        payload = {"mensaje": f"Documento '{doc['titulo']}' eliminado.", "tipo": "exito"}
+                        mensaje = f"He eliminado el documento '{doc['titulo']}'."
+                    except HTTPException:
+                        accion = "flash"
+                        payload = {"mensaje": "Error al eliminar el documento.", "tipo": "error"}
+                        mensaje = "No se pudo eliminar el documento."
+                else:
+                    accion = "flash"
+                    payload = {"mensaje": f"No encontré un documento con '{nombre}'", "tipo": "error"}
+                    mensaje = f"No encontré ningún documento con ese nombre."
                 flujo_activo = False
             except Exception as e:
                 print(f"Error en buscar_y_eliminar: {e}")
@@ -416,19 +384,15 @@ async def chat(request: MensajeRequest):
         titulo = payload.get("titulo", "Documento")
         if doc_id:
             try:
-                BASE = "http://127.0.0.1:8000"
-                async with httpx.AsyncClient() as client:
-                    resp = await client.delete(
-                        f"{BASE}/docs/eliminar/{request.user_id}/{doc_id}"
-                    )
-                    if resp.status_code == 200:
-                        accion = "flash"
-                        payload = {"mensaje": f"Documento '{titulo}' eliminado.", "tipo": "exito"}
-                        mensaje = f"He eliminado el documento '{titulo}'."
-                    else:
-                        accion = "flash"
-                        payload = {"mensaje": f"No se pudo eliminar el documento.", "tipo": "error"}
-                        mensaje = "No se pudo eliminar el documento."
+                from routers.docs import eliminar_doc as eliminar_doc_fn
+                await eliminar_doc_fn(request.user_id, doc_id)
+                accion = "flash"
+                payload = {"mensaje": f"Documento '{titulo}' eliminado.", "tipo": "exito"}
+                mensaje = f"He eliminado el documento '{titulo}'."
+            except HTTPException:
+                accion = "flash"
+                payload = {"mensaje": f"No se pudo eliminar el documento.", "tipo": "error"}
+                mensaje = "No se pudo eliminar el documento."
             except Exception as e:
                 print(f"Error eliminando doc: {e}")
                 accion = "flash"
