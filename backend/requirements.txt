@@ -25,7 +25,7 @@ grpcio-status==1.71.2
 h11==0.16.0
 httpcore==1.0.9
 httplib2==0.31.2
-httpx==0.28.1
+httpx
 idna==3.18
 oauthlib==3.3.1
 proto-plus==1.28.0
@@ -54,5 +54,5 @@ tzlocal==5.4.3
 uritemplate==4.2.0
 urllib3==2.7.0
 uvicorn==0.49.0
-websockets==16.0
+websockets
 supabase==2.15.1
