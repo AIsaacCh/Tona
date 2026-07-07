@@ -1,7 +1,7 @@
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.cron import CronTrigger
-from services.db import _leer, obtener_tareas, obtener_usuario, obtener_sitios, guardar_sitios
+from services.db import obtener_todos_los_usuarios, obtener_tareas, obtener_usuario, obtener_sitios, guardar_sitios
 from datetime import datetime
 import hashlib
 import httpx
@@ -29,8 +29,9 @@ def iniciar_scheduler():
 
 async def revisar_tareas_urgentes():
     try:
-        users_data = _leer("data/users.json")
-        for user_id, usuario in users_data.items():
+        usuarios = obtener_todos_los_usuarios()
+        for usuario in usuarios:
+            user_id = usuario["id"]
             tareas    = obtener_tareas(user_id)
             urgentes  = [t for t in tareas if t.get("urgencia") == "alta" and not t.get("completada")]
             if urgentes:
@@ -41,8 +42,9 @@ async def revisar_tareas_urgentes():
 
 async def revisar_todos_los_sitios():
     try:
-        users_data = _leer("data/users.json")
-        for user_id in users_data:
+        usuarios = obtener_todos_los_usuarios()
+        for usuario in usuarios:
+            user_id = usuario["id"]
             sitios = obtener_sitios(user_id)
             for sitio in sitios:
                 await _revisar_sitio(user_id, sitio["id"])
