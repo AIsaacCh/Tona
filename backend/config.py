@@ -1,7 +1,6 @@
 from pydantic_settings import BaseSettings
 from typing import Optional
 import os
-import secrets
 
 class Settings(BaseSettings):
     # 🔐 SOLO definir variables, NUNCA poner valores por defecto en producción
@@ -63,12 +62,8 @@ def validate_security():
                 "❌ SECRET_KEY es la clave por defecto de desarrollo - ¡CAMBIA ESTO!"
             )
     
-    # 3. Validar formato de Supabase key
+    # 3. Validar formato de Supabase key (sin exponer la clave)
     if settings.SUPABASE_KEY:
-        if not (settings.SUPABASE_KEY.startswith("sb_secret_") or 
-                settings.SUPABASE_KEY.startswith("eyJ")):
-            print("⚠️ ADVERTENCIA: La clave de Supabase tiene formato inusual")
-        
         # Verificar que no tenga caracteres ocultos
         if " " in settings.SUPABASE_KEY or "\n" in settings.SUPABASE_KEY:
             raise ValueError(
@@ -92,22 +87,18 @@ def validate_security():
 # 🔒 Ejecutar validaciones
 validate_security()
 
-# 📝 Logging seguro (sin exponer claves completas)
+# 📝 Logging seguro (sin exponer NINGUNA parte de las claves)
 def log_config_status():
-    """Mostrar estado de configuración sin exponer claves"""
+    """Mostrar estado de configuración sin exponer ninguna clave"""
     print("=" * 50)
     print("🔍 CONFIGURACIÓN CARGADA")
     print(f"🌍 Entorno: {settings.ENVIRONMENT}")
     print(f"🔗 Supabase URL: {settings.SUPABASE_URL}")
     
-    # Mostrar solo primeros caracteres de las claves
-    if settings.SUPABASE_KEY:
-        print(f"🔑 Supabase Key: {settings.SUPABASE_KEY[:10]}... (truncado)")
-    else:
-        print("🔑 Supabase Key: ❌ NO CONFIGURADA")
-    
-    if settings.SECRET_KEY:
-        print(f"🔒 Secret Key: {'*' * 10} (oculta)")
+    # ✅ Solo mostrar si están configuradas, NUNCA mostrar partes de las claves
+    print(f"🔑 Supabase Key: {'✅ Configurada' if settings.SUPABASE_KEY else '❌ FALTA'}")
+    print(f"🔒 Secret Key: {'✅ Configurada' if settings.SECRET_KEY else '❌ FALTA'}")
+    print(f"🔐 Encryption Key: {'✅ Configurada' if settings.ENCRYPTION_KEY else '❌ FALTA'}")
     
     # Otras configuraciones no sensibles
     print(f"📱 Frontend URL: {settings.FRONTEND_URL}")
@@ -120,7 +111,7 @@ if not os.getenv("PYTEST_RUNNING"):
     log_config_status()
 
 # 🔐 Función auxiliar para obtener claves de forma segura
-def get_supabase_client() -> tuple[str, str]:
+def get_supabase_credentials() -> tuple[str, str]:
     """Obtener credenciales de Supabase de forma segura"""
     return settings.SUPABASE_URL, settings.SUPABASE_KEY
 
