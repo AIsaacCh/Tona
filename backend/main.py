@@ -1,11 +1,13 @@
+from services.gcp_setup import configurar_credenciales_gcp
+configurar_credenciales_gcp()
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from config import settings
-from routers import auth, agent, tasks, users,docs
+from routers import auth, agent, tasks, users, docs
 from services.db import init_db
 from services.scheduler import iniciar_scheduler, detener_scheduler
 import contextlib
-
 
 
 @contextlib.asynccontextmanager
@@ -14,6 +16,7 @@ async def lifespan(app: FastAPI):
     iniciar_scheduler()
     yield
     detener_scheduler()
+
 
 app = FastAPI(
     title="Tona API",
@@ -36,9 +39,11 @@ app.include_router(tasks.router, prefix="/tasks", tags=["tasks"])
 app.include_router(users.router, prefix="/users", tags=["users"])
 app.include_router(docs.router, prefix="/docs", tags=["docs"])
 
+
 @app.get("/")
 async def root():
     return {"message": "Tona despierta", "status": "ok"}
+
 
 @app.get("/health")
 async def health():
