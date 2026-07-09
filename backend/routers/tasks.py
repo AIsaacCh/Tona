@@ -80,17 +80,19 @@ async def verificar_y_refrescar_token(user_id: str) -> bool:
         print(f"❌ Usuario {user_id} no tiene token")
         return False
     
-    # Verificar si el token expiró por fecha
+    
     expires_at = usuario.get("expires_at")
     if expires_at:
         try:
             exp = datetime.fromisoformat(expires_at)
+            if exp.tzinfo is not None:
+                exp = exp.replace(tzinfo=None)
             if datetime.now() >= exp:
                 print(f"⏰ Token expirado (expires_at: {expires_at}), refrescando...")
                 return await _refrescar_token(usuario, user_id)
         except Exception as e:
             print(f"❌ Error parseando expires_at: {e}")
-            # Si hay error parseando, intentar refresh
+            
     
     # Verificar si el token es válido
     try:
