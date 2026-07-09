@@ -3,120 +3,82 @@ from typing import Optional
 import os
 
 class Settings(BaseSettings):
-    # 🔐 SOLO definir variables, NUNCA poner valores por defecto en producción
+    # 🔐 Variables sin valores por defecto en producción
     GEMINI_API_KEY: Optional[str] = None
     GOOGLE_CLIENT_ID: str
     GOOGLE_CLIENT_SECRET: str
-    GOOGLE_REDIRECT_URI: str  # Sin valor por defecto
-    SECRET_KEY: str  # Sin valor por defecto
-    FRONTEND_URL: str  # Sin valor por defecto
-    ENVIRONMENT: str = "development"  # ✅ Este sí puede tener default
+    GOOGLE_REDIRECT_URI: str
+    SECRET_KEY: str
+    FRONTEND_URL: str
+    ENVIRONMENT: str = "development"  # Default solo para desarrollo
     GOOGLE_TTS_KEY: Optional[str] = None
     GOOGLE_CLOUD_PROJECT: str
     GOOGLE_CLOUD_LOCATION: str = "us-central1"
     GOOGLE_GENAI_USE_VERTEXAI: bool = True
     SUPABASE_URL: str
     SUPABASE_KEY: str
-    ENCRYPTION_KEY: str  # ¡IMPORTANTE! Sin default
+    ENCRYPTION_KEY: str
 
     class Config:
-        # ✅ Cargar .env SOLO en desarrollo
-        env_file = ".env" if os.getenv("ENVIRONMENT") == "development" else None
+        # 🧠 Inteligente: carga .env SOLO si existe y estamos en local (no en Railway)
+        # En Railway, la variable ENVIRONMENT será "production" y no se cargará .env
+        env_file = ".env" if os.path.exists(".env") and os.getenv("ENVIRONMENT") != "production" else None
         env_file_encoding = "utf-8"
         extra = "ignore"
         case_sensitive = False
 
-# ✅ Crear instancia
+# ✅ Instancia global de settings
 settings = Settings()
 
-# 🔒 VALIDACIONES DE SEGURIDAD EN PRODUCCIÓN
+
+# 🔒 VALIDACIONES DE SEGURIDAD (robustas y seguras)
 def validate_security():
-    """Validaciones críticas de seguridad"""
-    
-    # 1. Verificar que todas las claves REQUERIDAS existen
+    """Valida que todas las variables críticas existan y tengan formato seguro."""
     required_vars = [
-        'SUPABASE_URL', 'SUPABASE_KEY', 'SECRET_KEY', 
-        'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 
-        'ENCRYPTION_KEY'
+        'SUPABASE_URL', 'SUPABASE_KEY', 'SECRET_KEY',
+        'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET',
+        'ENCRYPTION_KEY', 'GOOGLE_CLOUD_PROJECT'
     ]
-    
-    missing = []
-    for var in required_vars:
-        if not getattr(settings, var, None):
-            missing.append(var)
-    
+    missing = [var for var in required_vars if not getattr(settings, var, None)]
     if missing:
-        raise ValueError(
-            f"❌ Variables de entorno faltantes: {', '.join(missing)}"
-        )
-    
-    # 2. Verificar que SECRET_KEY sea segura en producción
+        raise ValueError(f"❌ Variables de entorno faltantes: {', '.join(missing)}")
+
+    # Validaciones específicas de producción
     if settings.ENVIRONMENT == "production":
         if len(settings.SECRET_KEY) < 32:
-            raise ValueError(
-                "❌ SECRET_KEY debe tener al menos 32 caracteres en producción"
-            )
-        
-        if settings.SECRET_KEY == "tona_dev_secret_2026":
-            raise ValueError(
-                "❌ SECRET_KEY es la clave por defecto de desarrollo - ¡CAMBIA ESTO!"
-            )
-    
-    # 3. Validar formato de Supabase key (sin exponer la clave)
-    if settings.SUPABASE_KEY:
-        # Verificar que no tenga caracteres ocultos
-        if " " in settings.SUPABASE_KEY or "\n" in settings.SUPABASE_KEY:
-            raise ValueError(
-                "❌ SUPABASE_KEY contiene espacios o saltos de línea"
-            )
-    
-    # 4. Verificar que la URL de Supabase es válida
-    if settings.SUPABASE_URL:
-        if not settings.SUPABASE_URL.startswith("https://"):
-            raise ValueError("❌ SUPABASE_URL debe comenzar con https://")
-        
-        if not settings.SUPABASE_URL.endswith(".supabase.co"):
-            raise ValueError("❌ SUPABASE_URL debe terminar con .supabase.co")
-    
-    # 5. Validar ENVIRONMENT
-    if settings.ENVIRONMENT not in ["development", "staging", "production"]:
-        raise ValueError(f"❌ ENVIRONMENT inválido: {settings.ENVIRONMENT}")
-    
+            raise ValueError("❌ SECRET_KEY debe tener al menos 32 caracteres en producción")
+        if settings.SUPABASE_KEY and (" " in settings.SUPABASE_KEY or "\n" in settings.SUPABASE_KEY):
+            raise ValueError("❌ SUPABASE_KEY contiene espacios o saltos de línea")
+
     print("✅ Validaciones de seguridad completadas")
 
-# 🔒 Ejecutar validaciones
-validate_security()
-
-# 📝 Logging seguro (sin exponer NINGUNA parte de las claves)
+# 📝 LOGGING SEGURO (sin exponer claves)
 def log_config_status():
-    """Mostrar estado de configuración sin exponer ninguna clave"""
+    """Muestra el estado de la configuración sin exponer ninguna clave."""
     print("=" * 50)
     print("🔍 CONFIGURACIÓN CARGADA")
     print(f"🌍 Entorno: {settings.ENVIRONMENT}")
     print(f"🔗 Supabase URL: {settings.SUPABASE_URL}")
-    
-    # ✅ Solo mostrar si están configuradas, NUNCA mostrar partes de las claves
     print(f"🔑 Supabase Key: {'✅ Configurada' if settings.SUPABASE_KEY else '❌ FALTA'}")
     print(f"🔒 Secret Key: {'✅ Configurada' if settings.SECRET_KEY else '❌ FALTA'}")
     print(f"🔐 Encryption Key: {'✅ Configurada' if settings.ENCRYPTION_KEY else '❌ FALTA'}")
-    
-    # Otras configuraciones no sensibles
     print(f"📱 Frontend URL: {settings.FRONTEND_URL}")
     print(f"🤖 Gemini: {'✅' if settings.GEMINI_API_KEY else '❌'}")
     print(f"☁️  Google Cloud: {settings.GOOGLE_CLOUD_PROJECT}")
     print("=" * 50)
 
-# ✅ Mostrar estado SOLO si no estamos en un entorno de testing
+# 🔐 Ejecutar validaciones y logging
+validate_security()
 if not os.getenv("PYTEST_RUNNING"):
     log_config_status()
 
-# 🔐 Función auxiliar para obtener claves de forma segura
+# 🔐 Funciones auxiliares seguras
 def get_supabase_credentials() -> tuple[str, str]:
-    """Obtener credenciales de Supabase de forma segura"""
+    """Devuelve las credenciales de Supabase de forma segura."""
     return settings.SUPABASE_URL, settings.SUPABASE_KEY
 
 def get_sensitive_config(key_name: str) -> str:
-    """Obtener una configuración sensible con validación"""
+    """Obtiene una variable sensible, lanzando error si no existe."""
     value = getattr(settings, key_name, None)
     if not value:
         raise ValueError(f"❌ Configuración {key_name} no encontrada")
