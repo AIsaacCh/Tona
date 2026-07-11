@@ -13,10 +13,11 @@ import { useSearchParams } from "react-router-dom";
 import { FlashMensaje, ConfirmacionAccion, IndicadorPensando } from "../components/agentes/Categoria1";
 import { FormNuevaTarea, FormNuevoRecordatorio, FormNuevaNota, TarjetaExamen, TarjetaArchivo, NotificacionUrgente } from "../components/agentes/Categoria3y4";
 import { ConfirmarCreacion } from "../components/agentes/ConfirmarCreacion";
-import { VistaListaTareas, VistaCalendario, VistaHorario, VistaCalificaciones, VistaMaterias, VistaArchivosDrive } from "../components/agentes/Categoria2";
+import { VistaListaTareas,VistaGmail,VistaCalendario, VistaHorario, VistaCalificaciones, VistaMaterias, VistaArchivosDrive } from "../components/agentes/Categoria2";
 import OnboardingTona from "../components/OnboardingTona";
 import PanelConfiguracion from "../components/PanelConfiguracion";
 import PanelDocs from "../components/PanelDocs";
+
 
 import {
   WidgetTareas, WidgetTareasSm,
@@ -475,6 +476,7 @@ function DashboardPrincipal({ userId, params, panelConfig, setPanelConfig }) {
       <NotificacionUrgente />
       <ConfirmarCreacion />
       <VistaArchivosDrive />
+      <VistaGmail />
 
       {/* 📄 Botón de documentos flotante */}
       <button

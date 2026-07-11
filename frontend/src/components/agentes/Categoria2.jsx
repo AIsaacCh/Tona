@@ -276,6 +276,58 @@ export function VistaListaTareas() {
   );
 }
 
+// ── VistaGmail ────────────────────────────────────────────────────────────────
+
+export function VistaGmail() {
+  const [data, setData] = useState(null);
+
+  useEffect(() => {
+    const off1 = agenteBus.on("ver_gmail",           (p) => { setData(Array.isArray(p) ? p : []); });
+    const off2 = agenteBus.on("buscar_correos_tema", (p) => { setData(Array.isArray(p) ? p : []); });
+    const off3 = agenteBus.on("cerrar_todo",  () => setData(null));
+    const off4 = agenteBus.on("cerrar_vista", () => setData(null));
+    return () => { off1(); off2(); off3(); off4(); };
+  }, []);
+
+  if (!data) return null;
+
+  return (
+    <VistaShell
+      titulo="TONA · CORREOS" categoria="info"
+      ancho={420} alto={480}
+      onCerrar={() => setData(null)}
+      onFijar={() => { agenteBus.emit("convertir_a_widget", { tipo: "gmail" }); }}
+    >
+      {data.length === 0 && (
+        <div style={{ ...txt(0.3, 12), textAlign: "center", padding: "24px 0" }}>
+          No se encontraron correos
+        </div>
+      )}
+
+      {data.map((c) => (
+        <div key={c.id} style={{ ...rowStyle, alignItems: "flex-start" }}>
+          <div style={{
+            width: 6, height: 6, borderRadius: "50%",
+            background: T.turquesa, flexShrink: 0, marginTop: 6,
+          }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ ...txt(0.75), display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {c.asunto}
+            </span>
+            <span style={{ ...txt(0.4, 10), marginTop: 2, display: "block" }}>
+              {c.de}
+            </span>
+            <span style={{ ...txt(0.3, 10), marginTop: 2, display: "block" }}>
+              {c.snippet}
+            </span>
+          </div>
+          <span style={{ ...txt(0.25, 9), flexShrink: 0 }}>{c.fecha}</span>
+        </div>
+      ))}
+    </VistaShell>
+  );
+}
+
 // ── VistaCalendario ───────────────────────────────────────────────────────────
 
 export function VistaCalendario() {

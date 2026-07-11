@@ -154,7 +154,7 @@ def enriquecer_payload(accion: str, payload, user_id: str):
 
 
 async def ejecutar_accion_backend(accion: str, payload: dict, user_id: str):
-    from routers.tasks import crear_tarea_manual, crear_evento_calendar, TareaManual, EventoCalendar
+    from routers.tasks import crear_tarea_manual, crear_evento_calendar, TareaManual, EventoCalendar, enviar_correo, EnviarCorreoRequest
 
     if accion == "crear_tarea_real":
         try:
@@ -184,6 +184,21 @@ async def ejecutar_accion_backend(accion: str, payload: dict, user_id: str):
         except Exception as e:
             print(f"❌ Error en crear_evento_real: {e}")
         return None
+    
+    if accion == "enviar_correo":
+        try:
+            body =EnviarCorreoRequest(
+                para=payload.get("para", ""),
+                asunto=payload.get("asunto", "Sin asunto"),
+                cuerpo=payload.get("cuerpo", ""),
+
+            )
+            resultado =await enviar_correo(user_id, body)
+            return resultado 
+        except Exception as e:
+            print(f"❌ Error en enviar_correo: {e}")
+        return None
+    
 
     if accion == "guardar_config_onboarding":
         try:
@@ -293,7 +308,7 @@ async def chat(request: MensajeRequest):
     # ──────────────────────────────────────────────────────────────────────────
     # ⚙️ EJECUTAR ACCIONES DEL BACKEND
     # ──────────────────────────────────────────────────────────────────────────
-    if accion in ("crear_tarea_real", "crear_evento_real"):
+    if accion in ("crear_tarea_real", "crear_evento_real", "enviar_correo"):
         dato_creado = await ejecutar_accion_backend(accion, payload, request.user_id)
         if dato_creado:
             accion  = "flash"
@@ -403,6 +418,49 @@ async def chat(request: MensajeRequest):
             payload = {"mensaje": "No se encontró el documento.", "tipo": "error"}
             mensaje = "No se encontró el documento a eliminar."
         flujo_activo = False
+
+    elif accion == "buscar_correos_tema":
+        tema = payload.get("tema", "")
+        dias = payload.get("dias", 14)
+        if tema:
+            try:
+                from routers.tasks import buscar_gmail_por_tema
+                data= await buscar_gmail_por_tema(request.user_id, tema, dias)
+                correos =data.get("correos", [])
+                payload=correos
+                if not mensaje:
+                    if correos:
+                         mensaje=f"Encontré {len(correos)} correo(s) sobre '{tema}' en los ultimos {dias} días."
+                    else:
+                        mensaje=f"No encontré correos recientes sobre '{tema}."
+
+                flujo_activo=False
+            except Exception as e:
+                print(f"Error buscando correos por tema: {e}")
+                accion="flash"
+                payload={"mensaje":"Error buscando correos.", "tipo":"error"}
+                mensaje="Error buscando correos."
+                flujo_activo=False
+                
+    elif accion == "ver_gmail":
+        try:
+            from routers.tasks import obtener_gmail
+            data = await obtener_gmail(request.user_id)
+            correos = data.get("correos", [])
+            payload = correos
+            if not mensaje:
+                if correos:
+                    mensaje = f"Tienes {len(correos)} correo(s) sin leer."
+                else:
+                    mensaje = "No tienes correos nuevos sin leer."
+            flujo_activo = False
+        except Exception as e:
+            print(f"Error obteniendo Gmail: {e}")
+            accion = "flash"
+            payload = {"mensaje": "Error obteniendo correos.", "tipo": "error"}
+            mensaje = "Error obteniendo correos."
+            flujo_activo = False
+                         
 
     elif accion == "ver_archivos_drive":
         query = payload.get("query", "") if isinstance(payload, dict) else ""

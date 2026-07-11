@@ -88,6 +88,35 @@ def obtener_historial(user_id: str) -> list:
         return []
     return resp.data[0].get("historial", [])
 
+def guardar_oauth_state(state: str, code_verifier: str):
+    supabase.table("oauth_states").insert({
+        "state": state,
+        "code_verifier": code_verifier,
+    }).execute()
+
+
+def obtener_y_borrar_oauth_state(state: str):
+    """Verifica que el state exista y no haya expirado (10 min), regresa el code_verifier, y lo borra (uso único)."""
+    resp = supabase.table("oauth_states").select("*").eq("state", state).execute()
+    if not resp.data:
+        return None
+
+    fila = resp.data[0]
+    creado = fila.get("created_at")
+    try:
+        from datetime import datetime, timedelta
+        creado_dt = datetime.fromisoformat(creado.replace("Z", "+00:00"))
+        if creado_dt.tzinfo is not None:
+            creado_dt = creado_dt.replace(tzinfo=None)
+        if datetime.now() - creado_dt > timedelta(minutes=10):
+            supabase.table("oauth_states").delete().eq("state", state).execute()
+            return None
+    except Exception as e:
+        print(f"⚠️ Error verificando expiración de oauth_state: {e}")
+
+    supabase.table("oauth_states").delete().eq("state", state).execute()
+    return fila.get("code_verifier")
+
 
 def guardar_tareas(user_id: str, tareas: list):
     supabase.table("tasks").delete().eq("user_id", user_id).execute()

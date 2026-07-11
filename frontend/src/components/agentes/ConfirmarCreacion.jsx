@@ -15,6 +15,16 @@ const TIPO_CONFIG = {
       { key: "prioridad", label: "Prioridad" },
     ],
   },
+  enviar_correo: {
+    titulo: "CONFIRMAR ENVÍO",
+    acento: T.amaranto,
+    icono:  "✉️",
+    campos: [
+      { key: "para",   label: "Para"    },
+      { key: "asunto", label: "Asunto"  },
+      { key: "cuerpo", label: "Mensaje" },
+    ],
+  },
   crear_evento_real: {
     titulo: "CONFIRMAR EVENTO",
     acento: T.turquesa,
@@ -51,6 +61,7 @@ export function ConfirmarCreacion() {
       agenteBus.on("pre_crear_tarea_real",  (p) => { setAccion("crear_tarea_real");  setData(p); }),
       agenteBus.on("pre_crear_evento_real", (p) => { setAccion("crear_evento_real"); setData(p); }),
       agenteBus.on("pre_agregar_sitio",     (p) => { setAccion("agregar_sitio");     setData(p); }),
+      agenteBus.on("pre_enviar_correo",     (p) => { setAccion("enviar_correo");     setData(p); }),
       agenteBus.on("cerrar_todo",           () => { setData(null); setAccion(null); }),
       agenteBus.on("flash",                 (p) => {
         // Si es éxito de creación, cerrar

@@ -44,6 +44,7 @@ Datos obligatorios:
 - crear_tarea_real:  título, fecha, prioridad
 - crear_evento_real: título, fecha, hora
 - agregar_sitio:     url, alias, frecuencia
+- enviar_correo:     para, asunto, cuerpo
 
 Flujo ejemplo:
   Usuario: "agrega una tarea de física"
@@ -53,11 +54,23 @@ Flujo ejemplo:
   Usuario: "alta"
   → {"accion":"crear_tarea_real","payload":{"titulo":"Física","fecha":"2026-07-04","prioridad":"Alta"},"mensaje":"Listo, tarea de Física registrada para el viernes."}
 
+Flujo ejemplo (correo):
+  Usuario: "envíale un correo a mi profesor"
+  → {"accion":"solicitar_dato","payload":{"campo":"para","contexto":{}},"mensaje":"¿A qué correo se lo envío?"}
+  Usuario: "itz.jont13@gmail.com"
+  → {"accion":"solicitar_dato","payload":{"campo":"asunto","contexto":{"para":"itz.jont13@gmail.com"}},"mensaje":"¿Cuál es el asunto?"}
+  Usuario: "funciona papu"
+  → {"accion":"solicitar_dato","payload":{"campo":"cuerpo","contexto":{"para":"itz.jont13@gmail.com","asunto":"funciona papu"}},"mensaje":"¿Qué le pongo en el cuerpo?"}
+  Usuario: "diles que ya funciono jaja, ya me quiero comer un maruchan"
+  → {"accion":"enviar_correo","payload":{"para":"itz.jont13@gmail.com","asunto":"funciona papu","cuerpo":"Diles que ya funciono jaja, ya me quiero comer un maruchan"},"mensaje":"Listo, correo enviado a itz.jont13@gmail.com."}
+
+⚠️ CRÍTICO: cuando el campo pendiente es "cuerpo", USA LITERALMENTE lo que el usuario responda como el cuerpo del correo,
+sin importar qué tan informal, casual o gracioso suene. NUNCA interpretes esa respuesta como conversación casual ni
+respondas con "flash" — siempre completa la acción "enviar_correo" en cuanto tengas para+asunto+cuerpo.
+
 NUNCA uses crear_tarea_real o crear_evento_real si falta algún dato obligatorio.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
 FORMATO: Siempre JSON válido, nada más.
-
 {
   "accion": "nombre_de_accion",
   "payload": {},
@@ -72,7 +85,7 @@ CATÁLOGO COMPLETO DE ACCIONES:
 - "ver_horario"         → payload: []
 - "ver_calificaciones"  → payload: []
 - "ver_materia"         → payload: {"nombre":"...","curso_id":"..."}
-- "ver_gmail"           → payload: {}
+- "buscar_correos_tema" → payload: {"tema":"...","dias":N}  (dias es opcional, default 14 si el usuario no especifica rango)
 - "ver_drive"           → payload: {}
 - "abrir_docs"          → payload: {}
 - "ver_sitios"          → payload: {}
@@ -84,6 +97,7 @@ CATÁLOGO COMPLETO DE ACCIONES:
 - "crear_tarea_real"    → payload: {"titulo":"...","fecha":"YYYY-MM-DD","prioridad":"Alta|Media|Baja"}
 - "crear_evento_real"   → payload: {"titulo":"...","fecha":"YYYY-MM-DD","hora":"HH:MM","duracion_min":60}
 - "agregar_sitio"       → payload: {"url":"...","alias":"...","frecuencia":"diaria|semanal|quincenal"}
+- "enviar_correo"       → payload: {"para":"...","asunto":"...","cuerpo":"..."}
 
 🔄 FLUJO CONVERSACIONAL:
 - "solicitar_dato"      → payload: {"campo":"titulo|fecha|hora|prioridad|url|alias|frecuencia","contexto":{...}}
@@ -145,6 +159,8 @@ nombre de materia específica           → ver_materia
 "monitorea/vigila esta página"         → solicitar_dato → agregar_sitio
 "ciérralo/quítalo/cierra eso/ya/ok"   → cerrar_vista
 "limpia todo/quita todo/borra todo"    → cerrar_todo
+"tengo algo pendiente/importante sobre X" → buscar_correos_tema (extrae el tema del mensaje; si el usuario dice "esta semana"/"hoy"/"este mes" ajusta dias en consecuencia, si no dice nada usa 14)
+"envía un correo a/manda un email"      → solicitar_dato → enviar_correo
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📄 REGLAS PARA DOCUMENTOS:
@@ -186,6 +202,7 @@ EJEMPLOS CORRECTOS:
 {"accion":"crear_doc","payload":{"titulo":"Reporte de laboratorio"},"mensaje":"Abriendo editor para tu nuevo reporte."}
 {"accion":"crear_doc_con_titulo","payload":{"titulo":"Reporte de Física"},"mensaje":"Creando documento 'Reporte de Física'..."}
 {"accion":"buscar_doc","payload":{"nombre":"Cálculo"},"mensaje":"Buscando el documento de Cálculo..."}
+{"accion":"buscar_correos_tema","payload":{"tema":"proyecto final","dias":7},"mensaje":"Buscando correos sobre 'proyecto final' de la última semana."}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 EJEMPLOS DE ELIMINACIÓN (CORRECTOS):

@@ -12,6 +12,8 @@ import httpx
 import uuid
 import hashlib
 from config import settings
+import base64
+from email.mime.text import MIMEText
 
 router = APIRouter()
 
@@ -294,7 +296,7 @@ async def obtener_gmail(user_id: str, max_resultados: int = 10):
                 "https://gmail.googleapis.com/gmail/v1/users/me/messages",
                 headers=headers,
                 params={
-                    "q":          "is:unread",
+                    "q":          "",
                     "maxResults": max_resultados,
                 },
             )
@@ -336,6 +338,102 @@ async def obtener_gmail(user_id: str, max_resultados: int = 10):
         print(f"Error Gmail: {e}")
         return {"correos": [], "total_no_leidos": 0}
 
+@router.get("/gmail/buscar/{user_id}")
+async def buscar_gmail_por_tema(user_id: str, tema: str, dias: int=14):
+    """
+    Busca correos por tema, filtrando por antigüedad (Gmail hace el filtro nativo).
+    Si el usuario no especifica días, default a 14 (2 semanas).
+    """
+    try:
+        headers=await get_google_headers(user_id)
+        fecha_desde=(datetime.now() - timedelta(days=dias)).strftime("%Y/%m/%d")
+        query=f"{tema} after:{fecha_desde}"
+
+        async with httpx.AsyncClient() as client:
+            resp=await client.get(
+                "https://gmail.googleapis.com/gmail/v1/users/me/messages",
+                headers=headers,
+                params={
+                   "q": query,
+                    "maxResults":15,
+                },
+
+            )
+            if resp.status_code != 200:
+                return {"correos": [], "total": 0}
+            
+            mensajes_ids=resp.json().get("messages",[])
+            correos=[]
+
+            for m in mensajes_ids[:10]:
+                resp_m=await client.get(
+                    f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{m['id']}",    
+                    headers=headers,
+                    params={"format": "metadata", "metadataHeaders": ["Subject", "From", "Date"]},
+
+                )
+                if resp_m.status_code != 200:
+                    continue
+
+                data=resp_m.json()
+                headers_msg ={h["name"]: h["value"] for h in data.get("payload", {}).get("headers", [])}
+
+                correos.append({
+                    "id": m["id"],
+                    "asunto": headers_msg.get("Subject", "Sin asunto"),
+                    "de": headers_msg.get("From", ""),
+                    "fecha": headers_msg.get("Date", "")[:16],
+                    "snippet": data.get("snippet", "")[:150],
+
+                })
+        return {"correos": correos, "total": len(correos), "tema":tema, "dias": dias}
+    except Exception as e:
+        print(f"Error buscando Gmail: {e}")
+        return {"correos": [], "total": 0}
+    
+class EnviarCorreoRequest(BaseModel):
+    para:str
+    asunto:str
+    cuerpo:str
+
+@router.post("/gmail/enviar/{user_id}")
+async def enviar_correo(user_id:str, body: EnviarCorreoRequest):
+    """
+    Envía un correo real usando el scope gmail.send ya autorizado.
+    """
+    try:
+        headers=await get_google_headers(user_id)
+
+        mensaje= MIMEText(body.cuerpo)
+        mensaje["to"]=body.para
+        mensaje["subject"]=body.asunto
+
+        raw=base64.urlsafe_b64encode(mensaje.as_bytes()).decode()
+
+        async with httpx.AsyncClient() as client:
+            resp=await client.post(
+                "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
+                headers={**headers, "Content-Type": "application/json"},
+                json={"raw": raw},
+
+            )
+
+        if resp.status_code not in (200, 201):
+            raise HTTPException(status_code=500, detail=f"Error enviando correo: {resp.text}")
+        
+        return{"enviado":True, "para":body.para, "asunto":body.asunto}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Erros enviando correo: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    
+    
+
+
+    
+    
 
 # ── Google Drive ──────────────────────────────────────────────────────────────
 

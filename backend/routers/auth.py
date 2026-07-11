@@ -5,7 +5,7 @@ import httpx
 import os
 import secrets
 from datetime import datetime, timedelta
-from services.db import guardar_usuario, obtener_usuario_por_email, obtener_usuario
+from services.db import guardar_usuario, obtener_usuario_por_email, obtener_usuario, guardar_oauth_state, obtener_y_borrar_oauth_state
 from config import settings
 
 router = APIRouter()
@@ -25,9 +25,11 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive",
     "https://www.googleapis.com/auth/documents",
     "https://www.googleapis.com/auth/gmail.send",
+    "https://www.googleapis.com/auth/gmail.readonly",
+    
 ]
 
-flow_store: dict = {}
+
 
 def crear_flow():
     return Flow.from_client_config(
@@ -52,14 +54,17 @@ async def google_login():
         include_granted_scopes="true",
         prompt="consent",
     )
-    flow_store[state] = flow
+    guardar_oauth_state(state, flow.code_verifier)
     return RedirectResponse(auth_url)
 
 @router.get("/callback")
 async def google_callback(code: str, state: str):
-    flow = flow_store.get(state)
-    if not flow:
+    code_verifier = obtener_y_borrar_oauth_state(state)
+    if not code_verifier:
         raise HTTPException(status_code=400, detail="Estado inválido o expirado")
+
+    flow = crear_flow()
+    flow.code_verifier = code_verifier
 
     try:
         flow.fetch_token(code=code, check=False)
@@ -67,6 +72,8 @@ async def google_callback(code: str, state: str):
         raise HTTPException(status_code=400, detail=f"Error al obtener token: {str(e)}")
 
     credentials = flow.credentials
+    # ... el resto de la función sigue exactamente igual que antes
+    
 
     async with httpx.AsyncClient() as client:
         resp = await client.get(
@@ -78,7 +85,7 @@ async def google_callback(code: str, state: str):
         raise HTTPException(status_code=400, detail="Error al obtener perfil de Google")
 
     user_info = resp.json()
-    del flow_store[state]
+    
 
     expires_at = (datetime.now() + timedelta(seconds=credentials.expiry.timestamp() - datetime.now().timestamp())).isoformat()
 
