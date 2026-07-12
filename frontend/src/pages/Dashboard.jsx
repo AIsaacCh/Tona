@@ -17,6 +17,7 @@ import { VistaListaTareas,VistaGmail,VistaCalendario, VistaHorario, VistaCalific
 import OnboardingTona from "../components/OnboardingTona";
 import PanelConfiguracion from "../components/PanelConfiguracion";
 import PanelDocs from "../components/PanelDocs";
+import { PanelHorario } from "../components/PanelHorario";
 
 
 import {
@@ -160,6 +161,7 @@ function DashboardPrincipal({ userId, params, panelConfig, setPanelConfig }) {
   const [enviando, setEnviando] = useState(false);
   const btnCerrarRef = useRef(null);
   const [panelDocs, setPanelDocs] = useState(false);
+  const [panelHorario, setPanelHorario] = useState(false);
 
   // ✅ Persistir user_id
   useEffect(() => {
@@ -547,6 +549,40 @@ function DashboardPrincipal({ userId, params, panelConfig, setPanelConfig }) {
       >
         ⚙
       </button>
+      {/* 📅 Botón de horario flotante */}
+      <button
+        onClick={() => setPanelHorario(true)}
+        title="Configurar horario"
+        style={{
+          position: "fixed",
+          bottom: 52,
+          right: 28,
+          zIndex: 300,
+          width: 40,
+          height: 40,
+          borderRadius: "50%",
+          background: "rgba(9,11,13,0.85)",
+          border: `1px solid ${T.jade}22`,
+          color: `${T.jade}66`,
+          fontSize: 16,
+          cursor: "pointer",
+          backdropFilter: "blur(8px)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          transition: "all 0.2s ease",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.borderColor = `${T.jade}55`;
+          e.currentTarget.style.color = T.jade;
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.borderColor = `${T.jade}22`;
+          e.currentTarget.style.color = `${T.jade}66`;
+        }}
+      >
+        📅
+      </button>
 
       {/* Panel de configuración */}
       {panelConfig && (
@@ -563,6 +599,15 @@ function DashboardPrincipal({ userId, params, panelConfig, setPanelConfig }) {
           onCerrar={() => setPanelDocs(false)}
         />
       )}
+
+      {/* Panel de horario */}
+      {panelHorario && (
+        <PanelHorario
+          onCerrar={() => setPanelHorario(false)}
+        />
+      )}
+
+
     </div>
   );
 }

@@ -3,6 +3,7 @@ from typing import Optional, Dict
 from supabase import create_client, Client
 from config import settings
 from services.encryption import cifrar, descifrar
+import uuid
 
 supabase: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
 
@@ -207,6 +208,51 @@ def agregar_sitio(user_id: str, sitio: Dict) -> Dict:
 def eliminar_sitio(user_id: str, sitio_id: str):
     supabase.table("sitios_monitoreados").delete().eq("user_id", user_id).eq("id", sitio_id).execute()
 
+def obtener_horario (user_id: str) -> list:
+    resp= supabase.table("horario").select("*").eq("user_id", user_id).order("dia").execute()
+    return resp.data or []
+
+def guardar_horario_completo(user_id:str, clases:list):
+    """Remplazar TODO el horario existente por uno nuevo."""
+    supabase.table("horario").delete().eq("user_id", user_id).execute()
+    if not clases:
+        return
+    filas=[]
+    for c in clases:
+        filas.append({
+            "id": uuid.uuid4().hex[:12],
+            "user_id": user_id,
+            "materia": c.get("materia"),
+            "dia": c.get("dia"),
+            "hora_inicio": c.get("hora_inicio"),
+            "hora_fin": c.get("hora_fin"),
+            "aula": c.get("aula"),
+            "profesor": c.get("profesor"),
+        })
+
+        supabase.table("horario").upsert(filas).execute()
+
+def agregar_clase_horario(user_id: str, clase: dict) -> dict:
+    """Agrega UNA clase sin tocar el resto del horario."""
+    import uuid
+    fila = {
+        "id": uuid.uuid4().hex[:12],
+        "user_id": user_id,
+        "materia": clase.get("materia"),
+        "dia": clase.get("dia"),
+        "hora_inicio": clase.get("hora_inicio"),
+        "hora_fin": clase.get("hora_fin"),
+        "aula": clase.get("aula"),
+        "profesor": clase.get("profesor"),
+    }
+    supabase.table("horario").upsert(fila).execute()
+    return fila
+
+
+def eliminar_clase_horario(user_id: str, clase_id: str):
+    supabase.table("horario").delete().eq("user_id", user_id).eq("id", clase_id).execute()
+    
+    
 
 def guardar_cache(user_id: str, clave: str, data, ttl_minutos: int = 15):
     _cache_memoria.setdefault(user_id, {})[clave] = {

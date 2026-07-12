@@ -108,7 +108,21 @@ def enriquecer_payload(accion: str, payload, user_id: str):
         return []
 
     if accion == "ver_horario":
-        return HORARIO_MOCK
+        from services.db import obtener_horario
+        clases = obtener_horario(user_id)
+        if not clases:
+            return []
+    dias_orden = {"lunes": 0, "martes": 1, "miercoles": 2, "jueves": 3, "viernes": 4, "sabado": 5}
+    agrupado = {}
+    for c in clases:
+        dia = c.get("dia", "").lower()
+        if dia not in agrupado:
+            agrupado[dia] = []
+        agrupado[dia].append(f"{c.get('materia')} {c.get('hora_inicio')}")
+    return [
+        {"dia": dia.upper(), "clases": agrupado[dia]}
+        for dia in sorted(agrupado.keys(), key=lambda d: dias_orden.get(d, 99))
+    ]
 
     if accion == "ver_calificaciones":
         return CALS_MOCK
@@ -459,7 +473,7 @@ async def chat(request: MensajeRequest):
             accion = "flash"
             payload = {"mensaje": "Error obteniendo correos.", "tipo": "error"}
             mensaje = "Error obteniendo correos."
-            flujo_activo = False
+            flujo_activo = False 
                          
 
     elif accion == "ver_archivos_drive":
