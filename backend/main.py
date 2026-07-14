@@ -4,7 +4,7 @@ configurar_credenciales_gcp()
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from config import settings
-from routers import auth, agent, tasks, users, docs, horario
+from routers import auth, agent, tasks, users, docs, horario, colaborar
 from services.db import init_db
 from services.scheduler import iniciar_scheduler, detener_scheduler
 import contextlib
@@ -39,6 +39,7 @@ app.include_router(tasks.router, prefix="/tasks", tags=["tasks"])
 app.include_router(users.router, prefix="/users", tags=["users"])
 app.include_router(docs.router, prefix="/docs", tags=["docs"])
 app.include_router(horario.router, prefix="/horario", tags=["horario"])
+app.include_router(colaborar.router, prefix="/colaborar", tags=["colaborar"])
 
 
 @app.get("/")

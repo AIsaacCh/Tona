@@ -18,6 +18,8 @@ import OnboardingTona from "../components/OnboardingTona";
 import PanelConfiguracion from "../components/PanelConfiguracion";
 import PanelDocs from "../components/PanelDocs";
 import { PanelHorario } from "../components/PanelHorario";
+import { useNavigate } from "react-router-dom";
+import { PanelColaborar } from "../components/PanelColaborar";
 
 
 import {
@@ -162,6 +164,8 @@ function DashboardPrincipal({ userId, params, panelConfig, setPanelConfig }) {
   const btnCerrarRef = useRef(null);
   const [panelDocs, setPanelDocs] = useState(false);
   const [panelHorario, setPanelHorario] = useState(false);
+  const [panelColaborar, setPanelColaborar] = useState(false);
+  
 
   // ✅ Persistir user_id
   useEffect(() => {
@@ -320,6 +324,23 @@ function DashboardPrincipal({ userId, params, panelConfig, setPanelConfig }) {
       setInput("");
     }
   }
+
+  const navigate = useNavigate();
+async function iniciarColaboracion() {
+  try {
+    const resp = await fetch(`${API}/colaborar/crear`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: userId }),
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      navigate(`/colaborar/${data.codigo}`);
+    }
+  } catch (e) {
+    console.error("Error creando sesión:", e);
+  }
+}
 
   function handleInput(e) {
     setInput(e.target.value);
@@ -549,6 +570,9 @@ function DashboardPrincipal({ userId, params, panelConfig, setPanelConfig }) {
       >
         ⚙
       </button>
+
+
+
       {/* 📅 Botón de horario flotante */}
       <button
         onClick={() => setPanelHorario(true)}
@@ -584,6 +608,12 @@ function DashboardPrincipal({ userId, params, panelConfig, setPanelConfig }) {
         📅
       </button>
 
+<button onClick={() => setPanelColaborar(true)} title="Colaborar" style={{ position: "fixed", bottom: 4, right: 28, zIndex: 300, width: 40, height: 40, borderRadius: "50%", background: "rgba(9,11,13,0.85)", border: `1px solid ${T.amaranto}22`, color: `${T.amaranto}66`, fontSize: 16, cursor: "pointer", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+  🤝
+</button>
+
+
+
       {/* Panel de configuración */}
       {panelConfig && (
         <PanelConfiguracion
@@ -591,6 +621,13 @@ function DashboardPrincipal({ userId, params, panelConfig, setPanelConfig }) {
           onCerrar={() => setPanelConfig(false)}
         />
       )}
+      {/*Panel de Colaboracion*/}
+      {panelColaborar && (
+  <PanelColaborar
+    userId={userId}
+    onCerrar={() => setPanelColaborar(false)}
+  />
+)}
 
       {/* Panel de documentos */}
       {panelDocs && (

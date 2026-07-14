@@ -276,3 +276,57 @@ def limpiar_cache(user_id: str, clave: str = None):
             _cache_memoria[user_id].pop(clave, None)
         else:
             _cache_memoria[user_id] = {}
+
+#-------Colaboracion-----
+def crear_sesion_colaborativa(codigo:str, creado_por:str):
+    supabase.table("colaboracion_sesiones").insert({
+        "codigo": codigo,
+        "creado_por": creado_por,
+
+    }).execute()
+
+def obtener_sesion(codigo: str):
+    resp = supabase.table("colaboracion_sesiones").select("*").eq("codigo", codigo).eq("activa", True).execute()
+    return resp.data[0] if resp.data else None
+
+def marcar_sesion_inactiva(codigo: str):
+    supabase.table("colaboracion_sesiones").update({"activa": False}).eq("codigo", codigo ).execute()
+
+
+def agregar_participante(codigo: str, user_id: str, nombre:str, email:str):
+    fila={
+        "id": uuid.uuid4().hex,
+        "codigo": codigo,
+        "user_id": user_id,
+        "nombre": nombre,
+        "email": email,
+
+    }
+
+    supabase.table("colaboracion_participantes").insert(fila).execute()
+    return fila
+
+def quitar_participante(codigo: str, user_id: str):
+    supabase.table("colaboracion_participantes").delete().eq("codigo", codigo).eq("user_id", user_id).execute()
+
+def obtener_participantes(codigo:str)->list:
+    resp=supabase.table("colaboracion_participantes").select("*").eq("codigo", codigo).execute()
+    return resp.data or []
+
+
+def agregar_archivo_compartido(codigo: str, user_id: str, doc_id: str, titulo: str, link: str):
+    import uuid
+    fila = {
+        "id": uuid.uuid4().hex,
+        "codigo": codigo,
+        "user_id": user_id,
+        "doc_id": doc_id,
+        "titulo": titulo,
+        "link": link,
+    }
+    supabase.table("colaboracion_archivos").insert(fila).execute()
+    return fila
+
+def obtener_archivos_compartidos(codigo: str) -> list:
+    resp = supabase.table("colaboracion_archivos").select("*").eq("codigo", codigo).execute()
+    return resp.data or []
