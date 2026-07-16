@@ -172,6 +172,27 @@ async def cerrar_sesion(codigo: str, body: CerrarSesionRequest):
 
     return {"cerrada": True}
 
+class AbandonarRequest(BaseModel):
+    user_id: str
+
+
+@router.post("/{codigo}/abandonar")
+async def abandonar_sesion(codigo: str, body: AbandonarRequest):
+    quitar_participante(codigo, body.user_id)
+    manager.desconectar(codigo, body.user_id)
+    restantes = obtener_participantes(codigo)
+
+    if len(restantes) == 0:
+        marcar_sesion_inactiva(codigo)
+    else:
+        await manager.broadcast(codigo, {
+            "tipo": "participante_salio",
+            "user_id": body.user_id,
+            "participantes": restantes,
+        })
+
+    return {"abandonado": True}
+
 
 @router.post("/{codigo}/preguntar")
 async def preguntar_tona(codigo: str, body: PreguntarTonaRequest):

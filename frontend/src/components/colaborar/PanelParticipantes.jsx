@@ -1,6 +1,10 @@
+import { useState } from "react"; // <-- Agregar esta importación
 import { T } from "../../tokens";
 
-export function PanelParticipantes({ codigo, participantes, userId, onCerrarSesion }) {
+export function PanelParticipantes({ codigo, participantes, userId, onCerrarSesion, onSalir }) {
+  // Si necesitas estado aquí, agrégalo
+  // const [someState, setSomeState] = useState(null);
+
   return (
     <div style={{
       background: "rgba(9,11,13,0.6)",
@@ -15,10 +19,7 @@ export function PanelParticipantes({ codigo, participantes, userId, onCerrarSesi
         <button
           onClick={() => navigator.clipboard.writeText(codigo)}
           title="Copiar código"
-          style={{
-            background: "transparent", border: "none",
-            color: `${T.turquesa}66`, fontSize: 11, cursor: "pointer",
-          }}
+          style={{ background: "transparent", border: "none", color: `${T.turquesa}66`, fontSize: 11, cursor: "pointer" }}
         >
           copiar
         </button>
@@ -38,14 +39,8 @@ export function PanelParticipantes({ codigo, participantes, userId, onCerrarSesi
       </div>
 
       {participantes.map((p) => (
-        <div key={p.user_id} style={{
-          display: "flex", alignItems: "center", gap: 8,
-          padding: "6px 0",
-        }}>
-          <div style={{
-            width: 6, height: 6, borderRadius: "50%",
-            background: T.jade, flexShrink: 0,
-          }} />
+        <div key={p.user_id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0" }}>
+          <div style={{ width: 6, height: 6, borderRadius: "50%", background: T.jade, flexShrink: 0 }} />
           <span style={{ fontSize: 12, color: "rgba(237,235,230,0.7)", fontFamily: T.sans }}>
             {p.nombre || "Alguien"}
             {p.user_id === userId && <span style={{ color: "rgba(237,235,230,0.3)" }}> (tú)</span>}
@@ -54,16 +49,29 @@ export function PanelParticipantes({ codigo, participantes, userId, onCerrarSesi
       ))}
 
       <button
-        onClick={onCerrarSesion}
+        onClick={onSalir}
         style={{
           marginTop: 18, width: "100%",
+          background: "transparent", border: `1px solid rgba(237,235,230,0.15)`,
+          borderRadius: 8, padding: "9px 0",
+          color: "rgba(237,235,230,0.5)", fontSize: 11,
+          fontFamily: T.mono, cursor: "pointer", letterSpacing: "0.5px",
+        }}
+      >
+        salir de la sala
+      </button>
+
+      <button
+        onClick={onCerrarSesion}
+        style={{
+          marginTop: 8, width: "100%",
           background: `${T.amaranto}12`, border: `1px solid ${T.amaranto}35`,
           borderRadius: 8, padding: "9px 0",
           color: T.amaranto, fontSize: 11,
           fontFamily: T.mono, cursor: "pointer", letterSpacing: "0.5px",
         }}
       >
-        cerrar sesión
+        cerrar sesión para todos
       </button>
     </div>
   );

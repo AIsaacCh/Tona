@@ -110,6 +110,20 @@ export default function Colaborar() {
     navigate("/dashboard");
   }
 
+  async function salirDeSala() {
+  try {
+    await fetch(`${API}/colaborar/${codigo}/abandonar`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: userId }),
+    });
+  } catch (e) {
+    console.error("Error saliendo de la sala:", e);
+  }
+  if (wsRef.current) wsRef.current.close();
+  navigate("/dashboard");
+}
+
   useEffect(() => {
     return () => {
       if (wsRef.current) wsRef.current.close();
@@ -159,10 +173,11 @@ export default function Colaborar() {
       <div style={styles.grid}>
         <div style={styles.columnaIzquierda}>
           <PanelParticipantes
-            codigo={codigo}
-            participantes={participantes}
-            userId={userId}
-            onCerrarSesion={cerrarSesion}
+          codigo={codigo}
+          participantes={participantes}
+          userId={userId}
+          onCerrarSesion={cerrarSesion}
+          onSalir={salirDeSala}
           />
           <PanelArchivosSala
             codigo={codigo}
