@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { T } from "../tokens";
+import { authHeaders } from "../utils/authFetch";
+
 
 const API = import.meta.env.VITE_API_URL;
 
@@ -15,11 +17,11 @@ export function PanelColaborar({ userId, onCerrar }) {
     setCargando(true);
     setError("");
     try {
-      const resp = await fetch(`${API}/colaborar/crear`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: userId }),
-      });
+     const resp = await fetch(`${API}/colaborar/crear`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json", ...authHeaders() },
+  body: JSON.stringify({ user_id: userId }),
+});
       if (resp.ok) {
         const data = await resp.json();
         navigate(`/colaborar/${data.codigo}`);
@@ -41,11 +43,11 @@ export function PanelColaborar({ userId, onCerrar }) {
     setCargando(true);
     setError("");
     try {
-      const resp = await fetch(`${API}/colaborar/unirse`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: userId, codigo: codigo.trim().toUpperCase() }),
-      });
+     const resp = await fetch(`${API}/colaborar/unirse`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json", ...authHeaders() },
+  body: JSON.stringify({ user_id: userId, codigo: codigo.trim().toUpperCase() }),
+});
       if (resp.ok) {
         navigate(`/colaborar/${codigo.trim().toUpperCase()}`);
       } else {

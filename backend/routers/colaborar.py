@@ -1,4 +1,6 @@
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, Depends, Header
+from services.auth_utils import decodificar_token, verificar_identidad
+from services.auth_utils import verificar_identidad
 from pydantic import BaseModel
 from typing import Optional
 import random
@@ -77,8 +79,14 @@ manager = ConnectionManager()
 # ── Endpoints REST ────────────────────────────────────────────────────────────
 
 @router.post("/crear")
-async def crear_sesion(body: CrearSesionRequest):
-    print(f"🔍 /crear llamado con user_id={body.user_id}")
+async def crear_sesion(body: CrearSesionRequest, authorization: str = Header(None)):
+    from services.auth_utils import decodificar_token
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="No autenticado")
+    token_user_id = decodificar_token(authorization.replace("Bearer ", "", 1))
+    if token_user_id != body.user_id:
+        raise HTTPException(status_code=403, detail="No autorizado")
+
     usuario = obtener_usuario(body.user_id)
     if not usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
@@ -94,7 +102,13 @@ async def crear_sesion(body: CrearSesionRequest):
 
 
 @router.post("/unirse")
-async def unirse_sesion(body: UnirseSesionRequest):
+async def unirse_sesion(body: UnirseSesionRequest, authorization: str = Header(None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="No autenticado")
+    token_user_id = decodificar_token(authorization.replace("Bearer ", "", 1))
+    if token_user_id != body.user_id:
+        raise HTTPException(status_code=403, detail="No autorizado")
+
     print(f"🔍 /unirse llamado con user_id={body.user_id}, codigo={body.codigo}")
     sesion = obtener_sesion(body.codigo)
     if not sesion:
@@ -121,7 +135,7 @@ async def unirse_sesion(body: UnirseSesionRequest):
     }
 
 @router.get("/mi-sesion/{user_id}")
-async def obtener_mi_sesion_activa(user_id: str):
+async def obtener_mi_sesion_activa(user_id: str, _: str = Depends(verificar_identidad)):
     """
     Busca si el usuario tiene una sesión activa, ya sea como participante actual
     o como creador de una sesión que sigue activa (aunque haya salido).
@@ -150,7 +164,13 @@ async def estado_sesion(codigo: str):
 
 
 @router.post("/{codigo}/compartir")
-async def compartir_archivo(codigo: str, body: CompartirArchivoRequest):
+async def compartir_archivo(codigo: str, body: CompartirArchivoRequest, authorization: str = Header(None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="No autenticado")
+    token_user_id = decodificar_token(authorization.replace("Bearer ", "", 1))
+    if token_user_id != body.user_id:
+        raise HTTPException(status_code=403, detail="No autorizado")
+
     from routers.tasks import get_google_headers
 
     sesion = obtener_sesion(codigo)
@@ -186,7 +206,13 @@ class CerrarSesionRequest(BaseModel):
 
 
 @router.post("/{codigo}/cerrar")
-async def cerrar_sesion(codigo: str, body: CerrarSesionRequest):
+async def cerrar_sesion(codigo: str, body: CerrarSesionRequest, authorization: str = Header(None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="No autenticado")
+    token_user_id = decodificar_token(authorization.replace("Bearer ", "", 1))
+    if token_user_id != body.user_id:
+        raise HTTPException(status_code=403, detail="No autorizado")
+
     sesion = obtener_sesion(codigo)
     if not sesion:
         raise HTTPException(status_code=404, detail="Sesión no encontrada")
@@ -205,13 +231,20 @@ class AbandonarRequest(BaseModel):
 
 
 @router.post("/{codigo}/abandonar")
-async def abandonar_sesion(codigo: str, body: AbandonarRequest):
+async def abandonar_sesion(codigo: str, body: AbandonarRequest, authorization: str = Header(None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="No autenticado")
+    token_user_id = decodificar_token(authorization.replace("Bearer ", "", 1))
+    if token_user_id != body.user_id:
+        raise HTTPException(status_code=403, detail="No autorizado")
+
     quitar_participante(codigo, body.user_id)
     manager.desconectar(codigo, body.user_id)
     restantes = obtener_participantes(codigo)
 
     if len(restantes) == 0:
         marcar_sesion_inactiva(codigo)
+        supabase.table("colaboracion_mensajes").delete().eq("codigo", codigo).execute()
     else:
         await manager.broadcast(codigo, {
             "tipo": "participante_salio",
@@ -223,7 +256,13 @@ async def abandonar_sesion(codigo: str, body: AbandonarRequest):
 
 
 @router.post("/{codigo}/preguntar")
-async def preguntar_tona(codigo: str, body: PreguntarTonaRequest):
+async def preguntar_tona(codigo: str, body: PreguntarTonaRequest, authorization: str = Header(None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="No autenticado")
+    token_user_id = decodificar_token(authorization.replace("Bearer ", "", 1))
+    if token_user_id != body.user_id:
+        raise HTTPException(status_code=403, detail="No autorizado")
+
     from routers.docs import leer_doc
     from google import genai
     from google.genai import types
@@ -273,7 +312,15 @@ Responde de forma breve y útil, en español, enfocándote en ayudar con la estr
 # ── WebSocket ─────────────────────────────────────────────────────────────────
 
 @router.websocket("/ws/{codigo}/{user_id}")
-async def websocket_sala(ws: WebSocket, codigo: str, user_id: str):
+async def websocket_sala(ws: WebSocket, codigo: str, user_id: str, token: str = None):
+    try:
+        if not token or decodificar_token(token) != user_id:
+            await ws.close(code=4003)
+            return
+    except HTTPException:
+        await ws.close(code=4003)
+        return
+
     sesion = obtener_sesion(codigo)
     if not sesion:
         await ws.close(code=4004)

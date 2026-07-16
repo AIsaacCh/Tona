@@ -20,6 +20,7 @@ import PanelDocs from "../components/PanelDocs";
 import { PanelHorario } from "../components/PanelHorario";
 import { useNavigate } from "react-router-dom";
 import { PanelColaborar } from "../components/PanelColaborar";
+import { authHeaders } from "../utils/authFetch";
 
 
 import {
@@ -107,6 +108,7 @@ export default function Dashboard() {
 
   // ✅ Verificar onboarding
   useEffect(() => {
+
     const uid = localStorage.getItem("tona_user_id") || userId;
     if (uid && uid !== "demo") {
       fetch(`${API}/agent/contexto/${uid}`)
@@ -119,6 +121,13 @@ export default function Dashboard() {
       setOnboarding(true);
     }
   }, [userId]);
+
+  useEffect(() => {
+  const token = params.get("token");
+  if (token) {
+    localStorage.setItem("tona_token", token);
+  }
+}, [params]);
 
   // ✅ Escuchar evento para abrir configuración
   useEffect(() => {
@@ -329,7 +338,9 @@ function DashboardPrincipal({ userId, params, panelConfig, setPanelConfig }) {
   const navigate = useNavigate();
 async function iniciarColaboracion() {
   try {
-    const resp = await fetch(`${API}/colaborar/mi-sesion/${userId}`);
+    const resp = await fetch(`${API}/colaborar/mi-sesion/${userId}`, {
+      headers: authHeaders(),
+    });
     const data = await resp.json();
 
     if (data.codigo) {

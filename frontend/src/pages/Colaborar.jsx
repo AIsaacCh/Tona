@@ -4,6 +4,9 @@ import { T } from "../tokens";
 import { PanelParticipantes } from "../components/colaborar/PanelParticipantes";
 import { ChatSala } from "../components/colaborar/ChatSala";
 import { PanelArchivosSala } from "../components/colaborar/PanelArchivosSala";
+import { authHeaders } from "../utils/authFetch";
+
+
 
 const API = import.meta.env.VITE_API_URL;
 const WS_API = API.replace(/^http/, "ws");
@@ -33,11 +36,11 @@ export default function Colaborar() {
 
   async function unirse() {
   try {
-    const resp = await fetch(`${API}/colaborar/unirse`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id: userId, codigo }),
-    });
+   const resp = await fetch(`${API}/colaborar/unirse`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json", ...authHeaders() },
+  body: JSON.stringify({ user_id: userId, codigo }),
+});
 
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
@@ -88,8 +91,10 @@ async function reproducirVoz(texto) {
 }
 
   function conectarWebSocket() {
-    const ws = new WebSocket(`${WS_API}/colaborar/ws/${codigo}/${userId}`);
-    wsRef.current = ws;
+  const token = localStorage.getItem("tona_token");
+  const ws = new WebSocket(`${WS_API}/colaborar/ws/${codigo}/${userId}?token=${token}`);
+  wsRef.current = ws;
+  
 
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
@@ -131,10 +136,10 @@ async function reproducirVoz(texto) {
     if (!window.confirm("¿Cerrar la sesión para todos los participantes?")) return;
     try {
       await fetch(`${API}/colaborar/${codigo}/cerrar`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: userId }),
-      });
+  method: "POST",
+  headers: { "Content-Type": "application/json", ...authHeaders() },
+  body: JSON.stringify({ user_id: userId }),
+});
     } catch (e) {
       console.error("Error cerrando sesión:", e);
     }
@@ -143,11 +148,11 @@ async function reproducirVoz(texto) {
 
   async function salirDeSala() {
   try {
-    await fetch(`${API}/colaborar/${codigo}/abandonar`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id: userId }),
-    });
+   await fetch(`${API}/colaborar/${codigo}/abandonar`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json", ...authHeaders() },
+  body: JSON.stringify({ user_id: userId }),
+});
   } catch (e) {
     console.error("Error saliendo de la sala:", e);
   }

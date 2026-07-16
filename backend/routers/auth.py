@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse, JSONResponse
 from google_auth_oauthlib.flow import Flow
 import httpx
+from services.auth_utils import crear_token
 import os
 import secrets
 from datetime import datetime, timedelta
@@ -112,8 +113,12 @@ async def google_callback(code: str, state: str):
             'tier': 'estudiante',
         })
 
+    token = crear_token(user_id)
+
+
     return RedirectResponse(
-        f"{settings.FRONTEND_URL}/dashboard?user_id={user_id}&name={user_info.get('name', '')}"
+        f"{settings.FRONTEND_URL}/dashboard?user_id={user_id}&name={user_info.get('name', '')}&token={token}"
+
     )
 
 @router.get("/me")
