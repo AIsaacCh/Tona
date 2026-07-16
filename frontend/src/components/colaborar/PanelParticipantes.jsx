@@ -1,9 +1,8 @@
-import { useState } from "react"; // <-- Agregar esta importación
 import { T } from "../../tokens";
 
-export function PanelParticipantes({ codigo, participantes, userId, onCerrarSesion, onSalir }) {
-  // Si necesitas estado aquí, agrégalo
-  // const [someState, setSomeState] = useState(null);
+
+export function PanelParticipantes({ codigo, participantes, userId, onCerrarSesion, onSalir, esCreador }) {
+
 
   return (
     <div style={{
@@ -61,18 +60,20 @@ export function PanelParticipantes({ codigo, participantes, userId, onCerrarSesi
         salir de la sala
       </button>
 
-      <button
-        onClick={onCerrarSesion}
-        style={{
-          marginTop: 8, width: "100%",
-          background: `${T.amaranto}12`, border: `1px solid ${T.amaranto}35`,
-          borderRadius: 8, padding: "9px 0",
-          color: T.amaranto, fontSize: 11,
-          fontFamily: T.mono, cursor: "pointer", letterSpacing: "0.5px",
-        }}
-      >
-        cerrar sesión para todos
-      </button>
+      {esCreador && (
+  <button
+    onClick={onCerrarSesion}
+    style={{
+      marginTop: 8, width: "100%",
+      background: `${T.amaranto}12`, border: `1px solid ${T.amaranto}35`,
+      borderRadius: 8, padding: "9px 0",
+      color: T.amaranto, fontSize: 11,
+      fontFamily: T.mono, cursor: "pointer", letterSpacing: "0.5px",
+    }}
+  >
+    cerrar sesión para todos
+  </button>
+)}
     </div>
   );
 }

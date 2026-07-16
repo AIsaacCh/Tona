@@ -330,3 +330,20 @@ def agregar_archivo_compartido(codigo: str, user_id: str, doc_id: str, titulo: s
 def obtener_archivos_compartidos(codigo: str) -> list:
     resp = supabase.table("colaboracion_archivos").select("*").eq("codigo", codigo).execute()
     return resp.data or []
+
+def guardar_mensaje_colaborativo(codigo: str, user_id: str, nombre: str, texto: str, tipo: str = "chat", pregunta: str = None):
+    import uuid
+    supabase.table("colaboracion_mensajes").insert({
+        "id": uuid.uuid4().hex,
+        "codigo": codigo,
+        "user_id": user_id,
+        "nombre": nombre,
+        "tipo": tipo,
+        "texto": texto,
+        "pregunta": pregunta,
+    }).execute()
+
+
+def obtener_mensajes_colaborativos(codigo: str) -> list:
+    resp = supabase.table("colaboracion_mensajes").select("*").eq("codigo", codigo).order("created_at").execute()
+    return resp.data or []

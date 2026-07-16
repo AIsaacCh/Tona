@@ -19,6 +19,7 @@ export default function Colaborar() {
   const [nombreUsuario, setNombreUsuario] = useState("");
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
+  const [esCreador, setEsCreador] = useState(false);
 
   const wsRef = useRef(null);
 
@@ -31,34 +32,60 @@ export default function Colaborar() {
   }, []);
 
   async function unirse() {
-    try {
-      const resp = await fetch(`${API}/colaborar/unirse`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: userId, codigo }),
-      });
+  try {
+    const resp = await fetch(`${API}/colaborar/unirse`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: userId, codigo }),
+    });
 
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({}));
-        setError(err.detail || "No se pudo unir a la sesión");
-        setCargando(false);
-        return;
-      }
-
-      const data = await resp.json();
-      setParticipantes(data.participantes || []);
-      setArchivos(data.archivos || []);
-
-      const mio = (data.participantes || []).find((p) => p.user_id === userId);
-      setNombreUsuario(mio?.nombre || "");
-
-      conectarWebSocket();
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      setError(err.detail || "No se pudo unir a la sesión");
       setCargando(false);
-    } catch (e) {
-      setError("Error de conexión");
-      setCargando(false);
+      return;
     }
+
+    const data = await resp.json();
+    setParticipantes(data.participantes || []);
+    setArchivos(data.archivos || []);
+    setEsCreador(data.es_creador || false);
+
+    const mio = (data.participantes || []).find((p) => p.user_id === userId);
+    setNombreUsuario(mio?.nombre || "");
+
+    const historialCargado = (data.mensajes || []).map((m) => {
+      if (m.tipo === "tona") {
+        return { tipo: "tona", texto: m.texto, pregunta: m.pregunta };
+      }
+      return { nombre: m.nombre, texto: m.texto };
+    });
+    setMensajes(historialCargado);
+
+    conectarWebSocket();
+    setCargando(false);
+  } catch (e) {
+    setError("Error de conexión");
+    setCargando(false);
   }
+}
+
+async function reproducirVoz(texto) {
+  try {
+    const resp = await fetch(`${API}/agent/hablar`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ texto }),
+    });
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    audio.onended = () => URL.revokeObjectURL(url);
+    audio.play();
+  } catch (e) {
+    console.error("Error reproduciendo voz:", e);
+  }
+}
 
   function conectarWebSocket() {
     const ws = new WebSocket(`${WS_API}/colaborar/ws/${codigo}/${userId}`);
@@ -66,6 +93,8 @@ export default function Colaborar() {
 
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
+      console.log("📩 Mensaje WebSocket recibido:", data);  // ← agrega esto
+
 
       if (data.tipo === "chat") {
         setMensajes((prev) => [...prev, { nombre: data.nombre, texto: data.texto }]);
@@ -75,6 +104,7 @@ export default function Colaborar() {
           { nombre: "tú", texto: data.pregunta, tipo: "usuario_pregunta" },
           { tipo: "tona", texto: data.respuesta },
         ]);
+        reproducirVoz(data.respuesta);
       } else if (data.tipo === "participante_unido" || data.tipo === "participante_salio") {
         setParticipantes(data.participantes || []);
       } else if (data.tipo === "archivo_compartido") {
@@ -83,6 +113,7 @@ export default function Colaborar() {
         alert("La sesión ha finalizado");
         navigate("/dashboard");
       }
+      
     };
 
     ws.onclose = () => {
@@ -173,12 +204,13 @@ export default function Colaborar() {
       <div style={styles.grid}>
         <div style={styles.columnaIzquierda}>
           <PanelParticipantes
-          codigo={codigo}
-          participantes={participantes}
-          userId={userId}
-          onCerrarSesion={cerrarSesion}
-          onSalir={salirDeSala}
-          />
+            codigo={codigo}
+            participantes={participantes}
+            userId={userId}
+            onCerrarSesion={cerrarSesion}
+            onSalir={salirDeSala}
+            esCreador={esCreador}
+            />
           <PanelArchivosSala
             codigo={codigo}
             userId={userId}

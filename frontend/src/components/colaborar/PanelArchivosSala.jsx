@@ -9,6 +9,7 @@ export function PanelArchivosSala({ codigo, userId, archivos, onArchivoCompartid
   const [cargando, setCargando] = useState(false);
   const [pregunta, setPregunta] = useState("");
   const [enviandoPregunta, setEnviandoPregunta] = useState(false);
+  const [compartiendoId, setCompartiendoId] = useState(null);
 
   async function cargarMisDocs() {
     setCargando(true);
@@ -27,21 +28,24 @@ export function PanelArchivosSala({ codigo, userId, archivos, onArchivoCompartid
   }
 
   async function compartir(doc) {
-    try {
-      const resp = await fetch(`${API}/colaborar/${codigo}/compartir`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: userId, doc_id: doc.id, titulo: doc.titulo }),
-      });
-      if (resp.ok) {
-        const data = await resp.json();
-        onArchivoCompartido?.(data.archivo);
-        setMostrarLista(false);
-      }
-    } catch (e) {
-      console.error("Error compartiendo:", e);
+  if (compartiendoId) return;
+  setCompartiendoId(doc.id);
+  try {
+    const resp = await fetch(`${API}/colaborar/${codigo}/compartir`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: userId, doc_id: doc.id, titulo: doc.titulo }),
+    });
+    if (resp.ok) {
+      setMostrarLista(false);
+      // Ya no llamamos onArchivoCompartido aquí — el WebSocket lo agrega para todos, incluido quien comparte
     }
+  } catch (e) {
+    console.error("Error compartiendo:", e);
+  } finally {
+    setCompartiendoId(null);
   }
+}
 
   async function preguntarATona() {
     if (!pregunta.trim() || enviandoPregunta) return;
@@ -131,19 +135,21 @@ export function PanelArchivosSala({ codigo, userId, archivos, onArchivoCompartid
               <div style={{ fontSize: 11, color: "rgba(237,235,230,0.3)", textAlign: "center" }}>No tienes documentos</div>
             )}
             {!cargando && docsPropios.map((doc) => (
-              <div
-                key={doc.id}
-                onClick={() => compartir(doc)}
-                style={{
-                  padding: "7px 8px", fontSize: 12, color: "rgba(237,235,230,0.65)",
-                  cursor: "pointer", borderRadius: 5,
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.background = `${T.copal}10`}
-                onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
-              >
-                {doc.titulo}
-              </div>
-            ))}
+  <div
+    key={doc.id}
+    onClick={() => compartir(doc)}
+    style={{
+      padding: "7px 8px", fontSize: 12,
+      color: compartiendoId === doc.id ? "rgba(237,235,230,0.25)" : "rgba(237,235,230,0.65)",
+      cursor: compartiendoId ? "wait" : "pointer",
+      borderRadius: 5, pointerEvents: compartiendoId ? "none" : "auto",
+    }}
+    onMouseEnter={(e) => { if (!compartiendoId) e.currentTarget.style.background = `${T.copal}10`; }}
+    onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+  >
+    {doc.titulo} {compartiendoId === doc.id && "· compartiendo..."}
+  </div>
+))}
             <button
               onClick={() => setMostrarLista(false)}
               style={{

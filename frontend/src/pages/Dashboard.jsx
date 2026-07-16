@@ -100,7 +100,7 @@ let nextId = 1;
 // ──────────────────────────────────────────────────────────────────────────────
 export default function Dashboard() {
   const [params] = useSearchParams();
-  const userId = params.get("user_id") || "demo";
+  const userId = params.get("user_id") || localStorage.getItem("tona_user_id") || "demo";
 
   const [onboarding, setOnboarding] = useState(null); // null = cargando
   const [panelConfig, setPanelConfig] = useState(false);
@@ -165,6 +165,7 @@ function DashboardPrincipal({ userId, params, panelConfig, setPanelConfig }) {
   const [panelDocs, setPanelDocs] = useState(false);
   const [panelHorario, setPanelHorario] = useState(false);
   const [panelColaborar, setPanelColaborar] = useState(false);
+
   
 
   // ✅ Persistir user_id
@@ -328,17 +329,17 @@ function DashboardPrincipal({ userId, params, panelConfig, setPanelConfig }) {
   const navigate = useNavigate();
 async function iniciarColaboracion() {
   try {
-    const resp = await fetch(`${API}/colaborar/crear`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id: userId }),
-    });
-    if (resp.ok) {
-      const data = await resp.json();
+    const resp = await fetch(`${API}/colaborar/mi-sesion/${userId}`);
+    const data = await resp.json();
+
+    if (data.codigo) {
       navigate(`/colaborar/${data.codigo}`);
+    } else {
+      setPanelColaborar(true);
     }
   } catch (e) {
-    console.error("Error creando sesión:", e);
+    console.error("Error verificando sesión activa:", e);
+    setPanelColaborar(true);
   }
 }
 
@@ -608,7 +609,7 @@ async function iniciarColaboracion() {
         📅
       </button>
 
-<button onClick={() => setPanelColaborar(true)} title="Colaborar" style={{ position: "fixed", bottom: 4, right: 28, zIndex: 300, width: 40, height: 40, borderRadius: "50%", background: "rgba(9,11,13,0.85)", border: `1px solid ${T.amaranto}22`, color: `${T.amaranto}66`, fontSize: 16, cursor: "pointer", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+<button onClick={iniciarColaboracion} title="Entrar a colaborar" style={{ position: "fixed", bottom: 4, right: 28, zIndex: 300, width: 40, height: 40, borderRadius: "50%", background: "rgba(9,11,13,0.85)", border: `1px solid ${T.amaranto}22`, color: `${T.amaranto}66`, fontSize: 16, cursor: "pointer", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center" }}>
   🤝
 </button>
 

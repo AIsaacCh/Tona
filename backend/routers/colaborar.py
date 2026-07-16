@@ -4,6 +4,7 @@ from typing import Optional
 import random
 import string
 import httpx
+from services.db import supabase
 from config import settings
 from services.db import (
     obtener_usuario,
@@ -15,6 +16,8 @@ from services.db import (
     obtener_participantes,
     agregar_archivo_compartido,
     obtener_archivos_compartidos,
+    guardar_mensaje_colaborativo,
+    obtener_mensajes_colaborativos,
 )
 
 router = APIRouter()
@@ -75,6 +78,7 @@ manager = ConnectionManager()
 
 @router.post("/crear")
 async def crear_sesion(body: CrearSesionRequest):
+    print(f"🔍 /crear llamado con user_id={body.user_id}")
     usuario = obtener_usuario(body.user_id)
     if not usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
@@ -91,6 +95,7 @@ async def crear_sesion(body: CrearSesionRequest):
 
 @router.post("/unirse")
 async def unirse_sesion(body: UnirseSesionRequest):
+    print(f"🔍 /unirse llamado con user_id={body.user_id}, codigo={body.codigo}")
     sesion = obtener_sesion(body.codigo)
     if not sesion:
         raise HTTPException(status_code=404, detail="Código inválido o sesión finalizada")
@@ -111,8 +116,27 @@ async def unirse_sesion(body: UnirseSesionRequest):
         "codigo": body.codigo,
         "participantes": obtener_participantes(body.codigo),
         "archivos": obtener_archivos_compartidos(body.codigo),
+        "es_creador": sesion.get("creado_por") == body.user_id,
+        "mensajes": obtener_mensajes_colaborativos(body.codigo),
     }
 
+@router.get("/mi-sesion/{user_id}")
+async def obtener_mi_sesion_activa(user_id: str):
+    """
+    Busca si el usuario tiene una sesión activa, ya sea como participante actual
+    o como creador de una sesión que sigue activa (aunque haya salido).
+    """
+    resp = supabase.table("colaboracion_participantes").select("codigo").eq("user_id", user_id).execute()
+    for fila in (resp.data or []):
+        sesion = obtener_sesion(fila["codigo"])
+        if sesion:
+            return {"codigo": fila["codigo"]}
+
+    resp_creador = supabase.table("colaboracion_sesiones").select("codigo").eq("creado_por", user_id).eq("activa", True).execute()
+    if resp_creador.data:
+        return {"codigo": resp_creador.data[0]["codigo"]}
+
+    return {"codigo": None}
 
 @router.get("/{codigo}/estado")
 async def estado_sesion(codigo: str):
@@ -167,7 +191,11 @@ async def cerrar_sesion(codigo: str, body: CerrarSesionRequest):
     if not sesion:
         raise HTTPException(status_code=404, detail="Sesión no encontrada")
 
+    if sesion.get("creado_por") != body.user_id:
+        raise HTTPException(status_code=403, detail="Solo quien creó la sesión puede cerrarla para todos")
+
     marcar_sesion_inactiva(codigo)
+    supabase.table("colaboracion_mensajes").delete().eq("codigo", codigo).execute()
     await manager.broadcast(codigo, {"tipo": "sesion_finalizada"})
 
     return {"cerrada": True}
@@ -231,6 +259,8 @@ Responde de forma breve y útil, en español, enfocándote en ayudar con la estr
 
     texto_respuesta = respuesta.text.strip()
 
+    guardar_mensaje_colaborativo(codigo, body.user_id, "Tona", texto_respuesta, tipo="tona", pregunta=body.pregunta)
+
     await manager.broadcast(codigo, {
         "tipo": "tona_respuesta",
         "pregunta": body.pregunta,
@@ -264,11 +294,13 @@ async def websocket_sala(ws: WebSocket, codigo: str, user_id: str):
         while True:
             data = await ws.receive_json()
             if data.get("tipo") == "chat":
+                texto = data.get("texto", "")
+                guardar_mensaje_colaborativo(codigo, user_id, nombre, texto, tipo="chat")
                 await manager.broadcast(codigo, {
                     "tipo": "chat",
                     "user_id": user_id,
                     "nombre": nombre,
-                    "texto": data.get("texto", ""),
+                    "texto": texto,
                 })
     except WebSocketDisconnect:
         manager.desconectar(codigo, user_id)
@@ -277,6 +309,7 @@ async def websocket_sala(ws: WebSocket, codigo: str, user_id: str):
 
         if len(restantes) == 0:
             marcar_sesion_inactiva(codigo)
+            supabase.table("colaboracion_mensajes").delete().eq("codigo", codigo).execute()
         else:
             await manager.broadcast(codigo, {
                 "tipo": "participante_salio",
