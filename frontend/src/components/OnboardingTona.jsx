@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from "react";
 import anime from "animejs";
 import { T } from "../tokens";
 
+
 const API = import.meta.env.VITE_API_URL;
 
 const PASOS = [
@@ -133,23 +134,25 @@ export default function OnboardingTona({ userId, onCompletado }) {
     try {
       // Guardar config en el backend
       await fetch(`${API}/agent/config/${userId}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          nombre_usuario:        config.nombre_usuario,
-          nombre_agente:         config.nombre_agente,
-          tono:                  config.tono,
-          onboarding_completado: true,
-        }),
-      });
+  method: "POST",
+  credentials: "include",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    nombre_usuario: config.nombre_usuario,
+    nombre_agente: config.nombre_agente,
+    tono: config.tono,
+    onboarding_completado: true,
+  }),
+});
 
       // Guardar sitios si los hay
       for (const sitio of sitiosAgregados) {
         await fetch(`${API}/tasks/sitios/${userId}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(sitio),
-        });
+  method: "POST",
+  credentials: "include",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(sitio),
+});
       }
 
       // Animación de salida

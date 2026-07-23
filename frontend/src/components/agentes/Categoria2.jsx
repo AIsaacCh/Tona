@@ -4,6 +4,7 @@ import { T } from "../../tokens";
 import { agenteBus } from "../AgenteTona";
 import MicTona from "../MicTona";
 
+
 const API = import.meta.env.VITE_API_URL;
 
 // ── VistaShell ────────────────────────────────────────────────────────────────
@@ -192,7 +193,10 @@ export function VistaListaTareas() {
     if (!id) return;
     setData((prev) => prev.map((t) => t.id === id ? { ...t, done: true } : t));
     try {
-      await fetch(`${API}/tasks/completar/${userId}/${id}`, { method: "POST" });
+      await fetch(`${API}/tasks/completar/${userId}/${id}`, {
+  method: "POST",
+  credentials: "include",
+});
     } catch (e) {
       console.error("Error completando tarea:", e);
     }
@@ -562,7 +566,7 @@ export function VistaMaterias() {
         setData({ nombre: p.nombre || "Cargando...", tareas: [], anuncios: [], pendientes: 0 });
         setTab("tareas");
         try {
-          const resp = await fetch(`${API}/tasks/materia/${userId}/${p.curso_id}`);
+          const resp = await fetch(`${API}/tasks/materia/${userId}/${p.curso_id}`, { credentials: "include" });
           if (resp.ok) {
             const det = await resp.json();
             setData({
@@ -589,7 +593,7 @@ export function VistaMaterias() {
         setData({ ...MATERIA_MOCK, nombre: p.nombre });
         setTab("tareas");
         try {
-          const resp = await fetch(`${API}/tasks/cursos/${userId}`);
+          const resp = await fetch(`${API}/tasks/cursos/${userId}`, { credentials: "include" });
           if (resp.ok) {
             const d = await resp.json();
             setCursos(d.cursos || []);

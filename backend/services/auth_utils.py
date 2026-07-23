@@ -1,10 +1,11 @@
 import jwt
 from datetime import datetime, timedelta
-from fastapi import HTTPException, Header
+from fastapi import HTTPException, Request, Response
 from config import settings
 
 ALGORITHM = "HS256"
 EXPIRACION_HORAS = 24 * 7  # 7 días
+COOKIE_NAME = "tona_session"
 
 
 def crear_token(user_id: str) -> str:
@@ -16,7 +17,6 @@ def crear_token(user_id: str) -> str:
 
 
 def decodificar_token(token: str) -> str:
-    """Regresa el user_id si el token es válido, lanza excepción si no."""
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
         return payload["sub"]
@@ -26,20 +26,34 @@ def decodificar_token(token: str) -> str:
         raise HTTPException(status_code=401, detail="Token inválido")
 
 
-def verificar_identidad(user_id: str, authorization: str = Header(None)) -> str:
-    """
-    Dependency de FastAPI: verifica que el token en el header Authorization
-    corresponda al mismo user_id que se está pidiendo en la ruta.
-    Úsalo así en cualquier endpoint: user_id: str = Depends(verificar_identidad)
-    (FastAPI inyecta automáticamente el user_id del path para comparar)
-    """
-    if not authorization or not authorization.startswith("Bearer "):
+def establecer_cookie_sesion(response: Response, user_id: str):
+    token = crear_token(user_id)
+    es_produccion = settings.ENVIRONMENT == "production"
+    response.set_cookie(
+        key=COOKIE_NAME,
+        value=token,
+        httponly=True,
+        secure=es_produccion,
+        samesite="none" if es_produccion else "lax",
+        max_age=EXPIRACION_HORAS * 3600,
+        path="/",
+    )
+
+
+def obtener_user_id_de_cookie(request: Request) -> str:
+    """Extrae y valida el user_id desde la cookie de sesión."""
+    token = request.cookies.get(COOKIE_NAME)
+    if not token:
         raise HTTPException(status_code=401, detail="No autenticado")
+    return decodificar_token(token)
 
-    token = authorization.replace("Bearer ", "", 1)
-    user_id_del_token = decodificar_token(token)
 
-    if user_id_del_token != user_id:
+def verificar_identidad(user_id: str, request: Request) -> str:
+    """
+    Dependency de FastAPI: verifica que la cookie de sesión corresponda
+    al mismo user_id que se pide en la ruta.
+    """
+    user_id_de_cookie = obtener_user_id_de_cookie(request)
+    if user_id_de_cookie != user_id:
         raise HTTPException(status_code=403, detail="No autorizado para este usuario")
-
     return user_id

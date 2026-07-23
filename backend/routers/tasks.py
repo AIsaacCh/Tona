@@ -1,5 +1,6 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
+from services.auth_utils import verificar_identidad
 from services.db import (
     obtener_usuario, guardar_tareas, obtener_tareas,
     guardar_cache, obtener_cache,
@@ -157,7 +158,7 @@ def calcular_urgencia(fecha_limite: str) -> str:
 # ── Sync Google (Classroom + Calendar) ───────────────────────────────────────
 
 @router.get("/sync/{user_id}")
-async def sincronizar_todo(user_id: str):
+async def sincronizar_todo(user_id: str, _: str = Depends(verificar_identidad)):
     tareas_classroom = await _obtener_classroom(user_id)
     eventos_calendar = await _obtener_calendar(user_id)
 
@@ -282,7 +283,7 @@ async def _obtener_calendar(user_id: str) -> list:
 # ── Gmail ─────────────────────────────────────────────────────────────────────
 
 @router.get("/gmail/{user_id}")
-async def obtener_gmail(user_id: str, max_resultados: int = 10):
+async def obtener_gmail(user_id: str, max_resultados: int = 10, _: str = Depends(verificar_identidad)):
     cached = obtener_cache(user_id, "gmail")
     if cached:
         return cached
@@ -339,7 +340,7 @@ async def obtener_gmail(user_id: str, max_resultados: int = 10):
         return {"correos": [], "total_no_leidos": 0}
 
 @router.get("/gmail/buscar/{user_id}")
-async def buscar_gmail_por_tema(user_id: str, tema: str, dias: int=14):
+async def buscar_gmail_por_tema(user_id: str, tema: str, dias: int = 14, _: str = Depends(verificar_identidad)):
     """
     Busca correos por tema, filtrando por antigüedad (Gmail hace el filtro nativo).
     Si el usuario no especifica días, default a 14 (2 semanas).
@@ -397,7 +398,7 @@ class EnviarCorreoRequest(BaseModel):
     cuerpo:str
 
 @router.post("/gmail/enviar/{user_id}")
-async def enviar_correo(user_id:str, body: EnviarCorreoRequest):
+async def enviar_correo(user_id: str, body: EnviarCorreoRequest, _: str = Depends(verificar_identidad)):
     """
     Envía un correo real usando el scope gmail.send ya autorizado.
     """
@@ -438,7 +439,7 @@ async def enviar_correo(user_id:str, body: EnviarCorreoRequest):
 # ── Google Drive ──────────────────────────────────────────────────────────────
 
 @router.get("/drive/{user_id}")
-async def obtener_drive(user_id: str):
+async def obtener_drive(user_id: str, _: str = Depends(verificar_identidad)):
     cached = obtener_cache(user_id, "drive")
     if cached:
         return cached
@@ -492,12 +493,12 @@ async def obtener_drive(user_id: str):
 # ── Sitios monitoreados ───────────────────────────────────────────────────────
 
 @router.get("/sitios/{user_id}")
-async def listar_sitios(user_id: str):
+async def listar_sitios(user_id: str, _: str = Depends(verificar_identidad)):
     return {"sitios": obtener_sitios(user_id)}
 
 
 @router.post("/sitios/{user_id}")
-async def crear_sitio(user_id: str, body: SitioMonitoreo):
+async def crear_sitio(user_id: str, body: SitioMonitoreo, _: str = Depends(verificar_identidad)):
     usuario = obtener_usuario(user_id)
     if not usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
@@ -514,13 +515,13 @@ async def crear_sitio(user_id: str, body: SitioMonitoreo):
 
 
 @router.delete("/sitios/{user_id}/{sitio_id}")
-async def borrar_sitio(user_id: str, sitio_id: str):
+async def borrar_sitio(user_id: str, sitio_id: str, _: str = Depends(verificar_identidad)):
     eliminar_sitio(user_id, sitio_id)
     return {"eliminado": True}
 
 
 @router.post("/sitios/{user_id}/{sitio_id}/revisar")
-async def revisar_sitio_ahora(user_id: str, sitio_id: str):
+async def revisar_sitio_ahora(user_id: str, sitio_id: str, _: str = Depends(verificar_identidad)):
     """Fuerza revisión inmediata de un sitio."""
     from services.scheduler import _revisar_sitio
     resultado = await _revisar_sitio(user_id, sitio_id)
@@ -530,7 +531,7 @@ async def revisar_sitio_ahora(user_id: str, sitio_id: str):
 # ── Tareas manuales ───────────────────────────────────────────────────────────
 
 @router.post("/manual/{user_id}")
-async def crear_tarea_manual(user_id: str, body: TareaManual):
+async def crear_tarea_manual(user_id: str, body: TareaManual, _: str = Depends(verificar_identidad)):
     usuario = obtener_usuario(user_id)
     if not usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
@@ -553,7 +554,7 @@ async def crear_tarea_manual(user_id: str, body: TareaManual):
 
 
 @router.delete("/manual/{user_id}/{tarea_id}")
-async def eliminar_tarea_manual(user_id: str, tarea_id: str):
+async def eliminar_tarea_manual(user_id: str, tarea_id: str, _: str = Depends(verificar_identidad)):
     tareas = obtener_tareas(user_id)
     tarea  = next((t for t in tareas if t.get("id") == tarea_id), None)
     if not tarea:
@@ -565,7 +566,7 @@ async def eliminar_tarea_manual(user_id: str, tarea_id: str):
 
 
 @router.post("/completar/{user_id}/{tarea_id}")
-async def completar_tarea(user_id: str, tarea_id: str):
+async def completar_tarea(user_id: str, tarea_id: str, _: str = Depends(verificar_identidad)):
     tareas = obtener_tareas(user_id)
     for t in tareas:
         if t.get("id") == tarea_id:
@@ -577,7 +578,7 @@ async def completar_tarea(user_id: str, tarea_id: str):
 # ── Crear evento en Google Calendar ──────────────────────────────────────────
 
 @router.post("/evento/{user_id}")
-async def crear_evento_calendar(user_id: str, body: EventoCalendar):
+async def crear_evento_calendar(user_id: str, body: EventoCalendar, _: str = Depends(verificar_identidad)):
     try:
         headers = await get_google_headers(user_id)
 
@@ -633,7 +634,7 @@ async def crear_evento_calendar(user_id: str, body: EventoCalendar):
 # ── Detalle de materia (Classroom) ────────────────────────────────────────────
 
 @router.get("/materia/{user_id}/{curso_id}")
-async def obtener_detalle_materia(user_id: str, curso_id: str):
+async def obtener_detalle_materia(user_id: str, curso_id: str, _: str = Depends(verificar_identidad)):
     try:
         headers = await get_google_headers(user_id)
 
@@ -690,7 +691,7 @@ async def obtener_detalle_materia(user_id: str, curso_id: str):
 
 
 @router.get("/cursos/{user_id}")
-async def obtener_cursos(user_id: str):
+async def obtener_cursos(user_id: str, _: str = Depends(verificar_identidad)):
     try:
         headers = await get_google_headers(user_id)
         async with httpx.AsyncClient() as client:
@@ -713,7 +714,7 @@ async def obtener_cursos(user_id: str):
 # ── Diagnóstico y renovación manual de token ────────────────────────────────
 
 @router.get("/token_status/{user_id}")
-async def token_status(user_id: str):
+async def token_status(user_id: str, _: str = Depends(verificar_identidad)):
     """Diagnóstico del estado del token de acceso."""
     usuario = obtener_usuario(user_id)
     if not usuario:
@@ -759,7 +760,7 @@ async def token_status(user_id: str):
 
 
 @router.post("/refresh_token/{user_id}")
-async def refresh_token_manual(user_id: str):
+async def refresh_token_manual(user_id: str, _: str = Depends(verificar_identidad)):
     """Renueva manualmente el token de acceso."""
     print(f"🔄 Refresh manual solicitado para {user_id}")
     usuario = obtener_usuario(user_id)
@@ -805,7 +806,7 @@ async def refresh_token_manual(user_id: str):
 
 
 @router.get("/{user_id}")
-async def obtener_tareas_usuario(user_id: str):
+async def obtener_tareas_usuario(user_id: str, _: str = Depends(verificar_identidad)):
     tareas = obtener_tareas(user_id)
     return {
         "tareas":   tareas,

@@ -4,6 +4,7 @@ import anime from "animejs";
 import { T } from "../tokens";
 import { agenteBus } from "./AgenteTona";
 
+
 const API = import.meta.env.VITE_API_URL;
 
 export default function PanelConfiguracion({ userId, onCerrar }) {
@@ -34,9 +35,9 @@ export default function PanelConfiguracion({ userId, onCerrar }) {
   async function cargar() {
     try {
       const [rc, rs] = await Promise.all([
-        fetch(`${API}/agent/config/${userId}`).then((r) => r.json()),
-        fetch(`${API}/tasks/sitios/${userId}`).then((r) => r.json()),
-      ]);
+  fetch(`${API}/agent/config/${userId}`, { credentials: "include" }).then((r) => r.json()),
+  fetch(`${API}/tasks/sitios/${userId}`, { credentials: "include" }).then((r) => r.json()),
+]);
       setConfig(rc);
       setSitios(rs.sitios || []);
     } catch (e) {
@@ -48,10 +49,11 @@ export default function PanelConfiguracion({ userId, onCerrar }) {
     setGuardando(true);
     try {
       await fetch(`${API}/agent/config/${userId}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(config),
-      });
+  method: "POST",
+  credentials: "include",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(config),
+});
       agenteBus.emit("flash", { mensaje: "Configuración guardada", tipo: "exito" });
     } catch (e) {
       agenteBus.emit("flash", { mensaje: "Error guardando configuración", tipo: "error" });
@@ -64,10 +66,11 @@ export default function PanelConfiguracion({ userId, onCerrar }) {
     if (!nuevaUrl.trim() || !nuevoAlias.trim()) return;
     try {
       const resp = await fetch(`${API}/tasks/sitios/${userId}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: nuevaUrl.trim(), alias: nuevoAlias.trim(), frecuencia: nuevaPeriodo }),
-      });
+  method: "POST",
+  credentials: "include",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ url: nuevaUrl.trim(), alias: nuevoAlias.trim(), frecuencia: nuevaPeriodo }),
+});
       if (resp.ok) {
         setNuevaUrl(""); setNuevoAlias(""); setNuevaPeriodo("semanal");
         await cargar();
@@ -80,7 +83,10 @@ export default function PanelConfiguracion({ userId, onCerrar }) {
 
   async function eliminarSitio(id) {
     try {
-      await fetch(`${API}/tasks/sitios/${userId}/${id}`, { method: "DELETE" });
+      await fetch(`${API}/tasks/sitios/${userId}/${id}`, {
+  method: "DELETE",
+  credentials: "include",
+});
       setSitios((prev) => prev.filter((s) => s.id !== id));
     } catch (e) {
       agenteBus.emit("flash", { mensaje: "Error eliminando sitio", tipo: "error" });
@@ -90,7 +96,10 @@ export default function PanelConfiguracion({ userId, onCerrar }) {
   async function revisarSitioAhora(id) {
     agenteBus.emit("flash", { mensaje: "Revisando sitio...", tipo: "info" });
     try {
-      const resp = await fetch(`${API}/tasks/sitios/${userId}/${id}/revisar`, { method: "POST" });
+      const resp = await fetch(`${API}/tasks/sitios/${userId}/${id}/revisar`, {
+  method: "POST",
+  credentials: "include",
+});
       const data = await resp.json();
       if (data.cambio) {
         agenteBus.emit("flash", { mensaje: `Cambio detectado: ${data.resumen?.slice(0, 60)}`, tipo: "urgente" });

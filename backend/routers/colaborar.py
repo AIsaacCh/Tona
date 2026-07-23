@@ -1,6 +1,5 @@
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, Depends, Header
-from services.auth_utils import decodificar_token, verificar_identidad
-from services.auth_utils import verificar_identidad
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, Depends, Header,Request
+from services.auth_utils import decodificar_token, verificar_identidad,obtener_user_id_de_cookie
 from pydantic import BaseModel
 from typing import Optional
 import random
@@ -80,7 +79,6 @@ manager = ConnectionManager()
 
 @router.post("/crear")
 async def crear_sesion(body: CrearSesionRequest, authorization: str = Header(None)):
-    from services.auth_utils import decodificar_token
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="No autenticado")
     token_user_id = decodificar_token(authorization.replace("Bearer ", "", 1))
@@ -102,10 +100,8 @@ async def crear_sesion(body: CrearSesionRequest, authorization: str = Header(Non
 
 
 @router.post("/unirse")
-async def unirse_sesion(body: UnirseSesionRequest, authorization: str = Header(None)):
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="No autenticado")
-    token_user_id = decodificar_token(authorization.replace("Bearer ", "", 1))
+async def unirse_sesion(body: UnirseSesionRequest, request: Request):
+    token_user_id = obtener_user_id_de_cookie(request)
     if token_user_id != body.user_id:
         raise HTTPException(status_code=403, detail="No autorizado")
 
@@ -164,10 +160,8 @@ async def estado_sesion(codigo: str):
 
 
 @router.post("/{codigo}/compartir")
-async def compartir_archivo(codigo: str, body: CompartirArchivoRequest, authorization: str = Header(None)):
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="No autenticado")
-    token_user_id = decodificar_token(authorization.replace("Bearer ", "", 1))
+async def compartir_archivo(codigo: str, body: CompartirArchivoRequest, request: Request):
+    token_user_id = obtener_user_id_de_cookie(request)
     if token_user_id != body.user_id:
         raise HTTPException(status_code=403, detail="No autorizado")
 
@@ -206,10 +200,8 @@ class CerrarSesionRequest(BaseModel):
 
 
 @router.post("/{codigo}/cerrar")
-async def cerrar_sesion(codigo: str, body: CerrarSesionRequest, authorization: str = Header(None)):
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="No autenticado")
-    token_user_id = decodificar_token(authorization.replace("Bearer ", "", 1))
+async def cerrar_sesion(codigo: str, body: CerrarSesionRequest, request: Request):
+    token_user_id = obtener_user_id_de_cookie(request)
     if token_user_id != body.user_id:
         raise HTTPException(status_code=403, detail="No autorizado")
 
@@ -231,10 +223,8 @@ class AbandonarRequest(BaseModel):
 
 
 @router.post("/{codigo}/abandonar")
-async def abandonar_sesion(codigo: str, body: AbandonarRequest, authorization: str = Header(None)):
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="No autenticado")
-    token_user_id = decodificar_token(authorization.replace("Bearer ", "", 1))
+async def abandonar_sesion(codigo: str, body: AbandonarRequest, request: Request):
+    token_user_id = obtener_user_id_de_cookie(request)
     if token_user_id != body.user_id:
         raise HTTPException(status_code=403, detail="No autorizado")
 
@@ -256,10 +246,8 @@ async def abandonar_sesion(codigo: str, body: AbandonarRequest, authorization: s
 
 
 @router.post("/{codigo}/preguntar")
-async def preguntar_tona(codigo: str, body: PreguntarTonaRequest, authorization: str = Header(None)):
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="No autenticado")
-    token_user_id = decodificar_token(authorization.replace("Bearer ", "", 1))
+async def preguntar_tona(codigo: str, body: PreguntarTonaRequest, request: Request):
+    token_user_id = obtener_user_id_de_cookie(request)
     if token_user_id != body.user_id:
         raise HTTPException(status_code=403, detail="No autorizado")
 
@@ -312,7 +300,8 @@ Responde de forma breve y útil, en español, enfocándote en ayudar con la estr
 # ── WebSocket ─────────────────────────────────────────────────────────────────
 
 @router.websocket("/ws/{codigo}/{user_id}")
-async def websocket_sala(ws: WebSocket, codigo: str, user_id: str, token: str = None):
+async def websocket_sala(ws: WebSocket, codigo: str, user_id: str):
+    token = ws.cookies.get("tona_session")
     try:
         if not token or decodificar_token(token) != user_id:
             await ws.close(code=4003)

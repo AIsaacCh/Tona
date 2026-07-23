@@ -1,4 +1,5 @@
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, HTTPException, UploadFile, File, Depends
+from services.auth_utils import verificar_identidad
 from pydantic import BaseModel
 from typing import Optional, List
 from services.db import obtener_horario, guardar_horario_completo, agregar_clase_horario, eliminar_clase_horario
@@ -22,24 +23,25 @@ class HorarioCompleto(BaseModel):
 
 
 @router.get("/{user_id}")
-async def listar_horario(user_id: str):
+async def listar_horario(user_id: str, _: str = Depends(verificar_identidad)):
     return {"horario": obtener_horario(user_id)}
 
 
 @router.post("/{user_id}/manual")
-async def agregar_clase(user_id: str, body: ClaseManual):
+async def agregar_clase(user_id: str, body: ClaseManual, _: str = Depends(verificar_identidad)):
     clase = agregar_clase_horario(user_id, body.model_dump())
     return {"agregada": True, "clase": clase}
 
 
 @router.delete("/{user_id}/{clase_id}")
-async def eliminar_clase(user_id: str, clase_id: str):
+async def eliminar_clase(user_id: str, clase_id: str, _: str = Depends(verificar_identidad)):
     eliminar_clase_horario(user_id, clase_id)
     return {"eliminada": True}
 
 
 @router.post("/{user_id}/analizar")
-async def analizar_horario_archivo(user_id: str, file: UploadFile = File(...)):
+async def analizar_horario_archivo(user_id: str, file: UploadFile = File(...), _: str = Depends(verificar_identidad)):
+
     """
     Recibe una imagen o PDF, le pide a Gemini que extraiga el horario.
     Regresa las clases propuestas SIN guardarlas — el usuario debe confirmar.
@@ -121,7 +123,7 @@ Reglas:
 
 
 @router.post("/{user_id}/confirmar")
-async def confirmar_horario(user_id: str, body: HorarioCompleto, reemplazar: bool = True):
+async def confirmar_horario(user_id: str, body: HorarioCompleto, reemplazar: bool = True, _: str = Depends(verificar_identidad)):
     """
     Guarda las clases confirmadas por el usuario después de revisar la propuesta de la IA.
     reemplazar=True → reemplaza todo el horario existente

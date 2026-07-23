@@ -4,7 +4,7 @@ import { T } from "../tokens";
 import { PanelParticipantes } from "../components/colaborar/PanelParticipantes";
 import { ChatSala } from "../components/colaborar/ChatSala";
 import { PanelArchivosSala } from "../components/colaborar/PanelArchivosSala";
-import { authHeaders } from "../utils/authFetch";
+
 
 
 
@@ -38,7 +38,8 @@ export default function Colaborar() {
   try {
    const resp = await fetch(`${API}/colaborar/unirse`, {
   method: "POST",
-  headers: { "Content-Type": "application/json", ...authHeaders() },
+  credentials: "include",
+  headers: { "Content-Type": "application/json" },
   body: JSON.stringify({ user_id: userId, codigo }),
 });
 
@@ -91,9 +92,9 @@ async function reproducirVoz(texto) {
 }
 
   function conectarWebSocket() {
-  const token = localStorage.getItem("tona_token");
-  const ws = new WebSocket(`${WS_API}/colaborar/ws/${codigo}/${userId}?token=${token}`);
+  const ws = new WebSocket(`${WS_API}/colaborar/ws/${codigo}/${userId}`);
   wsRef.current = ws;
+  
   
 
     ws.onmessage = (event) => {
@@ -137,7 +138,8 @@ async function reproducirVoz(texto) {
     try {
       await fetch(`${API}/colaborar/${codigo}/cerrar`, {
   method: "POST",
-  headers: { "Content-Type": "application/json", ...authHeaders() },
+  credentials: "include",
+  headers: { "Content-Type": "application/json" },
   body: JSON.stringify({ user_id: userId }),
 });
     } catch (e) {
@@ -150,7 +152,8 @@ async function reproducirVoz(texto) {
   try {
    await fetch(`${API}/colaborar/${codigo}/abandonar`, {
   method: "POST",
-  headers: { "Content-Type": "application/json", ...authHeaders() },
+  credentials: "include",
+  headers: { "Content-Type": "application/json" },
   body: JSON.stringify({ user_id: userId }),
 });
   } catch (e) {

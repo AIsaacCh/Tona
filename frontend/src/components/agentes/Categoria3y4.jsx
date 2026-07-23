@@ -4,6 +4,7 @@ import anime from "animejs";
 import { T } from "../../tokens";
 import { agenteBus } from "../AgenteTona";
 
+
 const API = import.meta.env.VITE_API_URL;
 
 // ── FormShell ─────────────────────────────────────────────────────────────────
@@ -127,15 +128,16 @@ export function FormNuevaTarea() {
     setGuardando(true);
     try {
       const resp = await fetch(`${API}/tasks/manual/${userId}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          titulo: titulo.trim(),
-          fecha_limite: fecha,
-          prioridad: prioridad.toLowerCase(),
-          resumen: titulo.trim(),
-        }),
-      });
+  method: "POST",
+  credentials: "include",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    titulo: titulo.trim(),
+    fecha_limite: fecha,
+    prioridad: prioridad.toLowerCase(),
+    resumen: titulo.trim(),
+  }),
+});
       if (resp.ok) {
         agenteBus.emit("flash", { mensaje: `"${titulo}" guardada`, tipo: "exito" });
         setData(null);
@@ -209,16 +211,17 @@ export function FormNuevoRecordatorio() {
     setGuardando(true);
     try {
       const resp = await fetch(`${API}/tasks/evento/${userId}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          titulo: texto.trim(),
-          fecha,
-          hora,
-          descripcion: "Recordatorio creado desde Tona",
-          duracion_min: 30,
-        }),
-      });
+  method: "POST",
+  credentials: "include",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    titulo: texto.trim(),
+    fecha,
+    hora,
+    descripcion: "Recordatorio creado desde Tona",
+    duracion_min: 30,
+  }),
+});
       if (resp.ok) {
         agenteBus.emit("flash", { mensaje: "Recordatorio añadido al calendario", tipo: "exito" });
         setData(null);

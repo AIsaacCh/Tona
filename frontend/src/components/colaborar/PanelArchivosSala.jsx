@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { T } from "../../tokens";
-import { authHeaders } from "../../utils/authFetch";
+
+
 
 const API = import.meta.env.VITE_API_URL;
 
@@ -16,7 +17,7 @@ export function PanelArchivosSala({ codigo, userId, archivos, onArchivoCompartid
     setCargando(true);
     setMostrarLista(true);
     try {
-      const resp = await fetch(`${API}/docs/lista/${userId}`);
+      const resp = await fetch(`${API}/docs/lista/${userId}`, { credentials: "include" });
       if (resp.ok) {
         const data = await resp.json();
         setDocsPropios(data.docs || []);
@@ -34,7 +35,8 @@ export function PanelArchivosSala({ codigo, userId, archivos, onArchivoCompartid
   try {
     const resp = await fetch(`${API}/colaborar/${codigo}/compartir`, {
   method: "POST",
-  headers: { "Content-Type": "application/json", ...authHeaders() },
+  credentials: "include",
+  headers: { "Content-Type": "application/json" },
   body: JSON.stringify({ user_id: userId, doc_id: doc.id, titulo: doc.titulo }),
 });
     if (resp.ok) {
@@ -54,7 +56,8 @@ export function PanelArchivosSala({ codigo, userId, archivos, onArchivoCompartid
     try {
       await fetch(`${API}/colaborar/${codigo}/preguntar`, {
   method: "POST",
-  headers: { "Content-Type": "application/json", ...authHeaders() },
+  credentials: "include",
+  headers: { "Content-Type": "application/json" },
   body: JSON.stringify({ user_id: userId, pregunta: pregunta.trim() }),
 });
       onPreguntaTona?.();

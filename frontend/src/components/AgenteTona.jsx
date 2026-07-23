@@ -1,4 +1,6 @@
 import vozService from '../services/vozService';
+
+
 const API = import.meta.env.VITE_API_URL;
 
 const listeners = {};
@@ -27,10 +29,11 @@ export async function enviarMensajeChat(userId, texto) {
   agenteBus.emit("pensando_inicio", {});
   try {
     const resp = await fetch(`${API}/agent/chat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id: userId, mensaje: texto }),
-    });
+  method: "POST",
+  credentials: "include",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ user_id: userId, mensaje: texto }),
+});
     const data = await resp.json();
     console.log("📋 Data completa:", data);
     agenteBus.emit("pensando_fin", {});
@@ -76,14 +79,15 @@ agenteBus.on("ejecutar_creacion", async ({ accion, payload }) => {
   const userId = localStorage.getItem("tona_user_id") || "demo";
   agenteBus.emit("pensando_inicio", {});
   try {
-    const resp = await fetch(`${API}/agent/chat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        user_id: userId,
-        mensaje: `__ACCION_DIRECTA__:${JSON.stringify({ accion, payload })}`,
-      }),
-    });
+ const resp = await fetch(`${API}/agent/chat`, {
+  method: "POST",
+  credentials: "include",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    user_id: userId,
+    mensaje: `__ACCION_DIRECTA__:${JSON.stringify({ accion, payload })}`,
+  }),
+});
     const data = await resp.json();
     agenteBus.emit("pensando_fin", {});
     agenteBus.emit(data.accion, data.payload);

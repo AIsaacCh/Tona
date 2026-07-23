@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { T } from "../tokens";
-import { authHeaders } from "../utils/authFetch";
+
 
 
 const API = import.meta.env.VITE_API_URL;
@@ -19,7 +19,8 @@ export function PanelColaborar({ userId, onCerrar }) {
     try {
      const resp = await fetch(`${API}/colaborar/crear`, {
   method: "POST",
-  headers: { "Content-Type": "application/json", ...authHeaders() },
+  credentials: "include",
+  headers: { "Content-Type": "application/json" },
   body: JSON.stringify({ user_id: userId }),
 });
       if (resp.ok) {
@@ -45,7 +46,8 @@ export function PanelColaborar({ userId, onCerrar }) {
     try {
      const resp = await fetch(`${API}/colaborar/unirse`, {
   method: "POST",
-  headers: { "Content-Type": "application/json", ...authHeaders() },
+  credentials: "include",
+  headers: { "Content-Type": "application/json" },
   body: JSON.stringify({ user_id: userId, codigo: codigo.trim().toUpperCase() }),
 });
       if (resp.ok) {

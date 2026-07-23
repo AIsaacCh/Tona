@@ -1,7 +1,9 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException 
+from fastapi import Header, Depends, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Union
+from services.auth_utils import decodificar_token, verificar_identidad, obtener_user_id_de_cookie, verificar_identidad
 from services.gemini import enviar_mensaje
 from services.db import obtener_usuario, guardar_historial, obtener_historial, obtener_tareas, guardar_tareas
 from config import settings
@@ -241,7 +243,11 @@ async def obtener_archivos_drive_real(user_id: str, query: str = ""):
 
 
 @router.post("/chat", response_model=MensajeResponse)
-async def chat(request: MensajeRequest):
+async def chat(request_http: Request, request: MensajeRequest):
+    token_user_id = obtener_user_id_de_cookie(request_http)
+    if token_user_id != request.user_id:
+        raise HTTPException(status_code=403, detail="No autorizado")
+
     usuario = obtener_usuario(request.user_id)
     if not usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
@@ -256,7 +262,7 @@ async def chat(request: MensajeRequest):
             payload_directo = direct.get("payload", {})
             mensaje_resp = ""
 
-            if accion_directa in ("crear_tarea_real", "crear_evento_real", "guardar_config_onboarding"):
+            if accion_directa in ("crear_tarea_real", "crear_evento_real", "guardar_config_onboarding", "enviar_correo"):
                 dato = await ejecutar_accion_backend(accion_directa, payload_directo, request.user_id)
                 if dato:
                     accion_directa = "flash"
@@ -439,23 +445,22 @@ async def chat(request: MensajeRequest):
         if tema:
             try:
                 from routers.tasks import buscar_gmail_por_tema
-                data= await buscar_gmail_por_tema(request.user_id, tema, dias)
-                correos =data.get("correos", [])
-                payload=correos
+                data = await buscar_gmail_por_tema(request.user_id, tema, dias)
+                correos = data.get("correos", [])
+                payload = correos
                 if not mensaje:
                     if correos:
-                         mensaje=f"Encontré {len(correos)} correo(s) sobre '{tema}' en los ultimos {dias} días."
+                        mensaje = f"Encontré {len(correos)} correo(s) sobre '{tema}' en los últimos {dias} días."
                     else:
-                        mensaje=f"No encontré correos recientes sobre '{tema}."
-
-                flujo_activo=False
+                        mensaje = f"No encontré correos recientes sobre '{tema}'."
+                flujo_activo = False
             except Exception as e:
                 print(f"Error buscando correos por tema: {e}")
-                accion="flash"
-                payload={"mensaje":"Error buscando correos.", "tipo":"error"}
-                mensaje="Error buscando correos."
-                flujo_activo=False
-                
+                accion = "flash"
+                payload = {"mensaje": "Error buscando correos.", "tipo": "error"}
+                mensaje = "Error buscando correos."
+                flujo_activo = False
+
     elif accion == "ver_gmail":
         try:
             from routers.tasks import obtener_gmail
@@ -473,8 +478,7 @@ async def chat(request: MensajeRequest):
             accion = "flash"
             payload = {"mensaje": "Error obteniendo correos.", "tipo": "error"}
             mensaje = "Error obteniendo correos."
-            flujo_activo = False 
-                         
+            flujo_activo = False
 
     elif accion == "ver_archivos_drive":
         query = payload.get("query", "") if isinstance(payload, dict) else ""
@@ -506,7 +510,8 @@ async def chat(request: MensajeRequest):
 
 
 @router.get("/contexto/{user_id}")
-async def obtener_contexto(user_id: str):
+async def obtener_contexto(user_id: str, _: str = Depends(verificar_identidad)):
+
     usuario = obtener_usuario(user_id)
     if not usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
@@ -521,21 +526,21 @@ async def obtener_contexto(user_id: str):
 
 
 @router.get("/config/{user_id}")
-async def obtener_configuracion(user_id: str):
+async def obtener_configuracion(user_id: str, _: str = Depends(verificar_identidad)):
     from services.db import obtener_config
     config = obtener_config(user_id)
     return config
 
 
 @router.post("/config/{user_id}")
-async def guardar_configuracion(user_id: str, body: dict):
+async def guardar_configuracion(user_id: str, body: dict, _: str = Depends(verificar_identidad)):
     from services.db import guardar_config
     guardar_config(user_id, body)
     return {"guardado": True, "config": body}
 
 
 @router.delete("/historial/{user_id}")
-async def limpiar_historial(user_id: str):
+async def limpiar_historial(user_id: str, _: str = Depends(verificar_identidad)):
     guardar_historial(user_id, [])
     return {"mensaje": "Historial limpiado"}
 

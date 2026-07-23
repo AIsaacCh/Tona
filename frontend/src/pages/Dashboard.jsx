@@ -20,7 +20,7 @@ import PanelDocs from "../components/PanelDocs";
 import { PanelHorario } from "../components/PanelHorario";
 import { useNavigate } from "react-router-dom";
 import { PanelColaborar } from "../components/PanelColaborar";
-import { authHeaders } from "../utils/authFetch";
+
 
 
 import {
@@ -103,15 +103,21 @@ export default function Dashboard() {
   const [params] = useSearchParams();
   const userId = params.get("user_id") || localStorage.getItem("tona_user_id") || "demo";
 
-  const [onboarding, setOnboarding] = useState(null); // null = cargando
+  // ✅ Guardar token PRIMERO, antes de cualquier otra cosa
+  useEffect(() => {
+    const token = params.get("token");
+    if (token) {
+      localStorage.setItem("tona_token", token);
+    }
+  }, [params]);
+
+  const [onboarding, setOnboarding] = useState(null);
   const [panelConfig, setPanelConfig] = useState(false);
 
-  // ✅ Verificar onboarding
   useEffect(() => {
-
     const uid = localStorage.getItem("tona_user_id") || userId;
     if (uid && uid !== "demo") {
-      fetch(`${API}/agent/contexto/${uid}`)
+      fetch(`${API}/agent/contexto/${uid}`, { credentials: "include" })
         .then((r) => r.json())
         .then((data) => {
           setOnboarding(!data.onboarding_completado);
@@ -122,12 +128,9 @@ export default function Dashboard() {
     }
   }, [userId]);
 
-  useEffect(() => {
-  const token = params.get("token");
-  if (token) {
-    localStorage.setItem("tona_token", token);
-  }
-}, [params]);
+  
+
+ 
 
   // ✅ Escuchar evento para abrir configuración
   useEffect(() => {
@@ -187,7 +190,10 @@ function DashboardPrincipal({ userId, params, panelConfig, setPanelConfig }) {
   // ✅ Sincronizar Classroom + Calendar
   useEffect(() => {
     if (!userId || userId === "demo") return;
-    fetch(`${API}/tasks/sync/${userId}`, { method: "GET" })
+    fetch(`${API}/tasks/sync/${userId}`, {
+  method: "GET",
+  credentials: "include",
+})
       .then((r) => r.json())
       .then((data) => console.log("📚 Sync inicial:", data))
       .catch((e) => console.error("❌ Error sincronizando al cargar:", e));
@@ -339,8 +345,8 @@ function DashboardPrincipal({ userId, params, panelConfig, setPanelConfig }) {
 async function iniciarColaboracion() {
   try {
     const resp = await fetch(`${API}/colaborar/mi-sesion/${userId}`, {
-      headers: authHeaders(),
-    });
+  credentials: "include",
+});
     const data = await resp.json();
 
     if (data.codigo) {

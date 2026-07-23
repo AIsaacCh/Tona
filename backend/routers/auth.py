@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse, JSONResponse
 from google_auth_oauthlib.flow import Flow
 import httpx
-from services.auth_utils import crear_token
+from services.auth_utils import crear_token,establecer_cookie_sesion
 import os
 import secrets
 from datetime import datetime, timedelta
@@ -113,13 +113,11 @@ async def google_callback(code: str, state: str):
             'tier': 'estudiante',
         })
 
-    token = crear_token(user_id)
-
-
-    return RedirectResponse(
-        f"{settings.FRONTEND_URL}/dashboard?user_id={user_id}&name={user_info.get('name', '')}&token={token}"
-
+    response = RedirectResponse(
+        f"{settings.FRONTEND_URL}/dashboard?user_id={user_id}&name={user_info.get('name', '')}"
     )
+    establecer_cookie_sesion(response, user_id)
+    return response
 
 @router.get("/me")
 async def get_me(user_id: str):

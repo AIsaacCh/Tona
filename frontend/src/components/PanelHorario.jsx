@@ -3,6 +3,7 @@ import anime from "animejs";
 import { T } from "../tokens";
 import { agenteBus } from "./AgenteTona";
 
+
 const API = import.meta.env.VITE_API_URL;
 
 const DIAS_LABEL = {
@@ -54,9 +55,11 @@ export function PanelHorario({ onCerrar }) {
       formData.append("file", file);
 
       const resp = await fetch(`${API}/horario/${userId}/analizar`, {
-        method: "POST",
-        body: formData,
-      });
+  method: "POST",
+  credentials: "include",
+  body: formData,
+});
+   
 
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({}));
@@ -101,13 +104,14 @@ export function PanelHorario({ onCerrar }) {
 
     try {
       const resp = await fetch(
-        `${API}/horario/${userId}/confirmar?reemplazar=${reemplazar}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ clases: clasesPropuestas }),
-        }
-      );
+  `${API}/horario/${userId}/confirmar?reemplazar=${reemplazar}`,
+  {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ clases: clasesPropuestas }),
+  }
+);
 
       if (!resp.ok) throw new Error("No se pudo guardar el horario");
 
@@ -155,13 +159,14 @@ export function PanelHorario({ onCerrar }) {
 
     try {
       const resp = await fetch(
-        `${API}/horario/${userId}/confirmar?reemplazar=${reemplazar}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ clases: clasesAgregadas }),
-        }
-      );
+  `${API}/horario/${userId}/confirmar?reemplazar=${reemplazar}`,
+  {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ clases: clasesAgregadas }),
+  }
+);
 
       if (!resp.ok) throw new Error("No se pudo guardar el horario");
 

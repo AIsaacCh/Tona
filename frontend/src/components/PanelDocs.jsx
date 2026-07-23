@@ -3,6 +3,7 @@ import anime from "animejs";
 import { T } from "../tokens";
 import { agenteBus } from "./AgenteTona";
 
+
 const API = import.meta.env.VITE_API_URL;
 
 export default function PanelDocs({ userId, onCerrar }) {
@@ -48,7 +49,9 @@ export default function PanelDocs({ userId, onCerrar }) {
   async function cargarDocs() {
     setCargando(true);
     try {
-      const resp = await fetch(`${API}/docs/lista/${userId}`);
+      const resp = await fetch(`${API}/docs/lista/${userId}`, {
+  credentials: "include"
+});
       if (resp.ok) {
         const data = await resp.json();
         setDocs(data.docs || []);
@@ -73,7 +76,9 @@ export default function PanelDocs({ userId, onCerrar }) {
     setVista("editor");
     setSugerencia("");
     try {
-      const resp = await fetch(`${API}/docs/contenido/${userId}/${doc.id}`);
+      const resp = await fetch(`${API}/docs/contenido/${userId}/${doc.id}`, {
+  credentials: "include"
+});
       if (resp.ok) {
         const data = await resp.json();
         setContenido(data.contenido || "");
@@ -109,10 +114,11 @@ export default function PanelDocs({ userId, onCerrar }) {
     setGuardando(true);
     try {
       const resp = await fetch(`${API}/docs/crear/${userId}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ titulo, contenido: "" }),
-      });
+  method: "POST",
+  credentials: "include",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ titulo, contenido: "" }),
+});
       if (resp.ok) {
         const data = await resp.json();
         setDocActual({ id: data.doc_id, titulo, link: data.link });
@@ -144,14 +150,12 @@ export default function PanelDocs({ userId, onCerrar }) {
         // ✅ ACTUALIZAR DOCUMENTO EXISTENTE
         console.log(`📝 Actualizando documento existente: ${docActual.id} - ${tituloFinal}`);
         
-        const resp = await fetch(`${API}/docs/actualizar/${userId}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ 
-            doc_id: docActual.id, 
-            contenido: contenido 
-          }),
-        });
+       const resp = await fetch(`${API}/docs/actualizar/${userId}`, {
+  method: "POST",
+  credentials: "include",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ doc_id: docActual.id, contenido: contenido }),
+});
         
         if (resp.ok) {
           agenteBus.emit("flash", { mensaje: "Documento guardado.", tipo: "exito" });
@@ -166,13 +170,11 @@ export default function PanelDocs({ userId, onCerrar }) {
         console.log(`📝 Creando nuevo documento: ${tituloFinal}`);
         
         const resp = await fetch(`${API}/docs/crear/${userId}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ 
-            titulo: tituloFinal, 
-            contenido: contenido 
-          }),
-        });
+  method: "POST",
+  credentials: "include",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ titulo: tituloFinal, contenido: contenido }),
+});
         
         if (resp.ok) {
           const data = await resp.json();
@@ -208,8 +210,9 @@ export default function PanelDocs({ userId, onCerrar }) {
     
     try {
       const resp = await fetch(`${API}/docs/eliminar/${userId}/${docId}`, {
-        method: "DELETE",
-      });
+  method: "DELETE",
+  credentials: "include",
+});
       
       if (resp.ok) {
         agenteBus.emit("flash", { 
@@ -246,15 +249,16 @@ export default function PanelDocs({ userId, onCerrar }) {
     setSugerencia("");
     try {
       const resp = await fetch(`${API}/docs/sugerir/${userId}`, {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({
-          doc_id:           docActual?.id || null,
-          titulo:           titulo,
-          contenido_actual: contenido,
-          tipo:             tipoSuger,
-        }),
-      });
+  method: "POST",
+  credentials: "include",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    doc_id: docActual?.id || null,
+    titulo: titulo,
+    contenido_actual: contenido,
+    tipo: tipoSuger,
+  }),
+});
       if (resp.ok) {
         const data = await resp.json();
         setSugerencia(data.sugerencia);
@@ -302,7 +306,7 @@ export default function PanelDocs({ userId, onCerrar }) {
       setContenido("Cargando...");
       
       try {
-        const resp = await fetch(`${API}/docs/contenido/${userId}/${doc_id}`);
+        const resp = await fetch(`${API}/docs/contenido/${userId}/${doc_id}`, { credentials: "include" });
         if (resp.ok) {
           const data = await resp.json();
           setContenido(data.contenido || "");
