@@ -78,13 +78,12 @@ manager = ConnectionManager()
 # ── Endpoints REST ────────────────────────────────────────────────────────────
 
 @router.post("/crear")
-async def crear_sesion(body: CrearSesionRequest, authorization: str = Header(None)):
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="No autenticado")
-    token_user_id = decodificar_token(authorization.replace("Bearer ", "", 1))
+async def crear_sesion(body: CrearSesionRequest, request: Request):
+    token_user_id = obtener_user_id_de_cookie(request)
     if token_user_id != body.user_id:
         raise HTTPException(status_code=403, detail="No autorizado")
 
+    print(f"🔍 /crear llamado con user_id={body.user_id}")
     usuario = obtener_usuario(body.user_id)
     if not usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
