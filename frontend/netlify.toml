@@ -1,0 +1,6 @@
+[[redirects]]
+  from = "/api/*"
+  to = "https://tona-production-d9cc.up.railway.app/:splat"
+  status = 200
+  force = true
+  

@@ -9,7 +9,9 @@ import { PanelArchivosSala } from "../components/colaborar/PanelArchivosSala";
 
 
 const API = import.meta.env.VITE_API_URL;
-const WS_API = API.replace(/^http/, "ws");
+const WS_API = API.startsWith("/")
+  ? `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}${API}`
+  : API.replace(/^http/, "ws");
 
 export default function Colaborar() {
   const { codigo } = useParams();
