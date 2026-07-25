@@ -7,6 +7,7 @@ import string
 import httpx
 from services.db import supabase
 from config import settings
+from datetime import datetime, timezone
 from services.db import (
     obtener_usuario,
     crear_sesion_colaborativa,
@@ -124,6 +125,9 @@ async def unirse_sesion(body: UnirseSesionRequest, request: Request):
     if not ya_esta:
         agregar_participante(body.codigo, body.user_id, usuario.get("name", ""), usuario.get("email", ""))
 
+    supabase.table("colaboracion_sesiones").update({"vacia_desde": None}).eq("codigo", body.codigo).execute()
+        
+
     return {
         "codigo": body.codigo,
         "participantes": obtener_participantes(body.codigo),
@@ -235,14 +239,15 @@ async def abandonar_sesion(codigo: str, body: AbandonarRequest, request: Request
     restantes = obtener_participantes(codigo)
 
     if len(restantes) == 0:
-        marcar_sesion_inactiva(codigo)
-        supabase.table("colaboracion_mensajes").delete().eq("codigo", codigo).execute()
-    else:
-        await manager.broadcast(codigo, {
-            "tipo": "participante_salio",
-            "user_id": body.user_id,
-            "participantes": restantes,
-        })
+        supabase.table("colaboracion_sesiones").update(
+            {"vacia_desde": datetime.now(timezone.utc).isoformat()}
+        ).eq("codigo", codigo).execute()
+
+    await manager.broadcast(codigo, {
+        "tipo": "participante_salio",
+        "user_id": body.user_id,
+        "participantes": restantes,
+    })
 
     return {"abandonado": True}
 
@@ -344,16 +349,12 @@ async def websocket_sala(ws: WebSocket, codigo: str, user_id: str, token: str = 
         quitar_participante(codigo, user_id)
         restantes = obtener_participantes(codigo)
 
-        if len(restantes) == 0:
-            marcar_sesion_inactiva(codigo)
-            supabase.table("colaboracion_mensajes").delete().eq("codigo", codigo).execute()
-        else:
-            await manager.broadcast(codigo, {
-                "tipo": "participante_salio",
-                "user_id": user_id,
-                "nombre": nombre,
-                "participantes": restantes,
-            })
+        await manager.broadcast(codigo, {
+            "tipo": "participante_salio",
+            "user_id": user_id,
+            "nombre": nombre,
+            "participantes": restantes,
+        })
 
 
 @router.get("/ws-token")

@@ -1,8 +1,8 @@
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.cron import CronTrigger
-from services.db import obtener_todos_los_usuarios, obtener_tareas, obtener_usuario, obtener_sitios, guardar_sitios
-from datetime import datetime
+from services.db import obtener_todos_los_usuarios, obtener_tareas, obtener_usuario, obtener_sitios, guardar_sitios,supabase
+from datetime import datetime, timezone, timedelta
 import hashlib
 import httpx
 import json
@@ -19,12 +19,37 @@ def iniciar_scheduler():
     )
     scheduler.add_job(
         revisar_todos_los_sitios,
-        trigger=CronTrigger(hour=8, minute=0),   # cada día a las 8am
+        trigger=CronTrigger(hour=8, minute=0),
         id="revisar_sitios",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        cerrar_salas_vacias,
+        trigger=IntervalTrigger(minutes=15),
+        id="cerrar_salas_vacias",
         replace_existing=True,
     )
     scheduler.start()
     print("Scheduler iniciado")
+
+
+async def cerrar_salas_vacias():
+    try:
+        limite = (datetime.now(timezone.utc) - timedelta(minutes=30)).isoformat()
+        resp = supabase.table("colaboracion_sesiones") \
+            .select("codigo") \
+            .eq("activa", True) \
+            .not_.is_("vacia_desde", "null") \
+            .lt("vacia_desde", limite) \
+            .execute()
+
+        for fila in (resp.data or []):
+            codigo = fila["codigo"]
+            supabase.table("colaboracion_sesiones").update({"activa": False}).eq("codigo", codigo).execute()
+            supabase.table("colaboracion_mensajes").delete().eq("codigo", codigo).execute()
+            print(f"[Tona] Sala {codigo} cerrada por inactividad (vacía +30min)")
+    except Exception as e:
+        print(f"Error cerrando salas vacías: {e}")
 
 
 async def revisar_tareas_urgentes():
