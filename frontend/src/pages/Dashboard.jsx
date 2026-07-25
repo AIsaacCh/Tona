@@ -41,6 +41,8 @@ import {
 
 const API = import.meta.env.VITE_API_URL;
 
+
+
 function getTiempo() {
   const h = new Date().getHours();
   if (h >= 5 && h < 13) return "manana";
@@ -254,6 +256,7 @@ function DashboardPrincipal({ userId, params, panelConfig, setPanelConfig }) {
           const resp = await fetch(`${API}/agent/hablar`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
+            credentials: "include", 
             body: JSON.stringify({ texto }),
           });
           const blob = await resp.blob();

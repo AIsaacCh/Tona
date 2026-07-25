@@ -98,6 +98,9 @@ async def crear_sesion(body: CrearSesionRequest, request: Request):
     return {"codigo": codigo}
 
 
+
+
+
 @router.post("/unirse")
 async def unirse_sesion(body: UnirseSesionRequest, request: Request):
     token_user_id = obtener_user_id_de_cookie(request)

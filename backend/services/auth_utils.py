@@ -34,7 +34,7 @@ def establecer_cookie_sesion(response: Response, user_id: str):
         value=token,
         httponly=True,
         secure=es_produccion,
-        samesite="none" if es_produccion else "lax",
+        samesite="lax",
         max_age=EXPIRACION_HORAS * 3600,
         path="/",
     )
