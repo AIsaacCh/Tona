@@ -9,9 +9,7 @@ import { PanelArchivosSala } from "../components/colaborar/PanelArchivosSala";
 
 
 const API = import.meta.env.VITE_API_URL;
-const WS_API = API.startsWith("/")
-  ? `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}${API}`
-  : API.replace(/^http/, "ws");
+const WS_DIRECT_URL = import.meta.env.VITE_WS_DIRECT_URL; // wss://tona-production-d9cc.up.railway.app/api
 
 export default function Colaborar() {
   const { codigo } = useParams();
@@ -68,7 +66,7 @@ export default function Colaborar() {
     });
     setMensajes(historialCargado);
 
-    conectarWebSocket();
+    await conectarWebSocket();
     setCargando(false);
   } catch (e) {
     setError("Error de conexión");
@@ -93,8 +91,20 @@ async function reproducirVoz(texto) {
   }
 }
 
-  function conectarWebSocket() {
-  const ws = new WebSocket(`${WS_API}/colaborar/ws/${codigo}/${userId}`);
+  async function conectarWebSocket() {
+  let token;
+  try {
+    const resp = await fetch(`${API}/colaborar/ws-token`, { credentials: "include" });
+    const data = await resp.json();
+    token = data.token;
+  } catch (e) {
+    console.error("Error obteniendo ws-token:", e);
+    return;
+  }
+
+  const ws = new WebSocket(
+    `${WS_DIRECT_URL}/colaborar/ws/${codigo}/${userId}?token=${token}`
+  );
   wsRef.current = ws;
   
   

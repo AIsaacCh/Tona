@@ -1,5 +1,5 @@
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, Depends, Header,Request
-from services.auth_utils import decodificar_token, verificar_identidad,obtener_user_id_de_cookie
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, Depends, Header,Request, Query
+from services.auth_utils import decodificar_token, verificar_identidad,obtener_user_id_de_cookie, crear_token
 from pydantic import BaseModel
 from typing import Optional
 import random
@@ -302,8 +302,7 @@ Responde de forma breve y útil, en español, enfocándote en ayudar con la estr
 # ── WebSocket ─────────────────────────────────────────────────────────────────
 
 @router.websocket("/ws/{codigo}/{user_id}")
-async def websocket_sala(ws: WebSocket, codigo: str, user_id: str):
-    token = ws.cookies.get("tona_session")
+async def websocket_sala(ws: WebSocket, codigo: str, user_id: str, token: str = Query(...)):
     try:
         if not token or decodificar_token(token) != user_id:
             await ws.close(code=4003)
@@ -356,3 +355,10 @@ async def websocket_sala(ws: WebSocket, codigo: str, user_id: str):
                 "participantes": restantes,
             })
 
+
+@router.get("/ws-token")
+async def obtener_ws_token(request: Request):
+    user_id = obtener_user_id_de_cookie(request)
+    # token de vida corta, solo para autenticar el handshake del websocket
+    ticket = crear_token(user_id)  # reutilizamos el mismo JWT; podrías crear uno con exp más corto si quieres
+    return {"token": ticket}
