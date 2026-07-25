@@ -34,12 +34,12 @@ app.add_middleware(
 )
 
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
-app.include_router(agent.router, prefix="/agent", tags=["agent"])
-app.include_router(tasks.router, prefix="/tasks", tags=["tasks"])
-app.include_router(users.router, prefix="/users", tags=["users"])
-app.include_router(docs.router, prefix="/docs", tags=["docs"])
-app.include_router(horario.router, prefix="/horario", tags=["horario"])
-app.include_router(colaborar.router, prefix="/colaborar", tags=["colaborar"])
+app.include_router(agent.router, prefix="/api/agent", tags=["agent"])
+app.include_router(tasks.router, prefix="/api/tasks", tags=["tasks"])
+app.include_router(users.router, prefix="/api/users", tags=["users"])
+app.include_router(docs.router, prefix="/api/docs", tags=["docs"])
+app.include_router(horario.router, prefix="/api/horario", tags=["horario"])
+app.include_router(colaborar.router, prefix="/api/colaborar", tags=["colaborar"])
 
 
 @app.get("/")
