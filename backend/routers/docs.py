@@ -325,6 +325,53 @@ async def _insertar_texto(headers: dict, doc_id: str, texto: str):
         print(f"❌ Error en _insertar_texto: {e}")
         raise
 
+async def _mover_a_carpeta(headers: dict, doc_id: str, folder_id: str):
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"https://www.googleapis.com/drive/v3/files/{doc_id}",
+            headers=headers, params={"fields": "parents"},
+        )
+        parents_actuales = ",".join(resp.json().get("parents", [])) if resp.status_code == 200 else ""
+
+        await client.patch(
+            f"https://www.googleapis.com/drive/v3/files/{doc_id}",
+            headers=headers,
+            params={"addParents": folder_id, "removeParents": parents_actuales},
+        )
+
+
+class CrearArchivoTareaRequest(BaseModel):
+    tarea_id: str
+    titulo_tarea: str
+    curso_id: str
+
+
+@router.post("/crear_para_tarea/{user_id}")
+async def crear_doc_para_tarea(user_id: str, body: CrearArchivoTareaRequest, _: str = Depends(verificar_identidad)):
+    from services.db import obtener_carpeta_clase, vincular_archivo_tarea
+
+    carpeta = obtener_carpeta_clase(user_id, body.curso_id)
+    if not carpeta:
+        raise HTTPException(status_code=400, detail="Esta clase no tiene carpeta en Drive todavía.")
+
+    headers = await get_headers(user_id)
+    titulo_doc = f"{body.titulo_tarea} — entrega"
+
+    resp_crear = await __import__("httpx").AsyncClient().post(
+        "https://docs.googleapis.com/v1/documents",
+        headers={**headers, "Content-Type": "application/json"},
+        json={"title": titulo_doc},
+    )
+    if resp_crear.status_code not in (200, 201):
+        raise HTTPException(status_code=500, detail=f"Error creando doc: {resp_crear.text}")
+
+    doc_id = resp_crear.json().get("documentId")
+    await _mover_a_carpeta(headers, doc_id, carpeta["drive_folder_id"])
+
+    link = f"https://docs.google.com/document/d/{doc_id}/edit"
+    vincular_archivo_tarea(user_id, body.tarea_id, doc_id, titulo_doc, link, body.curso_id)
+
+    return {"creado": True, "doc_id": doc_id, "titulo": titulo_doc, "link": link}        
 
 # ── Exportar como .docx ───────────────────────────────────────────────────────
 

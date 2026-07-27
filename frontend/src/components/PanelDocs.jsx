@@ -3,11 +3,10 @@ import anime from "animejs";
 import { T } from "../tokens";
 import { agenteBus } from "./AgenteTona";
 
-
 const API = import.meta.env.VITE_API_URL;
 
 export default function PanelDocs({ userId, onCerrar }) {
-  const [vista,        setVista]        = useState("lista");   // lista | editor
+  const [vista,        setVista]        = useState("lista");   // lista | editor | carpeta
   const [docs,         setDocs]         = useState([]);
   const [cargando,     setCargando]     = useState(true);
   const [docActual,    setDocActual]    = useState(null);
@@ -19,6 +18,10 @@ export default function PanelDocs({ userId, onCerrar }) {
   const [tipoSuger,    setTipoSuger]    = useState("continuar");
   const [creandoNuevo, setCreandoNuevo] = useState(false);
   const [nuevoTitulo,  setNuevoTitulo]  = useState("");
+  const [clases, setClases] = useState([]);
+  const [carpetaActual, setCarpetaActual] = useState(null);
+  const [archivosCarpeta, setArchivosCarpeta] = useState([]);
+  const [cargandoCarpeta, setCargandoCarpeta] = useState(false);
 
   const ref        = useRef(null);
   const overlayRef = useRef(null);
@@ -41,17 +44,25 @@ export default function PanelDocs({ userId, onCerrar }) {
     return agenteBus.on("cerrar_todo", cerrar);
   }, [cerrar]);
 
-  // ── Cargar lista de docs ──────────────────────────────────────────────────
+  // ── Cargar lista de docs y clases ────────────────────────────────────────
   useEffect(() => {
     cargarDocs();
+    cargarClases();
   }, []);
+
+  async function cargarClases() {
+    try {
+      const resp = await fetch(`${API}/tasks/drive/clases/${userId}`, { credentials: "include" });
+      if (resp.ok) setClases((await resp.json()).clases || []);
+    } catch (e) { console.error("Error cargando clases:", e); }
+  }
 
   async function cargarDocs() {
     setCargando(true);
     try {
       const resp = await fetch(`${API}/docs/lista/${userId}`, {
-  credentials: "include"
-});
+        credentials: "include"
+      });
       if (resp.ok) {
         const data = await resp.json();
         setDocs(data.docs || []);
@@ -61,6 +72,23 @@ export default function PanelDocs({ userId, onCerrar }) {
     } finally {
       setCargando(false);
     }
+  }
+
+  // ── Abrir carpeta de clase ────────────────────────────────────────────────
+  async function abrirCarpetaClase(clase) {
+    setCarpetaActual(clase);
+    setVista("carpeta");
+    setCargandoCarpeta(true);
+    try {
+      const resp = await fetch(`${API}/tasks/drive/carpeta/${userId}/${clase.curso_id}`, { credentials: "include" });
+      if (resp.ok) setArchivosCarpeta((await resp.json()).archivos || []);
+    } catch (e) { console.error("Error cargando carpeta:", e); }
+    finally { setCargandoCarpeta(false); }
+  }
+
+  function abrirArchivoCarpeta(archivo) {
+    if (archivo.es_doc) abrirDoc({ id: archivo.id, titulo: archivo.nombre, link: archivo.url });
+    else window.open(archivo.url, "_blank");
   }
 
   // ── Abrir doc existente ───────────────────────────────────────────────────
@@ -77,8 +105,8 @@ export default function PanelDocs({ userId, onCerrar }) {
     setSugerencia("");
     try {
       const resp = await fetch(`${API}/docs/contenido/${userId}/${doc.id}`, {
-  credentials: "include"
-});
+        credentials: "include"
+      });
       if (resp.ok) {
         const data = await resp.json();
         setContenido(data.contenido || "");
@@ -114,11 +142,11 @@ export default function PanelDocs({ userId, onCerrar }) {
     setGuardando(true);
     try {
       const resp = await fetch(`${API}/docs/crear/${userId}`, {
-  method: "POST",
-  credentials: "include",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ titulo, contenido: "" }),
-});
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ titulo, contenido: "" }),
+      });
       if (resp.ok) {
         const data = await resp.json();
         setDocActual({ id: data.doc_id, titulo, link: data.link });
@@ -150,12 +178,12 @@ export default function PanelDocs({ userId, onCerrar }) {
         // ✅ ACTUALIZAR DOCUMENTO EXISTENTE
         console.log(`📝 Actualizando documento existente: ${docActual.id} - ${tituloFinal}`);
         
-       const resp = await fetch(`${API}/docs/actualizar/${userId}`, {
-  method: "POST",
-  credentials: "include",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ doc_id: docActual.id, contenido: contenido }),
-});
+        const resp = await fetch(`${API}/docs/actualizar/${userId}`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ doc_id: docActual.id, contenido: contenido }),
+        });
         
         if (resp.ok) {
           agenteBus.emit("flash", { mensaje: "Documento guardado.", tipo: "exito" });
@@ -170,11 +198,11 @@ export default function PanelDocs({ userId, onCerrar }) {
         console.log(`📝 Creando nuevo documento: ${tituloFinal}`);
         
         const resp = await fetch(`${API}/docs/crear/${userId}`, {
-  method: "POST",
-  credentials: "include",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ titulo: tituloFinal, contenido: contenido }),
-});
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ titulo: tituloFinal, contenido: contenido }),
+        });
         
         if (resp.ok) {
           const data = await resp.json();
@@ -210,9 +238,9 @@ export default function PanelDocs({ userId, onCerrar }) {
     
     try {
       const resp = await fetch(`${API}/docs/eliminar/${userId}/${docId}`, {
-  method: "DELETE",
-  credentials: "include",
-});
+        method: "DELETE",
+        credentials: "include",
+      });
       
       if (resp.ok) {
         agenteBus.emit("flash", { 
@@ -249,16 +277,16 @@ export default function PanelDocs({ userId, onCerrar }) {
     setSugerencia("");
     try {
       const resp = await fetch(`${API}/docs/sugerir/${userId}`, {
-  method: "POST",
-  credentials: "include",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    doc_id: docActual?.id || null,
-    titulo: titulo,
-    contenido_actual: contenido,
-    tipo: tipoSuger,
-  }),
-});
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          doc_id: docActual?.id || null,
+          titulo: titulo,
+          contenido_actual: contenido,
+          tipo: tipoSuger,
+        }),
+      });
       if (resp.ok) {
         const data = await resp.json();
         setSugerencia(data.sugerencia);
@@ -322,14 +350,97 @@ export default function PanelDocs({ userId, onCerrar }) {
     });
   }, [userId]);
 
+  // ── Render carpeta de clase ───────────────────────────────────────────────
+  const TIPO_COLOR_CARPETA = {
+    pdf: T.amaranto, docx: T.turquesa, doc: T.turquesa,
+    xlsx: T.jade, sheet: T.jade, slides: T.copal,
+    pptx: T.copal, archivo: T.turquesa,
+  };
+
+  const renderCarpeta = () => (
+    <div>
+      <div style={{
+        display: "flex", alignItems: "center", gap: 8, marginBottom: 16,
+      }}>
+        <button
+          onClick={() => setVista("lista")}
+          style={{
+            background: "transparent", border: "none",
+            color: `${T.jade}66`, fontSize: 14, cursor: "pointer", padding: "0 4px",
+          }}
+        >
+          ‹
+        </button>
+        <span style={{ fontSize: 12, color: "rgba(237,235,230,0.75)", fontFamily: T.sans, flex: 1 }}>
+          {carpetaActual?.nombre}
+        </span>
+        <span style={{ fontSize: 9, color: `${T.jade}88`, fontFamily: T.mono, letterSpacing: "0.5px" }}>
+          {archivosCarpeta.length} ARCHIVOS
+        </span>
+      </div>
+
+      {cargandoCarpeta && (
+        <div style={{ textAlign: "center", padding: "32px 0", fontSize: 12, color: "rgba(237,235,230,0.25)", fontFamily: T.mono }}>
+          cargando carpeta...
+        </div>
+      )}
+
+      {!cargandoCarpeta && archivosCarpeta.length === 0 && (
+        <div style={{ textAlign: "center", padding: "32px 0", fontSize: 12, color: "rgba(237,235,230,0.25)" }}>
+          Esta carpeta aún no tiene archivos.
+        </div>
+      )}
+
+      {!cargandoCarpeta && archivosCarpeta.map((a) => {
+        const color = TIPO_COLOR_CARPETA[a.tipo] || T.turquesa;
+        return (
+          <div
+            key={a.id}
+            onClick={() => abrirArchivoCarpeta(a)}
+            style={{
+              display: "flex", alignItems: "center", gap: 12,
+              padding: "10px 12px", borderRadius: 8, cursor: "pointer",
+              marginBottom: 4, border: "1px solid transparent", transition: "all 0.15s",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = `${color}08`;
+              e.currentTarget.style.borderColor = `${color}22`;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "transparent";
+              e.currentTarget.style.borderColor = "transparent";
+            }}
+          >
+            <div style={{
+              width: 32, height: 32, borderRadius: 6,
+              background: `${color}15`, border: `1px solid ${color}25`,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              flexShrink: 0, fontSize: 9, color, fontFamily: T.mono,
+            }}>
+              {a.tipo.toUpperCase()}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12, color: "rgba(237,235,230,0.75)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {a.nombre}
+              </div>
+              <div style={{ fontSize: 10, color: "rgba(237,235,230,0.25)", marginTop: 2 }}>
+                {a.modificado}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+
   // ── Render lista ──────────────────────────────────────────────────────────
   const renderLista = () => (
     <div>
       <div style={{
-        display:        "flex",
+        display: "flex",
         justifyContent: "space-between",
-        alignItems:     "center",
-        marginBottom:   16,
+        alignItems: "center",
+        marginBottom: 16,
       }}>
         <span style={{ fontSize: 11, color: `${T.turquesa}88`, fontFamily: T.mono, letterSpacing: "1px" }}>
           {docs.length} DOCUMENTOS
@@ -337,14 +448,14 @@ export default function PanelDocs({ userId, onCerrar }) {
         <button
           onClick={() => setCreandoNuevo(true)}
           style={{
-            background:    `${T.jade}15`,
-            border:        `1px solid ${T.jade}35`,
-            borderRadius:  8,
-            padding:       "6px 14px",
-            color:         T.jade,
-            fontSize:      11,
-            fontFamily:    T.mono,
-            cursor:        "pointer",
+            background: `${T.jade}15`,
+            border: `1px solid ${T.jade}35`,
+            borderRadius: 8,
+            padding: "6px 14px",
+            color: T.jade,
+            fontSize: 11,
+            fontFamily: T.mono,
+            cursor: "pointer",
             letterSpacing: "0.5px",
           }}
         >
@@ -354,11 +465,11 @@ export default function PanelDocs({ userId, onCerrar }) {
 
       {creandoNuevo && (
         <div style={{
-          marginBottom:  14,
-          background:    `${T.jade}08`,
-          border:        `1px solid ${T.jade}22`,
-          borderRadius:  10,
-          padding:       "12px 14px",
+          marginBottom: 14,
+          background: `${T.jade}08`,
+          border: `1px solid ${T.jade}22`,
+          borderRadius: 10,
+          padding: "12px 14px",
         }}>
           <div style={{ fontSize: 9, color: `${T.jade}88`, letterSpacing: "1px", marginBottom: 8, fontFamily: T.mono }}>
             TÍTULO DEL DOCUMENTO
@@ -371,15 +482,15 @@ export default function PanelDocs({ userId, onCerrar }) {
               onKeyDown={(e) => { if (e.key === "Enter") crearDoc(); if (e.key === "Escape") setCreandoNuevo(false); }}
               placeholder="Ej: Reporte de laboratorio"
               style={{
-                flex:         1,
-                background:   "rgba(237,235,230,0.04)",
-                border:       `1px solid ${T.jade}30`,
+                flex: 1,
+                background: "rgba(237,235,230,0.04)",
+                border: `1px solid ${T.jade}30`,
                 borderRadius: 6,
-                padding:      "7px 10px",
-                color:        "rgba(237,235,230,0.8)",
-                fontSize:     12,
-                fontFamily:   T.sans,
-                outline:      "none",
+                padding: "7px 10px",
+                color: "rgba(237,235,230,0.8)",
+                fontSize: 12,
+                fontFamily: T.sans,
+                outline: "none",
               }}
             />
             <button onClick={crearDoc} style={{ background: `${T.jade}20`, border: `1px solid ${T.jade}40`, borderRadius: 6, padding: "7px 12px", color: T.jade, fontSize: 11, cursor: "pointer" }}>
@@ -388,6 +499,32 @@ export default function PanelDocs({ userId, onCerrar }) {
             <button onClick={() => setCreandoNuevo(false)} style={{ background: "transparent", border: `1px solid rgba(237,235,230,0.1)`, borderRadius: 6, padding: "7px 10px", color: "rgba(237,235,230,0.3)", fontSize: 11, cursor: "pointer" }}>
               ✕
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Carpetas de clase ── */}
+      {clases.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 9, color: `${T.jade}88`, letterSpacing: "1px", fontFamily: T.mono, marginBottom: 8 }}>
+            CARPETAS DE CLASE
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {clases.map((c) => (
+              <button
+                key={c.curso_id}
+                onClick={() => abrirCarpetaClase(c)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 10,
+                  background: `${T.jade}08`, border: `1px solid ${T.jade}22`,
+                  borderRadius: 8, padding: "9px 12px", textAlign: "left",
+                  color: "rgba(237,235,230,0.75)", fontSize: 12,
+                  fontFamily: T.sans, cursor: "pointer",
+                }}
+              >
+                📁 {c.nombre}
+              </button>
+            ))}
           </div>
         </div>
       )}
@@ -408,15 +545,15 @@ export default function PanelDocs({ userId, onCerrar }) {
         <div
           key={doc.id}
           style={{
-            display:      "flex",
-            alignItems:   "center",
-            gap:          12,
-            padding:      "10px 12px",
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            padding: "10px 12px",
             borderRadius: 8,
-            cursor:       "pointer",
+            cursor: "pointer",
             marginBottom: 4,
-            border:       "1px solid transparent",
-            transition:   "all 0.15s",
+            border: "1px solid transparent",
+            transition: "all 0.15s",
           }}
           onMouseEnter={(e) => {
             e.currentTarget.style.background = `${T.turquesa}08`;
@@ -438,18 +575,18 @@ export default function PanelDocs({ userId, onCerrar }) {
             }}
           >
             <div style={{
-              width:          32,
-              height:         32,
-              borderRadius:   6,
-              background:     `${T.turquesa}15`,
-              border:         `1px solid ${T.turquesa}25`,
-              display:        "flex",
-              alignItems:     "center",
+              width: 32,
+              height: 32,
+              borderRadius: 6,
+              background: `${T.turquesa}15`,
+              border: `1px solid ${T.turquesa}25`,
+              display: "flex",
+              alignItems: "center",
               justifyContent: "center",
-              flexShrink:     0,
-              fontSize:       10,
-              color:          T.turquesa,
-              fontFamily:     T.mono,
+              flexShrink: 0,
+              fontSize: 10,
+              color: T.turquesa,
+              fontFamily: T.mono,
             }}>
               DOC
             </div>
@@ -467,17 +604,17 @@ export default function PanelDocs({ userId, onCerrar }) {
             onClick={(e) => eliminarDoc(doc.id, doc.titulo, e)}
             title={`Eliminar "${doc.titulo}"`}
             style={{
-              background:   "transparent",
-              border:       `1px solid ${T.amaranto}20`,
+              background: "transparent",
+              border: `1px solid ${T.amaranto}20`,
               borderRadius: 6,
-              padding:      "4px 8px",
-              color:        `${T.amaranto}55`,
-              fontSize:     11,
-              cursor:       "pointer",
-              flexShrink:   0,
-              opacity:      0.4,
-              transition:   "all 0.2s ease",
-              fontFamily:   T.sans,
+              padding: "4px 8px",
+              color: `${T.amaranto}55`,
+              fontSize: 11,
+              cursor: "pointer",
+              flexShrink: 0,
+              opacity: 0.4,
+              transition: "all 0.2s ease",
+              fontFamily: T.sans,
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.opacity = 1;
@@ -503,24 +640,24 @@ export default function PanelDocs({ userId, onCerrar }) {
   const renderEditor = () => (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       <div style={{
-        display:        "flex",
-        alignItems:     "center",
-        gap:            8,
-        marginBottom:   12,
-        paddingBottom:  12,
-        borderBottom:   `1px solid rgba(237,235,230,0.06)`,
-        flexShrink:     0,
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        marginBottom: 12,
+        paddingBottom: 12,
+        borderBottom: `1px solid rgba(237,235,230,0.06)`,
+        flexShrink: 0,
       }}>
         <button
           onClick={() => { setVista("lista"); setSugerencia(""); }}
           style={{
-            background:   "transparent",
-            border:       "none",
-            color:        `${T.turquesa}66`,
-            fontSize:     14,
-            cursor:       "pointer",
-            padding:      "0 4px",
-            flexShrink:   0,
+            background: "transparent",
+            border: "none",
+            color: `${T.turquesa}66`,
+            fontSize: 14,
+            cursor: "pointer",
+            padding: "0 4px",
+            flexShrink: 0,
           }}
         >
           ‹
@@ -529,14 +666,14 @@ export default function PanelDocs({ userId, onCerrar }) {
           value={titulo}
           onChange={(e) => setTitulo(e.target.value)}
           style={{
-            flex:         1,
-            background:   "transparent",
-            border:       "none",
-            outline:      "none",
-            fontSize:     14,
-            color:        "rgba(237,235,230,0.85)",
-            fontFamily:   T.sans,
-            fontWeight:   300,
+            flex: 1,
+            background: "transparent",
+            border: "none",
+            outline: "none",
+            fontSize: 14,
+            color: "rgba(237,235,230,0.85)",
+            fontFamily: T.sans,
+            fontWeight: 300,
           }}
           placeholder="Título del documento"
         />
@@ -546,14 +683,14 @@ export default function PanelDocs({ userId, onCerrar }) {
               onClick={exportarDocx}
               title="Exportar como .docx"
               style={{
-                background:    `${T.copal}12`,
-                border:        `1px solid ${T.copal}30`,
-                borderRadius:  6,
-                padding:       "4px 10px",
-                color:         T.copal,
-                fontSize:      10,
-                fontFamily:    T.mono,
-                cursor:        "pointer",
+                background: `${T.copal}12`,
+                border: `1px solid ${T.copal}30`,
+                borderRadius: 6,
+                padding: "4px 10px",
+                color: T.copal,
+                fontSize: 10,
+                fontFamily: T.mono,
+                cursor: "pointer",
                 letterSpacing: "0.5px",
               }}
             >
@@ -564,15 +701,15 @@ export default function PanelDocs({ userId, onCerrar }) {
             onClick={guardarDoc}
             disabled={guardando}
             style={{
-              background:    guardando ? "transparent" : `${T.jade}15`,
-              border:        `1px solid ${T.jade}${guardando ? "20" : "40"}`,
-              borderRadius:  6,
-              padding:       "4px 12px",
-              color:         T.jade,
-              fontSize:      10,
-              fontFamily:    T.mono,
-              cursor:        guardando ? "wait" : "pointer",
-              opacity:       guardando ? 0.5 : 1,
+              background: guardando ? "transparent" : `${T.jade}15`,
+              border: `1px solid ${T.jade}${guardando ? "20" : "40"}`,
+              borderRadius: 6,
+              padding: "4px 12px",
+              color: T.jade,
+              fontSize: 10,
+              fontFamily: T.mono,
+              cursor: guardando ? "wait" : "pointer",
+              opacity: guardando ? 0.5 : 1,
               letterSpacing: "0.5px",
             }}
           >
@@ -587,32 +724,32 @@ export default function PanelDocs({ userId, onCerrar }) {
         onChange={(e) => setContenido(e.target.value)}
         placeholder="Empieza a escribir... o pide una sugerencia a Tona ↓"
         style={{
-          flex:         1,
-          background:   "rgba(237,235,230,0.02)",
-          border:       `1px solid rgba(237,235,230,0.06)`,
+          flex: 1,
+          background: "rgba(237,235,230,0.02)",
+          border: `1px solid rgba(237,235,230,0.06)`,
           borderRadius: 8,
-          padding:      "14px",
-          color:        "rgba(237,235,230,0.75)",
-          fontSize:     13,
-          fontFamily:   T.sans,
-          fontWeight:   300,
-          lineHeight:   1.7,
-          outline:      "none",
-          resize:       "none",
-          boxSizing:    "border-box",
-          width:        "100%",
-          minHeight:    200,
+          padding: "14px",
+          color: "rgba(237,235,230,0.75)",
+          fontSize: 13,
+          fontFamily: T.sans,
+          fontWeight: 300,
+          lineHeight: 1.7,
+          outline: "none",
+          resize: "none",
+          boxSizing: "border-box",
+          width: "100%",
+          minHeight: 200,
         }}
       />
 
       <div style={{
-        marginTop:    12,
-        flexShrink:   0,
+        marginTop: 12,
+        flexShrink: 0,
       }}>
         <div style={{
-          display:      "flex",
-          alignItems:   "center",
-          gap:          8,
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
           marginBottom: 8,
         }}>
           <span style={{ fontSize: 9, color: `${T.copal}88`, letterSpacing: "1px", fontFamily: T.mono }}>
@@ -634,16 +771,16 @@ export default function PanelDocs({ userId, onCerrar }) {
               key={op.key}
               onClick={() => setTipoSuger(op.key)}
               style={{
-                background:    tipoSuger === op.key ? `${T.copal}25` : `${T.copal}08`,
-                border:        `1px solid ${T.copal}${tipoSuger === op.key ? "45" : "20"}`,
-                borderRadius:  6,
-                padding:       "4px 10px",
-                color:         tipoSuger === op.key ? T.copal : `${T.copal}66`,
-                fontSize:      10,
-                fontFamily:    T.mono,
-                cursor:        "pointer",
+                background: tipoSuger === op.key ? `${T.copal}25` : `${T.copal}08`,
+                border: `1px solid ${T.copal}${tipoSuger === op.key ? "45" : "20"}`,
+                borderRadius: 6,
+                padding: "4px 10px",
+                color: tipoSuger === op.key ? T.copal : `${T.copal}66`,
+                fontSize: 10,
+                fontFamily: T.mono,
+                cursor: "pointer",
                 letterSpacing: "0.3px",
-                transition:    "all 0.15s",
+                transition: "all 0.15s",
               }}
             >
               {op.label}
@@ -653,17 +790,17 @@ export default function PanelDocs({ userId, onCerrar }) {
             onClick={pedirSugerencia}
             disabled={cargSuger}
             style={{
-              background:    cargSuger ? "transparent" : `${T.jade}12`,
-              border:        `1px solid ${T.jade}${cargSuger ? "20" : "35"}`,
-              borderRadius:  6,
-              padding:       "4px 12px",
-              color:         T.jade,
-              fontSize:      10,
-              fontFamily:    T.mono,
-              cursor:        cargSuger ? "wait" : "pointer",
-              opacity:       cargSuger ? 0.5 : 1,
+              background: cargSuger ? "transparent" : `${T.jade}12`,
+              border: `1px solid ${T.jade}${cargSuger ? "20" : "35"}`,
+              borderRadius: 6,
+              padding: "4px 12px",
+              color: T.jade,
+              fontSize: 10,
+              fontFamily: T.mono,
+              cursor: cargSuger ? "wait" : "pointer",
+              opacity: cargSuger ? 0.5 : 1,
               letterSpacing: "0.5px",
-              marginLeft:    "auto",
+              marginLeft: "auto",
             }}
           >
             {cargSuger ? "generando..." : "generar ↗"}
@@ -672,32 +809,32 @@ export default function PanelDocs({ userId, onCerrar }) {
 
         {sugerencia && (
           <div style={{
-            background:    `${T.copal}08`,
-            border:        `1px solid ${T.copal}22`,
-            borderLeft:    `3px solid ${T.copal}`,
-            borderRadius:  8,
-            padding:       "12px 14px",
-            fontSize:      12,
-            color:         "rgba(237,235,230,0.6)",
-            lineHeight:    1.6,
-            fontFamily:    T.sans,
-            whiteSpace:    "pre-wrap",
-            maxHeight:     140,
-            overflowY:     "auto",
+            background: `${T.copal}08`,
+            border: `1px solid ${T.copal}22`,
+            borderLeft: `3px solid ${T.copal}`,
+            borderRadius: 8,
+            padding: "12px 14px",
+            fontSize: 12,
+            color: "rgba(237,235,230,0.6)",
+            lineHeight: 1.6,
+            fontFamily: T.sans,
+            whiteSpace: "pre-wrap",
+            maxHeight: 140,
+            overflowY: "auto",
           }}>
             {sugerencia}
             <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
               <button
                 onClick={insertarSugerencia}
                 style={{
-                  background:    `${T.jade}15`,
-                  border:        `1px solid ${T.jade}35`,
-                  borderRadius:  6,
-                  padding:       "4px 12px",
-                  color:         T.jade,
-                  fontSize:      10,
-                  fontFamily:    T.mono,
-                  cursor:        "pointer",
+                  background: `${T.jade}15`,
+                  border: `1px solid ${T.jade}35`,
+                  borderRadius: 6,
+                  padding: "4px 12px",
+                  color: T.jade,
+                  fontSize: 10,
+                  fontFamily: T.mono,
+                  cursor: "pointer",
                   letterSpacing: "0.5px",
                 }}
               >
@@ -706,14 +843,14 @@ export default function PanelDocs({ userId, onCerrar }) {
               <button
                 onClick={() => setSugerencia("")}
                 style={{
-                  background:  "transparent",
-                  border:      `1px solid rgba(237,235,230,0.08)`,
+                  background: "transparent",
+                  border: `1px solid rgba(237,235,230,0.08)`,
                   borderRadius: 6,
-                  padding:     "4px 10px",
-                  color:       "rgba(237,235,230,0.25)",
-                  fontSize:    10,
-                  fontFamily:  T.mono,
-                  cursor:      "pointer",
+                  padding: "4px 10px",
+                  color: "rgba(237,235,230,0.25)",
+                  fontSize: 10,
+                  fontFamily: T.mono,
+                  cursor: "pointer",
                 }}
               >
                 descartar
@@ -730,37 +867,37 @@ export default function PanelDocs({ userId, onCerrar }) {
     <div
       ref={overlayRef}
       style={{
-        position:       "fixed",
-        inset:          0,
-        zIndex:         500,
-        display:        "flex",
+        position: "fixed",
+        inset: 0,
+        zIndex: 500,
+        display: "flex",
         justifyContent: "flex-end",
-        background:     "rgba(0,0,0,0.2)",
+        background: "rgba(0,0,0,0.2)",
         backdropFilter: "blur(2px)",
-        opacity:        0,
+        opacity: 0,
       }}
       onClick={(e) => { if (e.target === overlayRef.current) cerrar(); }}
     >
       <div
         ref={ref}
         style={{
-          width:          440,
-          height:         "100vh",
-          background:     "rgba(9,11,13,0.97)",
-          borderLeft:     `1px solid ${T.turquesa}22`,
-          display:        "flex",
-          flexDirection:  "column",
-          opacity:        0,
+          width: 440,
+          height: "100vh",
+          background: "rgba(9,11,13,0.97)",
+          borderLeft: `1px solid ${T.turquesa}22`,
+          display: "flex",
+          flexDirection: "column",
+          opacity: 0,
           backdropFilter: "blur(20px)",
         }}
       >
         <div style={{
-          display:        "flex",
+          display: "flex",
           justifyContent: "space-between",
-          alignItems:     "center",
-          padding:        "18px 20px",
-          borderBottom:   `1px solid ${T.turquesa}18`,
-          flexShrink:     0,
+          alignItems: "center",
+          padding: "18px 20px",
+          borderBottom: `1px solid ${T.turquesa}18`,
+          flexShrink: 0,
         }}>
           <div>
             <div style={{ fontSize: 9, color: `${T.turquesa}88`, letterSpacing: "1.5px", fontFamily: T.mono }}>
@@ -774,10 +911,10 @@ export default function PanelDocs({ userId, onCerrar }) {
             onClick={cerrar}
             style={{
               background: "transparent",
-              border:     "none",
-              color:      `${T.amaranto}55`,
-              fontSize:   14,
-              cursor:     "pointer",
+              border: "none",
+              color: `${T.amaranto}55`,
+              fontSize: 14,
+              cursor: "pointer",
             }}
           >
             ✕
@@ -785,17 +922,17 @@ export default function PanelDocs({ userId, onCerrar }) {
         </div>
 
         <div style={{
-          flex:      1,
-          overflow:  "auto",
-          padding:   "16px 20px",
-          display:   "flex",
+          flex: 1,
+          overflow: "auto",
+          padding: "16px 20px",
+          display: "flex",
           flexDirection: "column",
         }}>
-          {vista === "lista" ? renderLista() : renderEditor()}
+          {vista === "lista" ? renderLista() : vista === "carpeta" ? renderCarpeta() : renderEditor()}
         </div>
 
         <div style={{
-          height:     1,
+          height: 1,
           background: `linear-gradient(90deg,transparent,${T.turquesa}33,transparent)`,
           flexShrink: 0,
         }} />

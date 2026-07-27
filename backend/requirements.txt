@@ -58,3 +58,4 @@ websockets
 supabase==2.15.1
 python-multipart==0.0.9
 pyjwt
+beautifulsoup4

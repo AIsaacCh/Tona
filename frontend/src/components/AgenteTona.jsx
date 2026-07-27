@@ -74,6 +74,21 @@ agenteBus.on("enviar_texto_usuario", async ({ texto }) => {
   }
 });
 
+// Puente: usuario confirmó que Tona prepare la entrega real en Classroom
+agenteBus.on("confirmar_entrega_real", (contexto) => {
+  agenteBus.emit("ejecutar_creacion", { accion: "entregar_tarea_real", payload: contexto });
+});
+
+agenteBus.on("crear_archivo_para_tarea", (contexto) => {
+  agenteBus.emit("ejecutar_creacion", { accion: "crear_archivo_para_tarea", payload: contexto });
+});
+
+agenteBus.on("abrir_archivo_entrega", (contexto) => {
+  if (contexto?.archivo_link) {
+    window.open(contexto.archivo_link, "_blank");
+  }
+});
+
 // Puente para confirmación de creación directa
 agenteBus.on("ejecutar_creacion", async ({ accion, payload }) => {
   const userId = localStorage.getItem("tona_user_id") || "demo";

@@ -15,45 +15,59 @@ export default function PanelConfiguracion({ userId, onCerrar }) {
   const [nuevaUrl,   setNuevaUrl]   = useState("");
   const [nuevoAlias, setNuevoAlias] = useState("");
   const [nuevaPeriodo, setNuevaPeriodo] = useState("semanal");
+  const [cursos, setCursos] = useState([]);
+  const [carpetas, setCarpetas] = useState([]);
+  const [cargandoClases, setCargandoClases] = useState(false);
+  const [creandoCarpetaId, setCreandoCarpetaId] = useState(null);
 
   const panelRef   = useRef(null);
   const overlayRef = useRef(null);
+  const yaAnimado  = useRef(false);
 
   useEffect(() => {
     cargar();
   }, []);
 
+  // Suscripción al bus: debe existir siempre, sin importar si config ya cargó
   useEffect(() => {
-    if (!panelRef.current) return;
-    anime({ targets: overlayRef.current, opacity: [0, 1], duration: 250, easing: "easeOutQuart" });
-    anime({ targets: panelRef.current, opacity: [0, 1], translateX: [40, 0], duration: 380, easing: "easeOutQuart" });
-
     const off = agenteBus.on("abrir_configuracion", cargar);
     return () => off();
   }, []);
 
+// Animación de entrada: solo corre UNA vez, cuando config pasa de null a tener datos
+  useEffect(() => {
+    if (!config || !panelRef.current || yaAnimado.current) return;
+      yaAnimado.current = true;
+    anime({ targets: overlayRef.current, opacity: [0, 1], duration: 250, easing: "easeOutQuart" });
+    anime({ targets: panelRef.current, opacity: [0, 1], translateX: [40, 0], duration: 380, easing: "easeOutQuart" });
+    }, [config]);
+
   async function cargar() {
-    try {
-      const [rc, rs] = await Promise.all([
-  fetch(`${API}/agent/config/${userId}`, { credentials: "include" }).then((r) => r.json()),
-  fetch(`${API}/tasks/sitios/${userId}`, { credentials: "include" }).then((r) => r.json()),
-]);
-      setConfig(rc);
-      setSitios(rs.sitios || []);
-    } catch (e) {
-      console.error("Error cargando config:", e);
-    }
+  try {
+    const [rc, rs, rcursos, rcarpetas] = await Promise.all([
+      fetch(`${API}/agent/config/${userId}`, { credentials: "include" }).then((r) => r.json()),
+      fetch(`${API}/tasks/sitios/${userId}`, { credentials: "include" }).then((r) => r.json()),
+      fetch(`${API}/tasks/cursos/${userId}`, { credentials: "include" }).then((r) => r.json()),
+      fetch(`${API}/tasks/drive/clases/${userId}`, { credentials: "include" }).then((r) => r.json()),
+    ]);
+    setConfig(rc);
+    setSitios(rs.sitios || []);
+    setCursos(rcursos.cursos || []);
+    setCarpetas(rcarpetas.clases || []);
+  } catch (e) {
+    console.error("Error cargando config:", e);
   }
+}
 
   async function guardar() {
     setGuardando(true);
     try {
       await fetch(`${API}/agent/config/${userId}`, {
-  method: "POST",
-  credentials: "include",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify(config),
-});
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(config),
+      });
       agenteBus.emit("flash", { mensaje: "Configuración guardada", tipo: "exito" });
     } catch (e) {
       agenteBus.emit("flash", { mensaje: "Error guardando configuración", tipo: "error" });
@@ -66,11 +80,11 @@ export default function PanelConfiguracion({ userId, onCerrar }) {
     if (!nuevaUrl.trim() || !nuevoAlias.trim()) return;
     try {
       const resp = await fetch(`${API}/tasks/sitios/${userId}`, {
-  method: "POST",
-  credentials: "include",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ url: nuevaUrl.trim(), alias: nuevoAlias.trim(), frecuencia: nuevaPeriodo }),
-});
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: nuevaUrl.trim(), alias: nuevoAlias.trim(), frecuencia: nuevaPeriodo }),
+      });
       if (resp.ok) {
         setNuevaUrl(""); setNuevoAlias(""); setNuevaPeriodo("semanal");
         await cargar();
@@ -81,12 +95,46 @@ export default function PanelConfiguracion({ userId, onCerrar }) {
     }
   }
 
+  async function crearCarpetaClase(curso) {
+  setCreandoCarpetaId(curso.id);
+  try {
+    const resp = await fetch(`${API}/tasks/drive/estructura/${userId}`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cursos: [{ curso_id: curso.id, nombre: curso.nombre }] }),
+    });
+    if (resp.ok) {
+      await cargar();
+      agenteBus.emit("flash", { mensaje: `Carpeta creada para ${curso.nombre}`, tipo: "exito" });
+    } else {
+      agenteBus.emit("flash", { mensaje: "No se pudo crear la carpeta", tipo: "error" });
+    }
+  } catch (e) {
+    agenteBus.emit("flash", { mensaje: "Error de conexión", tipo: "error" });
+  } finally {
+    setCreandoCarpetaId(null);
+  }
+}
+
+async function quitarCarpetaClase(cursoId, nombre) {
+  try {
+    await fetch(`${API}/tasks/drive/carpeta/${userId}/${cursoId}`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+    setCarpetas((prev) => prev.filter((c) => c.curso_id !== cursoId));
+    agenteBus.emit("flash", { mensaje: `Carpeta de ${nombre} desvinculada`, tipo: "info" });
+  } catch (e) {
+    agenteBus.emit("flash", { mensaje: "Error al desvincular", tipo: "error" });
+  }
+}
   async function eliminarSitio(id) {
     try {
       await fetch(`${API}/tasks/sitios/${userId}/${id}`, {
-  method: "DELETE",
-  credentials: "include",
-});
+        method: "DELETE",
+        credentials: "include",
+      });
       setSitios((prev) => prev.filter((s) => s.id !== id));
     } catch (e) {
       agenteBus.emit("flash", { mensaje: "Error eliminando sitio", tipo: "error" });
@@ -97,9 +145,9 @@ export default function PanelConfiguracion({ userId, onCerrar }) {
     agenteBus.emit("flash", { mensaje: "Revisando sitio...", tipo: "info" });
     try {
       const resp = await fetch(`${API}/tasks/sitios/${userId}/${id}/revisar`, {
-  method: "POST",
-  credentials: "include",
-});
+        method: "POST",
+        credentials: "include",
+      });
       const data = await resp.json();
       if (data.cambio) {
         agenteBus.emit("flash", { mensaje: `Cambio detectado: ${data.resumen?.slice(0, 60)}`, tipo: "urgente" });
@@ -126,7 +174,7 @@ export default function PanelConfiguracion({ userId, onCerrar }) {
     { valor: "formal",   label: "Formal"   },
   ];
 
-  const TABS = ["perfil", "sitios"];
+  const TABS = ["perfil", "sitios", "clases"];
 
   return (
     <div ref={overlayRef} style={{
@@ -315,6 +363,68 @@ export default function PanelConfiguracion({ userId, onCerrar }) {
               </div>
             </div>
           )}
+
+          {tab === "clases" && (
+  <div>
+    <div style={{ fontSize: 9, color: "rgba(237,235,230,0.25)", letterSpacing: "1px", marginBottom: 6, fontFamily: T.mono }}>
+      CARPETAS DE CLASE EN DRIVE
+    </div>
+    <div style={{ fontSize: 11, color: "rgba(237,235,230,0.3)", marginBottom: 16, fontFamily: T.sans, lineHeight: 1.5 }}>
+      Elige para qué clases quieres que Tona mantenga una carpeta organizada en tu Drive.
+    </div>
+
+    {cursos.length === 0 && (
+      <div style={{ fontSize: 12, color: "rgba(237,235,230,0.25)", textAlign: "center", padding: "20px 0", fontFamily: T.sans }}>
+        No encontré clases activas en tu Classroom.
+      </div>
+    )}
+
+    {cursos.map((curso) => {
+      const vinculada = carpetas.find((c) => c.curso_id === curso.id);
+      const creando = creandoCarpetaId === curso.id;
+      return (
+        <div key={curso.id} style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          background: vinculada ? `${T.jade}08` : "rgba(237,235,230,0.03)",
+          border: `1px solid ${vinculada ? T.jade + "25" : T.copal + "15"}`,
+          borderRadius: 10, padding: "12px 14px", marginBottom: 8,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+            <span style={{ fontSize: 14 }}>{vinculada ? "📁" : "📂"}</span>
+            <span style={{ fontSize: 13, color: "rgba(237,235,230,0.75)", fontFamily: T.sans, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {curso.nombre}
+            </span>
+          </div>
+          {vinculada ? (
+            <button
+              onClick={() => quitarCarpetaClase(curso.id, curso.nombre)}
+              style={{
+                background: "transparent", border: `1px solid ${T.amaranto}30`,
+                borderRadius: 6, padding: "5px 10px", color: `${T.amaranto}aa`,
+                fontSize: 10, fontFamily: T.mono, cursor: "pointer", flexShrink: 0,
+              }}
+            >
+              quitar
+            </button>
+          ) : (
+            <button
+              onClick={() => crearCarpetaClase(curso)}
+              disabled={creando}
+              style={{
+                background: `${T.jade}12`, border: `1px solid ${T.jade}30`,
+                borderRadius: 6, padding: "5px 10px", color: T.jade,
+                fontSize: 10, fontFamily: T.mono, cursor: creando ? "wait" : "pointer",
+                opacity: creando ? 0.5 : 1, flexShrink: 0,
+              }}
+            >
+              {creando ? "creando..." : "crear carpeta"}
+            </button>
+          )}
+        </div>
+      );
+    })}
+  </div>
+)}
         </div>
       </div>
     </div>

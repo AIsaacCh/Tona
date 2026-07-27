@@ -178,6 +178,7 @@ export function SolicitudDato() {
 }
 
 
+
 // ── ConfirmacionAccion ────────────────────────────────────────────────────────
 
 export function ConfirmacionAccion() {
@@ -208,7 +209,7 @@ export function ConfirmacionAccion() {
   if (!data) return null;
 
   function responder(accion) {
-    if (accion && accion !== "null") agenteBus.emit(accion, {});
+    if (accion && accion !== "null") agenteBus.emit(accion, data.contexto || {});
     anime.timeline({ easing: "easeInQuart" })
       .add({ targets: overlayRef.current, opacity: 0, duration: 200 })
       .add({ targets: ref.current, opacity: 0, scale: 0.92, translateY: 10, duration: 250, complete: () => setData(null) }, "-=150");
@@ -236,6 +237,12 @@ export function ConfirmacionAccion() {
         <div style={{ display: "flex", gap: 10 }}>
           <button onClick={() => responder(data.onSi)}  style={btnConfirm(T.jade)}>Sí, confirmar</button>
           <button onClick={() => responder(data.onNo)}  style={btnConfirm(T.amaranto)}>Cancelar</button>
+          <button onClick={() => responder(data.onSi)} style={btnConfirm(T.jade)}>
+            {data.labelSi || "Sí, confirmar"}
+          </button>
+<button onClick={() => responder(data.onNo)} style={btnConfirm(T.amaranto)}>
+  {data.labelNo || "Cancelar"}
+</button>
         </div>
       </div>
     </div>
@@ -251,6 +258,7 @@ function btnConfirm(color) {
     cursor: "pointer", letterSpacing: "0.3px",
   };
 }
+
 
 
 // ── IndicadorPensando ─────────────────────────────────────────────────────────
@@ -309,6 +317,91 @@ function PuntosAnimados() {
       {[r0, r1, r2].map((r, i) => (
         <div key={i} ref={r} style={{ width: 5, height: 5, borderRadius: "50%", background: T.copal, opacity: 0.2 }} />
       ))}
+    </div>
+  );
+}
+
+
+// ── TarjetaLinks ──────────────────────────────────────────────────────────────
+
+export function TarjetaLinks() {
+  const [links, setLinks] = useState([]);
+  const ref        = useRef(null);
+  const overlayRef = useRef(null);
+
+  useEffect(() => {
+    const off1 = agenteBus.on("mostrar_links", ({ links: nuevosLinks }) => setLinks(nuevosLinks || []));
+    const off2 = agenteBus.on("cerrar_vista",  () => setLinks([]));
+    const off3 = agenteBus.on("cerrar_todo",   () => setLinks([]));
+    return () => { off1(); off2(); off3(); };
+  }, []);
+
+  useEffect(() => {
+    if (links.length === 0 || !ref.current) return;
+    anime({ targets: overlayRef.current, opacity: [0, 1], duration: 250, easing: "easeOutQuart" });
+    anime({ targets: ref.current, opacity: [0, 1], translateY: [16, 0], duration: 350, easing: "easeOutQuart" });
+  }, [links]);
+
+  if (links.length === 0) return null;
+
+  function cerrar() {
+    anime.timeline({ easing: "easeInQuart" })
+      .add({ targets: overlayRef.current, opacity: 0, duration: 200 })
+      .add({ targets: ref.current, opacity: 0, translateY: 10, duration: 220, complete: () => setLinks([]) }, "-=100");
+  }
+
+  return (
+    <div ref={overlayRef} style={{
+      position: "fixed", inset: 0, zIndex: 560,
+      display: "flex", alignItems: "flex-end", justifyContent: "center",
+      paddingBottom: 160, background: "rgba(0,0,0,0.15)",
+      backdropFilter: "blur(2px)", opacity: 0,
+    }}>
+      <div ref={ref} style={{
+        background: "rgba(9,11,13,0.97)",
+        border: `1px solid ${T.turquesa}30`, borderTop: `1px solid ${T.turquesa}55`,
+        borderRadius: 14, padding: "16px 20px",
+        minWidth: 300, maxWidth: 420,
+        boxShadow: `0 -4px 32px rgba(0,0,0,0.4), 0 0 40px ${T.turquesa}06`,
+        opacity: 0,
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <span style={{ fontSize: 9, color: `${T.turquesa}88`, letterSpacing: "1.5px", fontFamily: T.mono }}>
+            TONA · ENLACES
+          </span>
+          <button onClick={cerrar} style={{ background: "transparent", border: "none", color: `${T.amaranto}55`, fontSize: 12, cursor: "pointer" }}>✕</button>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {links.map((l, i) => (
+            <a
+              key={i}
+              href={l.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                background: `${T.turquesa}10`, border: `1px solid ${T.turquesa}25`,
+                borderRadius: 8, padding: "10px 14px",
+                color: "rgba(237,235,230,0.85)", fontSize: 12.5,
+                fontFamily: T.sans, textDecoration: "none",
+                transition: "all 0.15s ease",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = `${T.turquesa}55`;
+                e.currentTarget.style.background  = `${T.turquesa}18`;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = `${T.turquesa}25`;
+                e.currentTarget.style.background  = `${T.turquesa}10`;
+              }}
+            >
+              <span>{l.texto}</span>
+              <span style={{ color: T.turquesa, fontSize: 13 }}>↗</span>
+            </a>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

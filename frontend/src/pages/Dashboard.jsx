@@ -10,7 +10,7 @@ import Aves from "../components/Aves";
 import { T } from "../tokens";
 import { agenteBus, detectarCierre, enviarMensajeChat } from "../components/AgenteTona";
 import { useSearchParams } from "react-router-dom";
-import { FlashMensaje, ConfirmacionAccion, IndicadorPensando } from "../components/agentes/Categoria1";
+import { FlashMensaje, ConfirmacionAccion, IndicadorPensando,TarjetaLinks } from "../components/agentes/Categoria1";
 import { FormNuevaTarea, FormNuevoRecordatorio, FormNuevaNota, TarjetaExamen, TarjetaArchivo, NotificacionUrgente } from "../components/agentes/Categoria3y4";
 import { ConfirmarCreacion } from "../components/agentes/ConfirmarCreacion";
 import { VistaListaTareas,VistaGmail,VistaCalendario, VistaHorario, VistaCalificaciones, VistaMaterias, VistaArchivosDrive } from "../components/agentes/Categoria2";
@@ -20,6 +20,8 @@ import PanelDocs from "../components/PanelDocs";
 import { PanelHorario } from "../components/PanelHorario";
 import { useNavigate } from "react-router-dom";
 import { PanelColaborar } from "../components/PanelColaborar";
+import { useOnboarding } from "../hooks/useOnboarding";
+
 
 
 
@@ -101,51 +103,32 @@ let nextId = 1;
 // ──────────────────────────────────────────────────────────────────────────────
 // 🚀 DASHBOARD PRINCIPAL (con onboarding y configuración)
 // ──────────────────────────────────────────────────────────────────────────────
+
 export default function Dashboard() {
   const [params] = useSearchParams();
   const userId = params.get("user_id") || localStorage.getItem("tona_user_id") || "demo";
 
-  // ✅ Guardar token PRIMERO, antes de cualquier otra cosa
   useEffect(() => {
     const token = params.get("token");
-    if (token) {
-      localStorage.setItem("tona_token", token);
-    }
+    if (token) localStorage.setItem("tona_token", token);
   }, [params]);
 
-  const [onboarding, setOnboarding] = useState(null);
+  const { paso, actualizarPaso, cargando } = useOnboarding(userId);
   const [panelConfig, setPanelConfig] = useState(false);
 
-  useEffect(() => {
-    const uid = localStorage.getItem("tona_user_id") || userId;
-    if (uid && uid !== "demo") {
-      fetch(`${API}/agent/contexto/${uid}`, { credentials: "include" })
-        .then((r) => r.json())
-        .then((data) => {
-          setOnboarding(!data.onboarding_completado);
-        })
-        .catch(() => setOnboarding(false));
-    } else {
-      setOnboarding(true);
-    }
-  }, [userId]);
-
-  
-
- 
-
-  // ✅ Escuchar evento para abrir configuración
   useEffect(() => {
     return agenteBus.on("abrir_configuracion", () => setPanelConfig(true));
   }, []);
 
-  if (onboarding === null) return null;
+  if (cargando) return null;
 
-  if (onboarding) {
+  if (paso < 3) {
     return (
       <OnboardingTona
         userId={userId}
-        onCompletado={() => setOnboarding(false)}
+        paso={paso}
+        onAvanzarPaso={actualizarPaso}
+        onCompletado={() => actualizarPaso(3)}
       />
     );
   }
@@ -187,6 +170,22 @@ function DashboardPrincipal({ userId, params, panelConfig, setPanelConfig }) {
     if (userId && userId !== "demo") {
       localStorage.setItem("tona_user_id", userId);
     }
+  }, [userId]);
+
+  useEffect(() => {
+    if (!userId || userId === "demo") return;
+    const t = setTimeout(() => {
+      agenteBus.emit("ejecutar_creacion", { accion: "revisar_novedades_sitios", payload: {} });
+    }, 2500);
+    return () => clearTimeout(t);
+  }, [userId]);
+
+  useEffect(() => {
+    if (!userId || userId === "demo") return;
+    const t = setTimeout(() => {
+      agenteBus.emit("ejecutar_creacion", { accion: "revisar_sugerencias_entrega", payload: {} });
+    }, 4000);
+    return () => clearTimeout(t);
   }, [userId]);
 
   // ✅ Sincronizar Classroom + Calendar
@@ -259,11 +258,16 @@ function DashboardPrincipal({ userId, params, panelConfig, setPanelConfig }) {
             credentials: "include", 
             body: JSON.stringify({ texto }),
           });
-          const blob = await resp.blob();
+          const arrayBuffer = await resp.arrayBuffer();
+          const blob = new Blob([arrayBuffer], { type: "audio/mpeg" });
           const url = URL.createObjectURL(blob);
-          const audio = new Audio(url);
+          const audio = new Audio();
+          audio.src = url;
           audio.onended = () => URL.revokeObjectURL(url);
-          audio.play();
+          audio.oncanplaythrough = () => {
+            audio.play().catch((e) => console.warn("No se pudo reproducir audio:", e));
+          };
+          audio.load();
         } catch {
           // fallback silencioso
         }
@@ -506,6 +510,7 @@ async function iniciarColaboracion() {
       {/* Componentes del agente */}
       <FlashMensaje />
       <ConfirmacionAccion />
+      <TarjetaLinks />
       <IndicadorPensando />
       <VistaListaTareas />
       <VistaCalendario />

@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends
+import re as _re
 from pydantic import BaseModel
 from services.auth_utils import verificar_identidad
 from services.db import (
@@ -6,6 +7,8 @@ from services.db import (
     guardar_cache, obtener_cache,
     obtener_sitios, guardar_sitios, agregar_sitio, eliminar_sitio,
     guardar_usuario,
+    obtener_config, guardar_config, guardar_carpeta_clase, obtener_carpeta_clase,
+    eliminar_carpeta_clase, obtener_carpetas_clases,
 )
 from datetime import datetime, timedelta
 from typing import Optional
@@ -38,6 +41,9 @@ class SitioMonitoreo(BaseModel):
     url: str
     alias: str
     frecuencia: Optional[str] = "semanal"
+
+class EstructuraClasesRequest(BaseModel):
+    cursos: list  # [{"curso_id": "...", "nombre": "..."}]
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -146,13 +152,341 @@ def calcular_urgencia(fecha_limite: str) -> str:
     if not fecha_limite:
         return "baja"
     try:
-        fecha = datetime.strptime(fecha_limite, "%Y-%m-%d")
-        dias  = (fecha - datetime.now()).days
+        from services.tiempo import hoy_mx
+        fecha = datetime.strptime(fecha_limite, "%Y-%m-%d").date()
+        dias  = (fecha - hoy_mx()).days
         if dias <= 1:  return "alta"
         if dias <= 4:  return "media"
         return "baja"
     except:
         return "baja"
+
+
+def _normalizar_texto(txt: str) -> set:
+    """Extrae palabras clave significativas de un texto (ignora conectores cortos)."""
+    palabras = _re.findall(r"[a-záéíóúñ0-9]+", txt.lower())
+    return {p for p in palabras if len(p) > 3}
+
+
+def _score_similitud(titulo_tarea: str, nombre_archivo: str) -> float:
+    palabras_tarea = _normalizar_texto(titulo_tarea)
+    palabras_archivo = _normalizar_texto(nombre_archivo)
+    if not palabras_tarea:
+        return 0.0
+    interseccion = palabras_tarea & palabras_archivo
+    return len(interseccion) / len(palabras_tarea)
+
+
+# ── Google Drive - Estructura de Clases ──────────────────────────────────────
+
+async def _crear_carpeta_drive(headers: dict, nombre: str, parent_id: Optional[str] = None) -> str:
+    """Crea una carpeta en Drive y regresa su ID."""
+    metadata = {
+        "name": nombre,
+        "mimeType": "application/vnd.google-apps.folder",
+    }
+    if parent_id:
+        metadata["parents"] = [parent_id]
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            "https://www.googleapis.com/drive/v3/files",
+            headers={**headers, "Content-Type": "application/json"},
+            json=metadata,
+        )
+    if resp.status_code not in (200, 201):
+        raise HTTPException(status_code=500, detail=f"Error creando carpeta '{nombre}': {resp.text}")
+    return resp.json()["id"]
+
+async def _buscar_carpeta_existente(headers: dict, nombre: str, parent_id: str) -> Optional[str]:
+    """Busca si ya existe una carpeta con ese nombre dentro del parent, para no duplicarla."""
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            "https://www.googleapis.com/drive/v3/files",
+            headers=headers,
+            params={
+                "q": f"name='{nombre}' and mimeType='application/vnd.google-apps.folder' and '{parent_id}' in parents and trashed=false",
+                "fields": "files(id,name)",
+                "pageSize": 5,
+            },
+        )
+    if resp.status_code == 200:
+        archivos = resp.json().get("files", [])
+        if archivos:
+            return archivos[0]["id"]
+    return None
+
+
+@router.post("/drive/estructura/{user_id}")
+async def crear_estructura_clases(user_id: str, body: EstructuraClasesRequest, _: str = Depends(verificar_identidad)):
+    """
+    Crea (si no existe) classroom/clases/<nombre_clase> en Drive para cada
+    curso aceptado, y guarda el mapeo curso_id -> drive_folder_id.
+    """
+    headers = await get_google_headers(user_id)
+    config  = obtener_config(user_id)
+    root_id = config.get("drive_root_folder_id")
+
+    try:
+        if not root_id:
+            tona_id = await _crear_carpeta_drive(headers, "Tona · Clases")
+            root_id = await _crear_carpeta_drive(headers, "materias", parent_id=tona_id)
+            guardar_config(user_id, {"drive_root_folder_id": root_id})
+
+        creadas = []
+        for curso in body.cursos:
+            curso_id = curso.get("curso_id")
+            nombre   = curso.get("nombre", "Clase sin nombre")
+            existente = obtener_carpeta_clase(user_id, curso_id)
+            if existente:
+                creadas.append(existente)
+                continue
+
+            # Antes de crear una carpeta nueva, buscar si ya existe una con ese
+            # nombre (caso: el usuario había "quitado" el vínculo pero la carpeta
+            # real de Drive con sus archivos sigue ahí)
+            folder_id = await _buscar_carpeta_existente(headers, nombre, root_id)
+            if not folder_id:
+                folder_id = await _crear_carpeta_drive(headers, nombre, parent_id=root_id)
+
+            fila = guardar_carpeta_clase(user_id, curso_id, nombre, folder_id)
+            creadas.append(fila)
+
+        return {"creado": True, "carpetas": creadas}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error creando estructura de clases: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/drive/carpeta/{user_id}/{curso_id}")
+async def quitar_carpeta_clase(user_id: str, curso_id: str, _: str = Depends(verificar_identidad)):
+    """
+    Solo elimina el VÍNCULO guardado (curso_id → drive_folder_id). No borra la carpeta
+    real de Drive, para no arriesgar archivos que el usuario ya tenga guardados ahí.
+    """
+    eliminar_carpeta_clase(user_id, curso_id)
+    return {"eliminado": True}
+
+@router.get("/drive/clases/{user_id}")
+async def listar_clases_con_carpeta(user_id: str, _: str = Depends(verificar_identidad)):
+    from services.db import obtener_carpetas_clases
+    carpetas = obtener_carpetas_clases(user_id)
+    return {"clases": [
+        {"curso_id": c["curso_id"], "nombre": c["nombre_clase"], "drive_folder_id": c["drive_folder_id"]}
+        for c in carpetas
+    ]}
+
+
+@router.get("/drive/carpeta/{user_id}/{curso_id}")
+async def listar_archivos_carpeta_clase(user_id: str, curso_id: str, _: str = Depends(verificar_identidad)):
+    carpeta = obtener_carpeta_clase(user_id, curso_id)
+    if not carpeta:
+        return {"archivos": [], "carpeta_existe": False}
+
+    headers = await get_google_headers(user_id)
+    folder_id = carpeta["drive_folder_id"]
+    TIPO_MAP = {
+        "application/vnd.google-apps.document":     "doc",
+        "application/vnd.google-apps.spreadsheet":  "sheet",
+        "application/vnd.google-apps.presentation": "slides",
+        "application/pdf":                          "pdf",
+    }
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                "https://www.googleapis.com/drive/v3/files",
+                headers=headers,
+                params={
+                    "q": f"'{folder_id}' in parents and trashed=false",
+                    "fields": "files(id,name,mimeType,modifiedTime,webViewLink)",
+                    "pageSize": 50,
+                    "orderBy": "modifiedTime desc",
+                },
+            )
+        if resp.status_code != 200:
+            return {"archivos": [], "carpeta_existe": True}
+        archivos = [{
+            "id": f["id"], "nombre": f.get("name", "Sin nombre"),
+            "tipo": TIPO_MAP.get(f.get("mimeType", ""), "archivo"),
+            "es_doc": f.get("mimeType") == "application/vnd.google-apps.document",
+            "modificado": f.get("modifiedTime", "")[:10],
+            "url": f.get("webViewLink", ""),
+        } for f in resp.json().get("files", [])]
+        return {"archivos": archivos, "carpeta_existe": True}
+    except Exception as e:
+        print(f"Error listando carpeta de clase: {e}")
+        return {"archivos": [], "carpeta_existe": True}
+
+
+# ── Google Drive - Búsqueda de entregas ──────────────────────────────────────
+
+@router.get("/drive/buscar_entrega/{user_id}/{curso_id}")
+async def buscar_entrega_en_drive(user_id: str, curso_id: str, titulo: str, _: str = Depends(verificar_identidad)):
+    """
+    Busca archivos DENTRO de la carpeta de Drive de esa clase (nunca fuera de ella)
+    cuyo nombre se parezca al título de la tarea. Regresa candidatos ordenados por similitud.
+    """
+    carpeta = obtener_carpeta_clase(user_id, curso_id)
+    if not carpeta:
+        return {"candidatos": [], "carpeta_existe": False}
+
+    headers = await get_google_headers(user_id)
+    folder_id = carpeta["drive_folder_id"]
+
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                "https://www.googleapis.com/drive/v3/files",
+                headers=headers,
+                params={
+                    "q": f"'{folder_id}' in parents and trashed=false",
+                    "fields": "files(id,name,modifiedTime,webViewLink)",
+                    "pageSize": 50,
+                },
+            )
+        if resp.status_code != 200:
+            return {"candidatos": [], "carpeta_existe": True}
+
+        archivos = resp.json().get("files", [])
+        candidatos = []
+        for f in archivos:
+            score = _score_similitud(titulo, f.get("name", ""))
+            if score >= 0.5:  # al menos la mitad de las palabras clave del título coinciden
+                candidatos.append({
+                    "id": f["id"],
+                    "nombre": f.get("name", ""),
+                    "modificado": f.get("modifiedTime", "")[:10],
+                    "link": f.get("webViewLink", ""),
+                    "score": round(score, 2),
+                })
+
+        candidatos.sort(key=lambda c: c["score"], reverse=True)
+        return {"candidatos": candidatos, "carpeta_existe": True}
+
+    except Exception as e:
+        print(f"Error buscando entrega en Drive: {e}")
+        return {"candidatos": [], "carpeta_existe": True}
+
+
+class EntregarTareaRequest(BaseModel):
+    curso_id: str
+    tarea_id: str      # id de courseWork en Classroom
+    archivo_id: str     # id del archivo en Drive ya confirmado por el usuario
+
+
+@router.post("/classroom/entregar/{user_id}")
+async def entregar_tarea_real(user_id: str, body: EntregarTareaRequest, _: str = Depends(verificar_identidad)):
+    """
+    ÚNICA función que entrega de verdad en Classroom. Solo se llama cuando el
+    usuario confirmó explícitamente (botón 'Sí, confirmar'). Nunca se dispara
+    automáticamente por el scheduler ni por detección en Drive.
+    """
+    headers = await get_google_headers(user_id)
+
+    try:
+        async with httpx.AsyncClient() as client:
+            # 1) Encontrar la entrega (studentSubmission) propia de esta tarea
+            resp_sub = await client.get(
+                f"https://classroom.googleapis.com/v1/courses/{body.curso_id}/courseWork/{body.tarea_id}/studentSubmissions",
+                headers=headers,
+                params={"userId": "me"},
+            )
+            if resp_sub.status_code != 200:
+                raise HTTPException(status_code=400, detail=f"No se encontró la entrega: {resp_sub.text}")
+
+            submissions = resp_sub.json().get("studentSubmissions", [])
+            if not submissions:
+                raise HTTPException(status_code=404, detail="No existe una entrega para esta tarea")
+            submission_id = submissions[0]["id"]
+
+            # 2) Adjuntar el archivo de Drive que el usuario confirmó
+            resp_attach = await client.post(
+                f"https://classroom.googleapis.com/v1/courses/{body.curso_id}/courseWork/{body.tarea_id}/studentSubmissions/{submission_id}:modifyAttachments",
+                headers={**headers, "Content-Type": "application/json"},
+                json={"addAttachments": [{"driveFile": {"id": body.archivo_id}}]},
+            )
+            if resp_attach.status_code not in (200, 201):
+                raise HTTPException(status_code=500, detail=f"Error adjuntando archivo: {resp_attach.text}")
+
+            # 3) Entregar (turnIn) — esta es la acción irreversible en Classroom
+            resp_turnin = await client.post(
+                f"https://classroom.googleapis.com/v1/courses/{body.curso_id}/courseWork/{body.tarea_id}/studentSubmissions/{submission_id}:turnIn",
+                headers={**headers, "Content-Type": "application/json"},
+                json={},
+            )
+            if resp_turnin.status_code not in (200, 201):
+                raise HTTPException(status_code=500, detail=f"Error entregando tarea: {resp_turnin.text}")
+
+        # Marcar como completada en nuestra lista y limpiar la sugerencia
+        from services.db import eliminar_sugerencias_de_tarea
+        tareas = obtener_tareas(user_id)
+        for t in tareas:
+            if t.get("id") == body.tarea_id:
+                t["completada"] = True
+        guardar_tareas(user_id, tareas)
+        eliminar_sugerencias_de_tarea(user_id, body.tarea_id)
+
+        return {"entregado": True, "submission_id": submission_id}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error entregando tarea real: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Google Drive - Archivos generales ────────────────────────────────────────
+
+@router.get("/drive/{user_id}")
+async def obtener_drive(user_id: str, _: str = Depends(verificar_identidad)):
+    cached = obtener_cache(user_id, "drive")
+    if cached:
+        return cached
+
+    try:
+        headers = await get_google_headers(user_id)
+
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                "https://www.googleapis.com/drive/v3/files",
+                headers=headers,
+                params={
+                    "pageSize":  15,
+                    "orderBy":   "modifiedTime desc",
+                    "fields":    "files(id,name,mimeType,modifiedTime,size,webViewLink)",
+                    "q":         "trashed=false",
+                },
+            )
+            if resp.status_code != 200:
+                return {"archivos": []}
+
+            TIPO_MAP = {
+                "application/vnd.google-apps.document":     "doc",
+                "application/vnd.google-apps.spreadsheet":  "sheet",
+                "application/vnd.google-apps.presentation": "slides",
+                "application/pdf":                          "pdf",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+            }
+
+            archivos = []
+            for f in resp.json().get("files", []):
+                tipo = TIPO_MAP.get(f.get("mimeType", ""), "archivo")
+                archivos.append({
+                    "id":           f["id"],
+                    "nombre":       f.get("name", "Sin nombre"),
+                    "tipo":         tipo,
+                    "modificado":   f.get("modifiedTime", "")[:10],
+                    "tamaño":       f.get("size", ""),
+                    "url":          f.get("webViewLink", ""),
+                })
+
+        resultado = {"archivos": archivos}
+        guardar_cache(user_id, "drive", resultado, ttl_minutos=15)
+        return resultado
+
+    except Exception as e:
+        print(f"Error Drive: {e}")
+        return {"archivos": []}
 
 
 # ── Sync Google (Classroom + Calendar) ───────────────────────────────────────
@@ -209,26 +543,69 @@ async def _obtener_classroom(user_id: str) -> list:
 
                 for tarea in resp_tareas.json().get("courseWork", []):
                     due = tarea.get("dueDate")
+                    due_time = tarea.get("dueTime")
                     fecha_limite = None
+                    hora_limite = None
                     if due:
-                        fecha_limite = f"{due.get('year')}-{due.get('month'):02d}-{due.get('day'):02d}"
+                        from services.tiempo import MX_TZ
+                        from datetime import timezone as _tz
 
-                    # ✅ Filtrar tareas vencidas hace más de 30 días para no ensuciar el contexto
+                        anio, mes, dia = due.get("year"), due.get("month"), due.get("day")
+                        if due_time:
+                            h, m = due_time.get("hours", 23), due_time.get("minutes", 0)
+                        else:
+                            h, m = 23, 59
+
+                        dt_utc = datetime(anio, mes, dia, h, m, tzinfo=_tz.utc)
+                        dt_mx = dt_utc.astimezone(MX_TZ)
+
+                        fecha_limite = dt_mx.strftime("%Y-%m-%d")
+                        hora_limite = dt_mx.strftime("%H:%M") if due_time else None
+
+                    fecha_publicacion = None
+                    creation_time = tarea.get("creationTime")
+                    if creation_time:
+                        try:
+                            fecha_publicacion = datetime.strptime(creation_time[:10], "%Y-%m-%d").date().isoformat()
+                        except:
+                            pass
+
                     if fecha_limite:
+                        # ✅ Filtrar tareas vencidas hace más de 30 días para no ensuciar el contexto
                         try:
                             fecha_t = datetime.strptime(fecha_limite, "%Y-%m-%d").date()
                             if fecha_t < limite_pasado:
                                 continue  # muy vieja, ignorar
                         except:
                             pass
+                    else:
+                        # ⚠️ Sin fecha de entrega: solo se muestra si se publicó hace 30 días o menos.
+                        # Si es más vieja o no sabemos cuándo se publicó, se considera obsoleta.
+                        if fecha_publicacion:
+                            try:
+                                fecha_pub_dt = datetime.strptime(fecha_publicacion, "%Y-%m-%d").date()
+                                if fecha_pub_dt < limite_pasado:
+                                    continue  # obsoleta, ignorar
+                            except:
+                                continue
+                        else:
+                            continue  # sin fecha límite y sin fecha de publicación: descartar
+
+                    resumen = (
+                        f"{nombre_curso} · vence {fecha_limite}" if fecha_limite
+                        else f"{nombre_curso} · publicada {fecha_publicacion}"
+                    )
 
                     tareas.append({
                         "id": tarea["id"],
                         "titulo": tarea.get("title", "Sin título"),
-                        "resumen": f"{nombre_curso} · {fecha_limite or 'Sin fecha'}",
+                        "resumen": resumen,
                         "curso": nombre_curso,
                         "curso_id": curso_id,
                         "fecha_limite": fecha_limite,
+                        "hora_limite": hora_limite,
+                        "fecha_publicacion": fecha_publicacion,
+                        "sin_fecha_limite": fecha_limite is None,
                         "urgencia": calcular_urgencia(fecha_limite),
                         "fuente": "classroom",
                         "completada": False,
@@ -429,65 +806,6 @@ async def enviar_correo(user_id: str, body: EnviarCorreoRequest, _: str = Depend
     except Exception as e:
         print(f"Erros enviando correo: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-    
-    
-
-
-    
-    
-
-# ── Google Drive ──────────────────────────────────────────────────────────────
-
-@router.get("/drive/{user_id}")
-async def obtener_drive(user_id: str, _: str = Depends(verificar_identidad)):
-    cached = obtener_cache(user_id, "drive")
-    if cached:
-        return cached
-
-    try:
-        headers = await get_google_headers(user_id)
-
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                "https://www.googleapis.com/drive/v3/files",
-                headers=headers,
-                params={
-                    "pageSize":  15,
-                    "orderBy":   "modifiedTime desc",
-                    "fields":    "files(id,name,mimeType,modifiedTime,size,webViewLink)",
-                    "q":         "trashed=false",
-                },
-            )
-            if resp.status_code != 200:
-                return {"archivos": []}
-
-            TIPO_MAP = {
-                "application/vnd.google-apps.document":     "doc",
-                "application/vnd.google-apps.spreadsheet":  "sheet",
-                "application/vnd.google-apps.presentation": "slides",
-                "application/pdf":                          "pdf",
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
-            }
-
-            archivos = []
-            for f in resp.json().get("files", []):
-                tipo = TIPO_MAP.get(f.get("mimeType", ""), "archivo")
-                archivos.append({
-                    "id":           f["id"],
-                    "nombre":       f.get("name", "Sin nombre"),
-                    "tipo":         tipo,
-                    "modificado":   f.get("modifiedTime", "")[:10],
-                    "tamaño":       f.get("size", ""),
-                    "url":          f.get("webViewLink", ""),
-                })
-
-        resultado = {"archivos": archivos}
-        guardar_cache(user_id, "drive", resultado, ttl_minutos=15)
-        return resultado
-
-    except Exception as e:
-        print(f"Error Drive: {e}")
-        return {"archivos": []}
 
 
 # ── Sitios monitoreados ───────────────────────────────────────────────────────
@@ -525,6 +843,12 @@ async def revisar_sitio_ahora(user_id: str, sitio_id: str, _: str = Depends(veri
     """Fuerza revisión inmediata de un sitio."""
     from services.scheduler import _revisar_sitio
     resultado = await _revisar_sitio(user_id, sitio_id)
+    if resultado.get("cambio"):
+        sitios = obtener_sitios(user_id)
+        for s in sitios:
+            if s.get("id") == sitio_id:
+                s["notificado"] = True
+        guardar_sitios(user_id, sitios)
     return resultado
 
 

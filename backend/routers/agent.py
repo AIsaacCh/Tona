@@ -4,11 +4,12 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Union
 from services.auth_utils import decodificar_token, verificar_identidad, obtener_user_id_de_cookie, verificar_identidad
-from services.gemini import enviar_mensaje
-from services.db import obtener_usuario, guardar_historial, obtener_historial, obtener_tareas, guardar_tareas
+from services.gemini import enviar_mensaje, responder_sobre_sitios
+from services.db import obtener_usuario, guardar_historial, obtener_historial, obtener_tareas, guardar_tareas, obtener_archivo_de_tarea
 from config import settings
 from datetime import datetime, timedelta
 import httpx, io, base64, uuid, json
+import re
 
 router = APIRouter()
 
@@ -46,52 +47,230 @@ def construir_contexto(user_id: str) -> str:
     usuario = obtener_usuario(user_id)
     if not usuario:
         return ""
-    ahora = datetime.now().strftime("%A %d de %B, %H:%M")
-    nombre = usuario.get("name", "").split()[0]
+    from services.db import obtener_config
+    from services.tiempo import ahora_mx
+    config = obtener_config(user_id)
+
+    ahora = ahora_mx().strftime("%A %d de %B, %H:%M")
+    nombre = usuario.get("name", "").split()[0] if usuario.get("name") else ""
+    nombre_preferido = config.get("nombre_usuario") or nombre
+    nombre_agente = config.get("nombre_agente", "Tona")
+    tono = config.get("tono", "neutral")
+
     return f"""CONTEXTO DEL USUARIO:
-- Nombre: {nombre}
+- Nombre preferido: {nombre_preferido}
+- Nombre del agente: {nombre_agente}
+- Tono de interacción configurado: {tono}
 - Fecha y hora actual: {ahora}
 - Tier: {usuario.get('tier', 'estudiante')}"""
 
 
 def construir_contexto_tareas_eventos(user_id: str) -> str:
+    from services.tiempo import hoy_mx
     tareas = obtener_tareas(user_id)
     if not tareas:
         return "TAREAS Y EVENTOS REGISTRADOS: Ninguno por el momento."
 
-    hoy = datetime.now().date()
+    from services.tiempo import ahora_mx
+    hoy = hoy_mx()
+    ahora_completo = ahora_mx().replace(tzinfo=None)
     en_una_semana = hoy + timedelta(days=7)
 
     lineas = ["TAREAS Y EVENTOS REGISTRADOS (datos reales, úsalos para responder con precisión):"]
-    for t in sorted(tareas, key=lambda x: x.get("fecha_limite") or "9999"):
+    for t in sorted(tareas, key=lambda x: x.get("fecha_limite") or x.get("fecha_publicacion") or "9999"):
         if t.get("completada"):
             continue
-        fecha_str = t.get("fecha_limite", "sin fecha")
         fuente = t.get("fuente", "manual")
         titulo = t.get("titulo", "Sin título")
         urgencia = t.get("urgencia", "baja")
+        sin_fecha_limite = t.get("sin_fecha_limite", False)
+        fecha_str = t.get("fecha_limite")
+        hora_str = t.get("hora_limite")
 
         en_semana = ""
-        try:
-            fecha_t = datetime.strptime(fecha_str, "%Y-%m-%d").date()
-            if hoy <= fecha_t <= en_una_semana:
-                en_semana = " [ESTA SEMANA]"
-        except:
-            pass
+        vencida = ""
+        if fecha_str:
+            try:
+                fecha_t = datetime.strptime(fecha_str, "%Y-%m-%d").date()
+                if hoy <= fecha_t <= en_una_semana:
+                    en_semana = " [ESTA SEMANA]"
+                hora_comparacion = hora_str or "23:59"
+                limite_completo = datetime.strptime(f"{fecha_str} {hora_comparacion}", "%Y-%m-%d %H:%M")
+                if limite_completo < ahora_completo:
+                    vencida = " [YA VENCIÓ]"
+            except:
+                pass
 
-        lineas.append(f"  - \"{titulo}\" · fecha: {fecha_str} · urgencia: {urgencia} · origen: {fuente}{en_semana}")
+        if sin_fecha_limite:
+            fecha_info = f"sin fecha de entrega, publicada: {t.get('fecha_publicacion', 'desconocida')}"
+        else:
+            hora_info = f" {hora_str}" if hora_str else ""
+            fecha_info = f"fecha: {fecha_str or 'sin fecha'}{hora_info}"
+
+        # Verificar si la tarea tiene archivo vinculado
+        tiene_archivo = obtener_archivo_de_tarea(user_id, t.get("id")) is not None
+        etiqueta_archivo = " [YA TIENE ARCHIVO VINCULADO]" if tiene_archivo else ""
+
+        lineas.append(f"  - \"{titulo}\" · {fecha_info} · urgencia: {urgencia} · origen: {fuente}{en_semana}{vencida}{etiqueta_archivo}")
 
     if len(lineas) == 1:
         return "TAREAS Y EVENTOS REGISTRADOS: Ninguno pendiente por el momento."
 
     return "\n".join(lineas)
 
+def construir_contexto_sitios(user_id: str) -> str:
+    from services.db import obtener_sitios
+    from services.tiempo import ahora_mx
+    sitios = obtener_sitios(user_id)
+    if not sitios:
+        return "SITIOS MONITOREADOS: Ninguno configurado."
+
+    hoy = ahora_mx().replace(tzinfo=None)
+    limite = hoy - timedelta(days=3)
+
+
+    lineas = ["SITIOS MONITOREADOS (información real extraída de páginas que el usuario pidió vigilar. "
+              "Menciónala de forma proactiva y natural SOLO si es relevante para lo que el usuario pregunta "
+              "o para sus intereses conocidos por la conversación, y solo si no la mencionaste ya antes en el historial reciente):"]
+    for s in sitios:
+        resumen = s.get("ultimo_resumen")
+        ultima_revision = s.get("ultima_revision")
+        if not resumen:
+            continue
+        reciente = False
+        if ultima_revision:
+            try:
+                fecha_rev = datetime.fromisoformat(ultima_revision.replace("Z", "+00:00")).replace(tzinfo=None)
+                reciente = fecha_rev >= limite
+            except:
+                pass
+        etiqueta = " [ACTUALIZADO RECIENTEMENTE]" if reciente else ""
+        lineas.append(f"  - \"{s.get('alias')}\": {resumen}{etiqueta}")
+
+    if len(lineas) == 1:
+        return "SITIOS MONITOREADOS: Configurados pero sin revisiones aún."
+
+    return "\n".join(lineas)
+
+async def revisar_sitios_en_vivo(user_id: str) -> list:
+    from services.db import obtener_sitios
+    from services.scheduler import _revisar_sitio
+    sitios = obtener_sitios(user_id)
+    resultados = []
+    for s in sitios:
+        r = await _revisar_sitio(user_id, s["id"])
+        sitios_actualizados = obtener_sitios(user_id)
+        sitio_actual = next((x for x in sitios_actualizados if x["id"] == s["id"]), s)
+        resultados.append({
+            "alias": s.get("alias"),
+            "cambio": r.get("cambio", False),
+            "resumen": sitio_actual.get("ultimo_resumen") or "Aún no se ha generado un resumen para este sitio.",
+            "contenido_completo": r.get("contenido_completo", ""),
+        })
+    return resultados
+
+def extraer_links_de_texto(mensaje: str, alias_sitio: str = "") -> list:
+    """Detecta URLs reales dentro del texto que Gemini generó, y arma
+    etiquetas legibles para mostrarlas como tarjetas de enlaces."""
+    urls = re.findall(r'https?://[^\s\)\]\,]+', mensaje)
+    vistos = set()
+    limpio = []
+    for u in urls:
+        u = u.rstrip('.,;:!?)')
+        if u in vistos:
+            continue
+        vistos.add(u)
+        limpio.append(u)
+
+    resultados = []
+    for u in limpio:
+        partes = u.rstrip('/').split('/')
+        ultimo = partes[-1].replace('-', ' ').replace('.html', '').replace('_', ' ').strip()
+        etiqueta = ultimo.capitalize() if ultimo else (alias_sitio or "Enlace")
+        if alias_sitio and alias_sitio.lower() not in etiqueta.lower():
+            etiqueta = f"{etiqueta} · {alias_sitio}"
+        resultados.append({"texto": etiqueta, "url": u})
+    return resultados
+
+
+def obtener_novedades_sitios(user_id: str) -> dict:
+    from services.db import obtener_sitios, guardar_sitios
+    sitios = obtener_sitios(user_id)
+    pendientes = [s for s in sitios if s.get("ultimo_resumen") and not s.get("notificado", True)]
+
+    if not pendientes:
+        return {"accion": "sin_novedades", "payload": {}, "mensaje": ""}
+
+    if len(pendientes) <= 2:
+        partes = [f"{s['alias']}: {s['ultimo_resumen']}" for s in pendientes]
+        mensaje = "Encontré novedades en tus sitios monitoreados. " + " Además, ".join(partes)
+    else:
+        alias_lista = ", ".join(s["alias"] for s in pendientes)
+        mensaje = (
+            f"Tengo novedades en {len(pendientes)} sitios que monitoreas: {alias_lista}. "
+            f"¿De cuál quieres que te cuente primero?"
+        )
+
+    ids_pendientes = {p["id"] for p in pendientes}
+    for s in sitios:
+        if s.get("id") in ids_pendientes:
+            s["notificado"] = True
+    guardar_sitios(user_id, sitios)
+
+    return {"accion": "flash", "payload": {"mensaje": mensaje, "tipo": "info"}, "mensaje": mensaje}
+
+def obtener_sugerencia_entrega_para_mostrar(user_id: str) -> dict:
+    from services.db import obtener_sugerencias_pendientes, marcar_sugerencia_notificada
+
+    pendientes = obtener_sugerencias_pendientes(user_id)
+    if not pendientes:
+        return {"accion": "sin_sugerencia", "payload": {}, "mensaje": ""}
+
+    s = pendientes[0]
+    marcar_sugerencia_notificada(user_id, s["id"])
+
+    if s.get("sin_archivo"):
+        pregunta = (
+            f"Tu tarea \"{s['titulo_tarea']}\" está por vencer y no encontré ningún archivo relacionado "
+            f"en su carpeta de Drive. ¿Quieres que te prepare uno?"
+        )
+        payload = {
+            "pregunta": pregunta,
+            "onSi": "crear_archivo_para_tarea",
+            "onNo": None,
+            "labelSi": "Sí, créalo",
+            "labelNo": "Aún no",
+            "contexto": {"titulo_tarea": s["titulo_tarea"], "tarea_id": s["tarea_id"], "curso_id": s["curso_id"]},
+        }
+    else:
+        pregunta = (
+            f"Encontré un archivo en tu Drive que parece ser tu entrega de \"{s['titulo_tarea']}\": "
+            f"\"{s['archivo_nombre']}\". ¿Quieres que la entregue en Classroom, o sigues trabajando en ella?"
+        )
+        payload = {
+            "pregunta": pregunta,
+            "onSi": "confirmar_entrega_real",
+            "onNo": "abrir_archivo_entrega",
+            "labelSi": "Sí, entregar",
+            "labelNo": "Aún no, quiero editarla",
+            "contexto": {
+                "curso_id": s["curso_id"], "tarea_id": s["tarea_id"],
+                "archivo_id": s["archivo_id"], "archivo_link": s.get("archivo_link"),
+            },
+        }
+    return {"accion": "confirmar", "payload": payload, "mensaje": pregunta}
+
 
 def enriquecer_payload(accion: str, payload, user_id: str):
     tareas = obtener_tareas(user_id)
 
     if accion == "ver_tareas":
-        if tareas:
+        fuente_filtro = payload.get("fuente") if isinstance(payload, dict) else None
+        tareas_filtradas = (
+            [t for t in tareas if t.get("fuente", "manual") == fuente_filtro]
+            if fuente_filtro else tareas
+        )
+        if tareas_filtradas:
             return [
                 {
                     "id": t.get("id"),
@@ -105,7 +284,7 @@ def enriquecer_payload(accion: str, payload, user_id: str):
                     "fuente": t.get("fuente", "manual"),
                     "fecha": t.get("fecha_limite"),
                 }
-                for t in tareas[:15]
+                for t in tareas_filtradas[:15]
             ]
         return []
 
@@ -130,7 +309,8 @@ def enriquecer_payload(accion: str, payload, user_id: str):
         return CALS_MOCK
 
     if accion == "ver_calendario":
-        hoy = datetime.now().date()
+        from services.tiempo import hoy_mx
+        hoy = hoy_mx()
         en_dos_semanas = hoy + timedelta(days=14)
         eventos = []
         for t in tareas:
@@ -149,8 +329,8 @@ def enriquecer_payload(accion: str, payload, user_id: str):
                     })
             except:
                 pass
-        mes_actual = datetime.now().month - 1
-        año_actual = datetime.now().year
+        mes_actual = hoy.month - 1
+        año_actual = hoy.year
         return {
             "mes": payload.get("mes", mes_actual) if isinstance(payload, dict) else mes_actual,
             "año": payload.get("año", año_actual) if isinstance(payload, dict) else año_actual,
@@ -162,6 +342,7 @@ def enriquecer_payload(accion: str, payload, user_id: str):
 
     if accion == "abrir_doc_existente":
         return payload
+    
 
     if accion == "eliminar_doc":
         return payload
@@ -186,6 +367,27 @@ async def ejecutar_accion_backend(accion: str, payload: dict, user_id: str):
             print(f"❌ Error en crear_tarea_real: {e}")
         return None
 
+    if accion == "crear_archivo_para_tarea":
+        try:
+            tareas = obtener_tareas(user_id)
+            titulo_buscado = payload.get("titulo_tarea", "").strip().lower()
+            candidatas = [t for t in tareas if t.get("titulo", "").strip().lower() == titulo_buscado and t.get("fuente") == "classroom"]
+            if not candidatas:
+                candidatas = [t for t in tareas if titulo_buscado in t.get("titulo", "").strip().lower() and t.get("fuente") == "classroom"]
+            if not candidatas:
+                return None
+            tarea = candidatas[0]
+
+            import httpx as _httpx
+            from routers.docs import crear_doc_para_tarea, CrearArchivoTareaRequest
+            body = CrearArchivoTareaRequest(tarea_id=tarea["id"], titulo_tarea=tarea["titulo"], curso_id=tarea["curso_id"])
+            resultado = await crear_doc_para_tarea(user_id, body, _=user_id)
+            return resultado
+        except Exception as e:
+            print(f"❌ Error en crear_archivo_para_tarea: {e}")
+        return None
+
+
     if accion == "crear_evento_real":
         try:
             body = EventoCalendar(
@@ -203,18 +405,30 @@ async def ejecutar_accion_backend(accion: str, payload: dict, user_id: str):
     
     if accion == "enviar_correo":
         try:
-            body =EnviarCorreoRequest(
+            body = EnviarCorreoRequest(
                 para=payload.get("para", ""),
                 asunto=payload.get("asunto", "Sin asunto"),
                 cuerpo=payload.get("cuerpo", ""),
 
             )
-            resultado =await enviar_correo(user_id, body)
+            resultado = await enviar_correo(user_id, body)
             return resultado 
         except Exception as e:
             print(f"❌ Error en enviar_correo: {e}")
         return None
-    
+
+    if accion == "agregar_sitio":
+        try:
+            from services.db import agregar_sitio
+            sitio = agregar_sitio(user_id, {
+                "url": payload.get("url", ""),
+                "alias": payload.get("alias", "Sitio sin nombre"),
+                "frecuencia": payload.get("frecuencia", "semanal"),
+            })
+            return sitio
+        except Exception as e:
+            print(f"❌ Error en agregar_sitio: {e}")
+        return None
 
     if accion == "guardar_config_onboarding":
         try:
@@ -262,7 +476,44 @@ async def chat(request_http: Request, request: MensajeRequest):
             payload_directo = direct.get("payload", {})
             mensaje_resp = ""
 
-            if accion_directa in ("crear_tarea_real", "crear_evento_real", "guardar_config_onboarding", "enviar_correo"):
+            if accion_directa == "revisar_novedades_sitios":
+                resultado_novedades = obtener_novedades_sitios(request.user_id)
+                accion_directa  = resultado_novedades["accion"]
+                payload_directo = resultado_novedades["payload"]
+                mensaje_resp    = resultado_novedades["mensaje"]
+
+            elif accion_directa == "revisar_sugerencias_entrega":
+                resultado_sugerencia = obtener_sugerencia_entrega_para_mostrar(request.user_id)
+                accion_directa  = resultado_sugerencia["accion"]
+                payload_directo = resultado_sugerencia["payload"]
+                mensaje_resp    = resultado_sugerencia["mensaje"]
+
+            elif accion_directa == "entregar_tarea_real":
+                from routers.tasks import entregar_tarea_real, EntregarTareaRequest
+                try:
+                    body_entrega = EntregarTareaRequest(**payload_directo)
+                    resultado_entrega = await entregar_tarea_real(request.user_id, body_entrega, _=request.user_id)
+                    accion_directa  = "flash"
+                    payload_directo = {"mensaje": "Tarea entregada en Classroom.", "tipo": "exito"}
+                    mensaje_resp    = "Listo, entregué la tarea en Classroom."
+                except Exception as e:
+                    print(f"❌ Error entregando tarea real: {e}")
+                    accion_directa  = "flash"
+                    payload_directo = {"mensaje": "No se pudo entregar la tarea.", "tipo": "error"}
+                    mensaje_resp    = "No pude entregar la tarea, intenta de nuevo."
+
+            elif accion_directa == "crear_archivo_para_tarea":
+                dato = await ejecutar_accion_backend(accion_directa, payload_directo, request.user_id)
+                if dato and dato.get("doc_id"):
+                    accion_directa  = "abrir_doc_especifico"
+                    payload_directo = {"doc_id": dato["doc_id"], "titulo": dato.get("titulo", "Documento")}
+                    mensaje_resp    = "Listo, creé el archivo. Abriéndolo..."
+                else:
+                    accion_directa  = "flash"
+                    payload_directo = {"mensaje": "No se pudo crear el archivo.", "tipo": "error"}
+                    mensaje_resp    = "No se pudo crear el archivo."
+
+            elif accion_directa in ("crear_tarea_real", "crear_evento_real", "guardar_config_onboarding", "enviar_correo", "agregar_sitio"):
                 dato = await ejecutar_accion_backend(accion_directa, payload_directo, request.user_id)
                 if dato:
                     accion_directa = "flash"
@@ -272,6 +523,11 @@ async def chat(request_http: Request, request: MensajeRequest):
                     accion_directa = "flash"
                     payload_directo = {"mensaje": "No se pudo guardar.", "tipo": "error"}
                     mensaje_resp = "No se pudo guardar."
+
+            else:
+                accion_directa = "flash"
+                payload_directo = {"mensaje": "Acción no reconocida.", "tipo": "error"}
+                mensaje_resp = "Acción no reconocida."
 
             historial_actualizado = obtener_historial(request.user_id) + [
                 {"role": "user",  "content": request.mensaje},
@@ -309,9 +565,11 @@ async def chat(request_http: Request, request: MensajeRequest):
 
     contexto_base    = construir_contexto(request.user_id)
     contexto_tareas  = construir_contexto_tareas_eventos(request.user_id)
+    contexto_sitios  = construir_contexto_sitios(request.user_id)
+
 
     mensaje_con_contexto = (
-        f"{contexto_base}\n\n{contexto_tareas}\n\nMensaje del usuario: {request.mensaje}"
+        f"{contexto_base}\n\n{contexto_tareas}\n\n{contexto_sitios}\n\nMensaje del usuario: {request.mensaje}"
     )
 
     resultado = await enviar_mensaje(historial_raw, mensaje_con_contexto)
@@ -328,7 +586,18 @@ async def chat(request_http: Request, request: MensajeRequest):
     # ──────────────────────────────────────────────────────────────────────────
     # ⚙️ EJECUTAR ACCIONES DEL BACKEND
     # ──────────────────────────────────────────────────────────────────────────
-    if accion in ("crear_tarea_real", "crear_evento_real", "enviar_correo"):
+    if accion == "crear_archivo_para_tarea":
+        dato_creado = await ejecutar_accion_backend(accion, payload, request.user_id)
+        if dato_creado and dato_creado.get("doc_id"):
+            accion  = "abrir_doc_especifico"
+            payload = {"doc_id": dato_creado["doc_id"], "titulo": dato_creado.get("titulo", "Documento")}
+            mensaje = mensaje or "Listo, creé el archivo. Abriéndolo..."
+        else:
+            accion  = "flash"
+            payload = {"mensaje": "No se pudo crear el archivo. Intenta de nuevo.", "tipo": "error"}
+        flujo_activo = False
+
+    elif accion in ("crear_tarea_real", "crear_evento_real", "enviar_correo", "agregar_sitio"):
         dato_creado = await ejecutar_accion_backend(accion, payload, request.user_id)
         if dato_creado:
             accion  = "flash"
@@ -336,6 +605,30 @@ async def chat(request_http: Request, request: MensajeRequest):
         else:
             accion  = "flash"
             payload = {"mensaje": "No se pudo guardar. Intenta de nuevo.", "tipo": "error"}
+        flujo_activo = False
+
+    # ✅ NUEVA ACCIÓN: Abrir archivo de tarea
+    elif accion == "abrir_archivo_tarea":
+        from services.db import obtener_archivo_de_tarea
+        titulo_buscado = payload.get("titulo_tarea", "").strip().lower() if isinstance(payload, dict) else ""
+        tareas = obtener_tareas(request.user_id)
+
+        candidatas = [t for t in tareas if t.get("titulo", "").strip().lower() == titulo_buscado]
+        if not candidatas:
+            candidatas = [t for t in tareas if titulo_buscado in t.get("titulo", "").strip().lower()]
+
+        archivo = None
+        if candidatas:
+            archivo = obtener_archivo_de_tarea(request.user_id, candidatas[0]["id"])
+
+        if archivo:
+            accion = "abrir_doc_especifico"
+            payload = {"doc_id": archivo["archivo_id"], "titulo": archivo.get("archivo_nombre") or "Documento"}
+            mensaje = f"Abriendo el archivo de \"{candidatas[0]['titulo']}\"..."
+        else:
+            accion = "flash"
+            payload = {"mensaje": "No encontré un archivo vinculado a esa tarea.", "tipo": "error"}
+            mensaje = "No encontré un archivo vinculado a esa tarea."
         flujo_activo = False
 
     # ✅ PROCESAR ACCIONES DE DOCUMENTOS
@@ -489,8 +782,31 @@ async def chat(request_http: Request, request: MensajeRequest):
                 mensaje = f"Encontré {len(archivos)} archivo(s) en tu Drive."
             else:
                 mensaje = "No encontré archivos en tu Drive con esos criterios."
+
+    elif accion == "ver_sitios":
+        resultados = await revisar_sitios_en_vivo(request.user_id)
+        payload = resultados
+
+        if not resultados:
+            mensaje = "No tienes sitios monitoreados todavía. Dime la URL y con gusto lo agrego."
+        else:
+            mensaje = await responder_sobre_sitios(request.mensaje, resultados)
+        flujo_activo = False
+        
     else:
         payload = enriquecer_payload(accion, payload, request.user_id)
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # 🔗 DETECCIÓN UNIVERSAL DE LINKS
+    # ──────────────────────────────────────────────────────────────────────────
+    # Detección universal de links: si el mensaje final (venga de la acción que venga)
+    # contiene una URL real, mostramos la tarjeta de enlaces — sin importar si Gemini
+    # eligió "flash" (memoria) o "ver_sitios" (revisión en vivo)
+    if accion in ("flash", "ver_sitios") and mensaje:
+        links_encontrados = extraer_links_de_texto(mensaje)
+        if links_encontrados:
+            accion = "mostrar_links"
+            payload = {"links": links_encontrados}
 
     print(f"📦 Payload final: {payload}")
     print(f"✅ Enviando: accion={accion}, mensaje={mensaje}, flujo_activo={flujo_activo}")
@@ -537,6 +853,17 @@ async def guardar_configuracion(user_id: str, body: dict, _: str = Depends(verif
     from services.db import guardar_config
     guardar_config(user_id, body)
     return {"guardado": True, "config": body}
+
+
+class PasoOnboardingRequest(BaseModel):
+    paso: int
+
+
+@router.post("/config/{user_id}/paso")
+async def actualizar_paso_onboarding(user_id: str, body: PasoOnboardingRequest, _: str = Depends(verificar_identidad)):
+    from services.db import guardar_config
+    guardar_config(user_id, {"onboarding_paso": body.paso})
+    return {"actualizado": True, "onboarding_paso": body.paso}
 
 
 @router.delete("/historial/{user_id}")

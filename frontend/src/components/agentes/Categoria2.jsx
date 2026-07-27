@@ -180,6 +180,7 @@ const MATERIA_MOCK = {
 export function VistaListaTareas() {
   const [data,   setData]   = useState(null);
   const [filtro, setFiltro] = useState("todas");
+  const [filtroFuente, setFiltroFuente] = useState("todas");
   const userId = localStorage.getItem("tona_user_id") || "demo";
 
   useEffect(() => {
@@ -204,7 +205,9 @@ export function VistaListaTareas() {
 
   if (!data) return null;
 
-  const filtradas = filtro === "todas" ? data : data.filter((t) => t.prioridad === filtro);
+  const filtradas = data
+    .filter((t) => filtro === "todas" || t.prioridad === filtro)
+    .filter((t) => filtroFuente === "todas" || t.fuente === filtroFuente);
   const FUENTE_COLOR = { classroom: T.jade, calendar: T.turquesa, manual: T.copal };
 
   return (
@@ -223,6 +226,23 @@ export function VistaListaTareas() {
               : `${f === "todas" ? T.copal : PRIORIDAD_COLOR[f]}12`,
             cursor: "pointer", border: "none", fontSize: 10, padding: "4px 10px",
           }}>{f}</button>
+        ))}
+      </div>
+      
+      <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+        {[
+          { val: "todas",     label: "Todas" },
+          { val: "classroom", label: "Classroom" },
+          { val: "calendar",  label: "Calendario" },
+          { val: "manual",    label: "Mías" },
+        ].map(({ val, label }) => (
+          <button key={val} onClick={() => setFiltroFuente(val)} style={{
+            ...badge(val === "todas" ? T.turquesa : FUENTE_COLOR[val] || T.copal),
+            background: filtroFuente === val
+              ? `${val === "todas" ? T.turquesa : FUENTE_COLOR[val] || T.copal}30`
+              : `${val === "todas" ? T.turquesa : FUENTE_COLOR[val] || T.copal}12`,
+            cursor: "pointer", border: "none", fontSize: 10, padding: "4px 10px",
+          }}>{label}</button>
         ))}
       </div>
 

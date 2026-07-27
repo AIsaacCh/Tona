@@ -1,7 +1,9 @@
 // widgets/index.jsx
 // Los 13 widgets — cada uno con vista sm y md
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { T } from "../../tokens";
+
+const API = import.meta.env.VITE_API_URL;
 
 
 // ── Helpers de estilo ─────────────────────────────────────────────────────────
@@ -111,6 +113,24 @@ const PRIORIDAD_COLOR = {
   Baja:  T.jade,
 };
 
+const FUENTE_COLOR = {
+  classroom: T.jade,
+  calendar:  T.turquesa,
+  manual:    T.copal,
+};
+
+function useTareasReales() {
+  const [tareas, setTareas] = useState(null);
+  useEffect(() => {
+    const userId = localStorage.getItem("tona_user_id") || "demo";
+    fetch(`${API}/tasks/${userId}`, { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => setTareas(d.tareas || []))
+      .catch(() => setTareas([]));
+  }, []);
+  return tareas;
+}
+
 const ACCIONES = [
   { label: "Ver tareas",      accion: "mostrar_tareas"      },
   { label: "Próximo examen",  accion: "mostrar_examen"      },
@@ -121,11 +141,26 @@ const ACCIONES = [
 // ── Widgets ───────────────────────────────────────────────────────────────────
 
 export function WidgetTareas() {
+  const tareasApi = useTareasReales();
+  const tareas = (tareasApi ?? TAREAS).map((t) => ({
+    id: t.id,
+    texto: t.texto ?? t.titulo,
+    prioridad: t.prioridad ?? (
+      t.urgencia === "alta" ? "Alta" : t.urgencia === "media" ? "Media" : "Baja"
+    ),
+    done: t.done ?? t.completada ?? false,
+    fuente: t.fuente || "manual",
+  }));
+
   return <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-    {TAREAS.map((t) => (
+    {tareas.length === 0 && (
+      <div style={{ ...label(0.3), textAlign: "center", padding: "12px 0" }}>Sin tareas pendientes</div>
+    )}
+    {tareas.map((t) => (
       <div key={t.id} style={{ ...row, opacity: t.done ? 0.35 : 1 }}>
         <div style={{ width: 10, height: 10, border: `1px solid ${PRIORIDAD_COLOR[t.prioridad]}66`, borderRadius: 2, flexShrink: 0, background: t.done ? PRIORIDAD_COLOR[t.prioridad] : "transparent" }} />
         <span style={{ ...label(), flex: 1, textDecoration: t.done ? "line-through" : "none" }}>{t.texto}</span>
+        <span style={{ ...badge(FUENTE_COLOR[t.fuente] || T.copal), fontSize: 8 }}>{t.fuente}</span>
         <span style={badge(PRIORIDAD_COLOR[t.prioridad])}>{t.prioridad}</span>
       </div>
     ))}
@@ -133,13 +168,27 @@ export function WidgetTareas() {
 }
 
 export function WidgetTareasSm() {
-  const pendientes = TAREAS.filter((t) => !t.done).length;
+  const tareasApi = useTareasReales();
+  const tareas = (tareasApi ?? TAREAS).map((t) => ({
+    id: t.id,
+    prioridad: t.prioridad ?? (
+      t.urgencia === "alta" ? "Alta" : t.urgencia === "media" ? "Media" : "Baja"
+    ),
+    done: t.done ?? t.completada ?? false,
+    fuente: t.fuente || "manual",
+  }));
+  const pendientes = tareas.filter((t) => !t.done).length;
+  const porFuente = tareas.reduce((acc, t) => {
+    if (!t.done) acc[t.fuente] = (acc[t.fuente] || 0) + 1;
+    return acc;
+  }, {});
+
   return <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", height: "100%" }}>
     <div style={statBig(T.amaranto)}>{pendientes}</div>
     <div style={statLabel}>tareas pendientes</div>
-    <div style={{ marginTop: 12, display: "flex", gap: 6 }}>
-      {TAREAS.slice(0, 3).map((t) => (
-        <span key={t.id} style={badge(PRIORIDAD_COLOR[t.prioridad])}>{t.prioridad}</span>
+    <div style={{ marginTop: 12, display: "flex", gap: 6, flexWrap: "wrap" }}>
+      {Object.entries(porFuente).map(([fuente, n]) => (
+        <span key={fuente} style={badge(FUENTE_COLOR[fuente] || T.copal)}>{fuente} · {n}</span>
       ))}
     </div>
   </div>;

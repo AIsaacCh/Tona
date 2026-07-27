@@ -131,6 +131,7 @@ def guardar_tareas(user_id: str, tareas: list):
             "titulo": t.get("titulo"),
             "resumen": t.get("resumen"),
             "fecha_limite": t.get("fecha_limite") or None,
+            "hora_limite": t.get("hora_limite"),
             "urgencia": t.get("urgencia", "baja"),
             "fuente": t.get("fuente"),
             "completada": t.get("completada", False),
@@ -159,7 +160,8 @@ CONFIG_DEFAULT = {
 def guardar_config(user_id: str, config: Dict):
     columnas_validas = {
         "nombre_usuario", "nombre_agente", "tono", "idioma",
-        "notificaciones", "frecuencia_sitios", "onboarding_paso"
+        "notificaciones", "frecuencia_sitios", "onboarding_paso",
+        "drive_root_folder_id"
     }
     payload = {k: v for k, v in config.items() if k in columnas_validas}
     payload["user_id"] = user_id
@@ -201,12 +203,80 @@ def agregar_sitio(user_id: str, sitio: Dict) -> Dict:
     sitio["user_id"] = user_id
     sitio.setdefault("ultimo_hash", "")
     sitio.setdefault("ultima_revision", None)
+    sitio.setdefault("notificado", True)
     supabase.table("sitios_monitoreados").insert(sitio).execute()
     return sitio
 
 
 def eliminar_sitio(user_id: str, sitio_id: str):
     supabase.table("sitios_monitoreados").delete().eq("user_id", user_id).eq("id", sitio_id).execute()
+
+def guardar_carpeta_clase(user_id: str, curso_id: str, nombre_clase: str, drive_folder_id: str) -> Dict:
+    fila = {
+        "user_id": user_id,
+        "curso_id": curso_id,
+        "nombre_clase": nombre_clase,
+        "drive_folder_id": drive_folder_id,
+    }
+    supabase.table("classroom_folders").upsert(fila, on_conflict="user_id,curso_id").execute()
+    return fila
+
+
+def obtener_carpetas_clases(user_id: str) -> list:
+    resp = supabase.table("classroom_folders").select("*").eq("user_id", user_id).execute()
+    return resp.data or []
+
+
+def obtener_carpeta_clase(user_id: str, curso_id: str) -> Optional[Dict]:
+    resp = supabase.table("classroom_folders").select("*").eq("user_id", user_id).eq("curso_id", curso_id).execute()
+    return resp.data[0] if resp.data else None
+def guardar_sugerencia_entrega(user_id: str, sugerencia: Dict) -> Dict:
+    fila = {
+        "user_id": user_id,
+        "tarea_id": sugerencia["tarea_id"],
+        "titulo_tarea": sugerencia["titulo_tarea"],
+        "curso_id": sugerencia["curso_id"],
+        "archivo_id": sugerencia.get("archivo_id"),
+        "archivo_nombre": sugerencia.get("archivo_nombre"),
+        "archivo_link": sugerencia.get("archivo_link"),
+        "sin_archivo": sugerencia.get("sin_archivo", False),
+        "notificada": False,
+    }
+    supabase.table("sugerencias_entrega").upsert(fila, on_conflict="user_id,tarea_id,archivo_id").execute()
+    return fila
+
+def vincular_archivo_tarea(user_id: str, tarea_id: str, archivo_id: str, archivo_nombre: str, archivo_link: str, curso_id: str = None) -> Dict:
+    fila = {
+        "user_id": user_id,
+        "tarea_id": tarea_id,
+        "archivo_id": archivo_id,
+        "archivo_nombre": archivo_nombre,
+        "archivo_link": archivo_link,
+        "curso_id": curso_id,
+    }
+    supabase.table("tarea_archivos").upsert(fila, on_conflict="user_id,tarea_id").execute()
+    return fila
+
+
+def obtener_archivo_de_tarea(user_id: str, tarea_id: str) -> Optional[Dict]:
+    resp = supabase.table("tarea_archivos").select("*").eq("user_id", user_id).eq("tarea_id", tarea_id).execute()
+    return resp.data[0] if resp.data else None
+
+
+def obtener_sugerencias_pendientes(user_id: str) -> list:
+    resp = supabase.table("sugerencias_entrega").select("*").eq("user_id", user_id).eq("notificada", False).execute()
+    return resp.data or []
+
+
+def marcar_sugerencia_notificada(user_id: str, sugerencia_id: str):
+    supabase.table("sugerencias_entrega").update({"notificada": True}).eq("user_id", user_id).eq("id", sugerencia_id).execute()
+
+
+def eliminar_sugerencias_de_tarea(user_id: str, tarea_id: str):
+    supabase.table("sugerencias_entrega").delete().eq("user_id", user_id).eq("tarea_id", tarea_id).execute()
+
+def eliminar_carpeta_clase(user_id: str, curso_id: str):
+    supabase.table("classroom_folders").delete().eq("user_id", user_id).eq("curso_id", curso_id).execute()
 
 def obtener_horario (user_id: str) -> list:
     resp= supabase.table("horario").select("*").eq("user_id", user_id).order("dia").execute()
@@ -347,3 +417,4 @@ def guardar_mensaje_colaborativo(codigo: str, user_id: str, nombre: str, texto: 
 def obtener_mensajes_colaborativos(codigo: str) -> list:
     resp = supabase.table("colaboracion_mensajes").select("*").eq("codigo", codigo).order("created_at").execute()
     return resp.data or []
+
