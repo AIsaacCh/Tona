@@ -117,6 +117,29 @@ export default function Dashboard() {
   const [panelConfig, setPanelConfig] = useState(false);
 
   useEffect(() => {
+  if (!userId || userId === "demo") return;
+  const promoPendiente = localStorage.getItem("tona_promo_pendiente");
+  if (!promoPendiente) return;
+
+  localStorage.removeItem("tona_promo_pendiente"); // evita reintentos duplicados
+
+  fetch(`${API}/pagos/crear-checkout/${userId}`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ promo_token: promoPendiente }),
+  })
+    .then((r) => r.json())
+    .then((data) => {
+      if (data.url) window.location.href = data.url;
+      else agenteBus.emit("flash", { mensaje: "No se pudo activar tu promoción", tipo: "error" });
+    })
+    .catch(() => {
+      agenteBus.emit("flash", { mensaje: "Error activando tu promoción", tipo: "error" });
+    });
+}, [userId]);
+
+  useEffect(() => {
     return agenteBus.on("abrir_configuracion", () => setPanelConfig(true));
   }, []);
 

@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     SUPABASE_URL: str
     SUPABASE_KEY: str
     ENCRYPTION_KEY: str
+    STRIPE_SECRET_KEY: str
+    STRIPE_WEBHOOK_SECRET: str
+    STRIPE_PRICE_ID: str
 
     class Config:
         
@@ -32,10 +35,11 @@ settings = Settings()
 def validate_security():
     """Valida que todas las variables críticas existan y tengan formato seguro."""
     required_vars = [
-        'SUPABASE_URL', 'SUPABASE_KEY', 'SECRET_KEY',
-        'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET',
-        'ENCRYPTION_KEY', 'GOOGLE_CLOUD_PROJECT'
-    ]
+    'SUPABASE_URL', 'SUPABASE_KEY', 'SECRET_KEY',
+    'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET',
+    'ENCRYPTION_KEY', 'GOOGLE_CLOUD_PROJECT',
+    'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'STRIPE_PRICE_ID',
+]
     missing = [var for var in required_vars if not getattr(settings, var, None)]
     if missing:
         raise ValueError(f"❌ Variables de entorno faltantes: {', '.join(missing)}")

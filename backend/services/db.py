@@ -418,3 +418,66 @@ def obtener_mensajes_colaborativos(codigo: str) -> list:
     resp = supabase.table("colaboracion_mensajes").select("*").eq("codigo", codigo).order("created_at").execute()
     return resp.data or []
 
+def obtener_suscripcion(user_id: str) -> Optional[Dict]:
+    resp = supabase.table("subscriptions").select("*").eq("user_id", user_id).execute()
+    return resp.data[0] if resp.data else None
+
+
+def guardar_suscripcion(user_id: str, datos: Dict):
+    payload = dict(datos)
+    payload["user_id"] = user_id
+    payload["updated_at"] = datetime.now().isoformat()
+    supabase.table("subscriptions").upsert(payload, on_conflict="user_id").execute()
+
+
+def reservar_evento(stripe_event_id: str, tipo: str) -> bool:
+    """
+    Intenta reservar el event_id de forma atómica (aprovecha el unique constraint).
+    Regresa True si es la primera vez que se ve (debe procesarse).
+    Regresa False si ya existía (evento duplicado, ignorar sin error).
+    """
+    try:
+        supabase.table("payment_events").insert({
+            "stripe_event_id": stripe_event_id,
+            "type": tipo,
+        }).execute()
+        return True
+    except Exception:
+        return False
+
+
+def liberar_evento(stripe_event_id: str):
+    """Si el procesamiento falló después de reservar, borra la reserva para que Stripe pueda reintentar limpio."""
+    supabase.table("payment_events").delete().eq("stripe_event_id", stripe_event_id).execute()
+
+def validar_token_promo(token: str) -> Optional[Dict]:
+    """Regresa la invitación si es válida (existe, no usada, no expirada)."""
+    resp = supabase.table("promo_invitaciones").select("*").eq("token", token).execute()
+    if not resp.data:
+        return None
+    inv = resp.data[0]
+    if inv.get("usado"):
+        return None
+    if inv.get("expira_at"):
+        try:
+            exp = datetime.fromisoformat(inv["expira_at"].replace("Z", "+00:00")).replace(tzinfo=None)
+            if datetime.now() > exp:
+                return None
+        except Exception:
+            pass
+    return inv
+
+
+def reservar_token_promo(token: str, user_id: str) -> bool:
+    """
+    Marca el token como usado de forma atómica (solo si sigue en usado=false).
+    Regresa True si esta petición ganó la reserva, False si alguien más ya lo usó.
+    """
+    resp = (
+        supabase.table("promo_invitaciones")
+        .update({"usado": True, "usado_por": user_id, "usado_at": datetime.now().isoformat()})
+        .eq("token", token)
+        .eq("usado", False)
+        .execute()
+    )
+    return bool(resp.data)

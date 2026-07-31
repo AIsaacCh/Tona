@@ -155,12 +155,18 @@ async def obtener_mi_sesion_activa(user_id: str, _: str = Depends(verificar_iden
     return {"codigo": None}
 
 @router.get("/{codigo}/estado")
-async def estado_sesion(codigo: str):
+async def estado_sesion(codigo: str, request: Request):
+    user_id = obtener_user_id_de_cookie(request)  # 401 si no hay cookie válida
     sesion = obtener_sesion(codigo)
     if not sesion:
         raise HTTPException(status_code=404, detail="Sesión no encontrada o finalizada")
+
+    participantes = obtener_participantes(codigo)
+    if not any(p["user_id"] == user_id for p in participantes):
+        raise HTTPException(status_code=403, detail="No perteneces a esta sesión")
+
     return {
-        "participantes": obtener_participantes(codigo),
+        "participantes": participantes,
         "archivos": obtener_archivos_compartidos(codigo),
     }
 

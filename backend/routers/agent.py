@@ -4,8 +4,8 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Union
 from services.auth_utils import decodificar_token, verificar_identidad, obtener_user_id_de_cookie, verificar_identidad
-from services.gemini import enviar_mensaje, responder_sobre_sitios
-from services.db import obtener_usuario, guardar_historial, obtener_historial, obtener_tareas, guardar_tareas, obtener_archivo_de_tarea
+from services.gemini import enviar_mensaje, responder_sobre_sitios, extraer_valor_campo
+from services.db import obtener_usuario, guardar_historial, obtener_historial, obtener_tareas, guardar_tareas, obtener_archivo_de_tarea, obtener_cache, guardar_cache
 from config import settings
 from datetime import datetime, timedelta
 import httpx, io, base64, uuid, json
@@ -41,6 +41,50 @@ CALS_MOCK = [
     {"materia": "Inglés",       "cal": 8.0},
     {"materia": "SO",           "cal": 6.9},
 ]
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 🆕 FLUJO DE CONVERSACIÓN (captura de datos)
+# ──────────────────────────────────────────────────────────────────────────────
+
+CANCELACIONES = {"cancela", "cancelar", "olvídalo", "olvidalo", "ya no",
+                  "mejor no", "déjalo así", "dejalo asi", "olvida eso", "no importa"}
+
+def es_cancelacion(mensaje: str) -> bool:
+    m = mensaje.strip().lower()
+    return any(c in m for c in CANCELACIONES)
+
+CAMPOS_REQUERIDOS = {
+    "crear_tarea_real":  ["titulo", "fecha", "prioridad"],
+    "crear_evento_real": ["titulo", "fecha", "hora"],
+    "agregar_sitio":     ["url", "alias", "frecuencia"],
+    "enviar_correo":     ["para", "asunto", "cuerpo"],
+}
+
+PREGUNTAS_CAMPO = {
+    ("crear_tarea_real", "titulo"): "¿Cuál es el título de la tarea?",
+    ("crear_tarea_real", "fecha"): "¿Para qué fecha es?",
+    ("crear_tarea_real", "prioridad"): "¿Qué prioridad le pongo? Alta, Media o Baja.",
+    ("crear_evento_real", "titulo"): "¿Cuál es el título del evento?",
+    ("crear_evento_real", "fecha"): "¿Para qué fecha?",
+    ("crear_evento_real", "hora"): "¿A qué hora?",
+    ("agregar_sitio", "url"): "¿Cuál es la URL del sitio?",
+    ("agregar_sitio", "alias"): "¿Cómo le llamamos a este sitio?",
+    ("agregar_sitio", "frecuencia"): "¿Cada cuánto lo reviso? Diaria, semanal o quincenal.",
+    ("enviar_correo", "para"): "¿A qué correo se lo envío?",
+    ("enviar_correo", "asunto"): "¿Cuál es el asunto?",
+    ("enviar_correo", "cuerpo"): "¿Qué le pongo en el cuerpo?",
+}
+
+def obtener_flujo(user_id: str) -> dict | None:
+    return obtener_cache(user_id, "flujo_activo")
+
+def guardar_flujo(user_id: str, flujo: dict):
+    guardar_cache(user_id, "flujo_activo", flujo, ttl_minutos=20)
+
+def limpiar_flujo(user_id: str):
+    guardar_cache(user_id, "flujo_activo", None, ttl_minutos=1)
+
+# ──────────────────────────────────────────────────────────────────────────────
 
 
 def construir_contexto(user_id: str) -> str:
@@ -260,6 +304,20 @@ def obtener_sugerencia_entrega_para_mostrar(user_id: str) -> dict:
         }
     return {"accion": "confirmar", "payload": payload, "mensaje": pregunta}
 
+def construir_contexto_ultimo_resultado(user_id: str) -> str:
+    r = obtener_cache(user_id, "ultimo_resultado")
+    if not r or not r.get("items"):
+        return ""
+    tipo, items = r.get("tipo"), r["items"][:10]
+    lineas = [f'ÚLTIMO RESULTADO MOSTRADO AL USUARIO (tipo: {tipo}, de la búsqueda más reciente — '
+              f'si el usuario pide abrir/entregar/eliminar algo de aquí, USA ESTOS DATOS, no busques de nuevo):']
+    for it in items:
+        if tipo == "archivos_drive":
+            lineas.append(f"  - id={it.get('id')} nombre=\"{it.get('nombre')}\"")
+        else:
+            lineas.append(f"  - id={it.get('id')} asunto=\"{it.get('asunto')}\" de={it.get('de','')}")
+    return "\n".join(lineas)
+
 
 def enriquecer_payload(accion: str, payload, user_id: str):
     tareas = obtener_tareas(user_id)
@@ -467,6 +525,51 @@ async def chat(request_http: Request, request: MensajeRequest):
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
     # ──────────────────────────────────────────────────────────────────────────
+    # 🔄 FLUJO DE CONVERSACIÓN ACTIVO (captura de datos)
+    # ──────────────────────────────────────────────────────────────────────────
+    flujo = obtener_flujo(request.user_id)
+
+    if flujo and flujo.get("activo"):
+        # Verificar cancelación primero
+        if es_cancelacion(request.mensaje):
+            limpiar_flujo(request.user_id)
+            accion, payload, mensaje, flujo_activo = "flash", {"mensaje": "Cancelado.", "tipo": "info"}, "Listo, cancelé eso.", False
+        else:
+            campo = flujo["campo_pendiente"]
+            extraccion = await extraer_valor_campo(campo, request.mensaje, flujo["campos"], flujo["accion_objetivo"])
+
+            if extraccion.get("cancelar"):
+                limpiar_flujo(request.user_id)
+                accion, payload, mensaje, flujo_activo = "flash", {"mensaje": "Cancelado.", "tipo": "info"}, "Listo, cancelé eso.", False
+            else:
+                flujo["campos"][campo] = extraccion.get("valor", request.mensaje)
+                faltantes = [c for c in CAMPOS_REQUERIDOS[flujo["accion_objetivo"]] if not flujo["campos"].get(c)]
+
+                if faltantes:
+                    siguiente = faltantes[0]
+                    flujo["campo_pendiente"] = siguiente
+                    guardar_flujo(request.user_id, flujo)
+                    accion = "solicitar_dato"
+                    payload = {"campo": siguiente, "accion_objetivo": flujo["accion_objetivo"], "contexto": flujo["campos"]}
+                    mensaje = PREGUNTAS_CAMPO.get((flujo["accion_objetivo"], siguiente), f"¿Cuál es el {siguiente}?")
+                    flujo_activo = True
+                else:
+                    limpiar_flujo(request.user_id)
+                    dato_creado = await ejecutar_accion_backend(flujo["accion_objetivo"], flujo["campos"], request.user_id)
+                    if dato_creado:
+                        accion, payload, mensaje = "flash", {"mensaje": "Listo, guardado.", "tipo": "exito"}, "Listo, guardado."
+                    else:
+                        accion, payload, mensaje = "flash", {"mensaje": "No se pudo guardar.", "tipo": "error"}, "No se pudo guardar."
+                    flujo_activo = False
+
+        historial_actualizado = obtener_historial(request.user_id) + [
+            {"role": "user",  "content": request.mensaje},
+            {"role": "model", "content": mensaje},
+        ]
+        guardar_historial(request.user_id, historial_actualizado[-40:])
+        return MensajeResponse(accion=accion, payload=payload, mensaje=mensaje, flujo_activo=flujo_activo)
+
+    # ──────────────────────────────────────────────────────────────────────────
     # 🚀 ACCIONES DIRECTAS (Onboarding, etc.)
     # ──────────────────────────────────────────────────────────────────────────
     if request.mensaje.startswith("__ACCION_DIRECTA__:"):
@@ -566,10 +669,10 @@ async def chat(request_http: Request, request: MensajeRequest):
     contexto_base    = construir_contexto(request.user_id)
     contexto_tareas  = construir_contexto_tareas_eventos(request.user_id)
     contexto_sitios  = construir_contexto_sitios(request.user_id)
-
+    contexto_resultado = construir_contexto_ultimo_resultado(request.user_id)
 
     mensaje_con_contexto = (
-        f"{contexto_base}\n\n{contexto_tareas}\n\n{contexto_sitios}\n\nMensaje del usuario: {request.mensaje}"
+        f"{contexto_base}\n\n{contexto_tareas}\n\n{contexto_sitios}\n\n{contexto_resultado}\n\nMensaje del usuario: {request.mensaje}"
     )
 
     resultado = await enviar_mensaje(historial_raw, mensaje_con_contexto)
@@ -582,6 +685,15 @@ async def chat(request_http: Request, request: MensajeRequest):
     flujo_activo = False
     if accion in ("solicitar_dato", "confirmar_creacion") and isinstance(payload, dict):
         flujo_activo = payload.get("flujo_activo", False)
+        
+        # 🆕 Guardar flujo activo si es solicitar_dato
+        if accion == "solicitar_dato" and isinstance(payload, dict):
+            guardar_flujo(request.user_id, {
+                "activo": True,
+                "accion_objetivo": payload.get("accion_objetivo"),
+                "campos": payload.get("contexto", {}),
+                "campo_pendiente": payload.get("campo"),
+            })
 
     # ──────────────────────────────────────────────────────────────────────────
     # ⚙️ EJECUTAR ACCIONES DEL BACKEND
@@ -741,6 +853,7 @@ async def chat(request_http: Request, request: MensajeRequest):
                 data = await buscar_gmail_por_tema(request.user_id, tema, dias)
                 correos = data.get("correos", [])
                 payload = correos
+                guardar_cache(request.user_id, "ultimo_resultado", {"tipo": "correos", "items": correos}, ttl_minutos=10)
                 if not mensaje:
                     if correos:
                         mensaje = f"Encontré {len(correos)} correo(s) sobre '{tema}' en los últimos {dias} días."
@@ -760,6 +873,7 @@ async def chat(request_http: Request, request: MensajeRequest):
             data = await obtener_gmail(request.user_id)
             correos = data.get("correos", [])
             payload = correos
+            guardar_cache(request.user_id, "ultimo_resultado", {"tipo": "correos", "items": correos}, ttl_minutos=10)
             if not mensaje:
                 if correos:
                     mensaje = f"Tienes {len(correos)} correo(s) sin leer."
@@ -777,6 +891,7 @@ async def chat(request_http: Request, request: MensajeRequest):
         query = payload.get("query", "") if isinstance(payload, dict) else ""
         archivos = await obtener_archivos_drive_real(request.user_id, query)
         payload = archivos
+        guardar_cache(request.user_id, "ultimo_resultado", {"tipo": "archivos_drive", "items": archivos}, ttl_minutos=10)
         if not mensaje:
             if archivos:
                 mensaje = f"Encontré {len(archivos)} archivo(s) en tu Drive."
@@ -790,7 +905,17 @@ async def chat(request_http: Request, request: MensajeRequest):
         if not resultados:
             mensaje = "No tienes sitios monitoreados todavía. Dime la URL y con gusto lo agrego."
         else:
-            mensaje = await responder_sobre_sitios(request.mensaje, resultados)
+            contexto_conversacion = "\n".join(
+                f"{m['role']}: {m['content']}" for m in historial_raw[-6:]
+            )
+            ultimo_tema = obtener_cache(request.user_id, "ultimo_tema_sitios") or ""
+
+            mensaje = await responder_sobre_sitios(
+                request.mensaje, resultados,
+                contexto_conversacion=contexto_conversacion,
+                ultimo_tema=ultimo_tema,
+            )
+            guardar_cache(request.user_id, "ultimo_tema_sitios", mensaje, ttl_minutos=30)
         flujo_activo = False
         
     else:
@@ -799,14 +924,17 @@ async def chat(request_http: Request, request: MensajeRequest):
     # ──────────────────────────────────────────────────────────────────────────
     # 🔗 DETECCIÓN UNIVERSAL DE LINKS
     # ──────────────────────────────────────────────────────────────────────────
-    # Detección universal de links: si el mensaje final (venga de la acción que venga)
-    # contiene una URL real, mostramos la tarjeta de enlaces — sin importar si Gemini
-    # eligió "flash" (memoria) o "ver_sitios" (revisión en vivo)
     if accion in ("flash", "ver_sitios") and mensaje:
         links_encontrados = extraer_links_de_texto(mensaje)
-        if links_encontrados:
-            accion = "mostrar_links"
-            payload = {"links": links_encontrados}
+    if links_encontrados:
+        accion = "mostrar_links"
+        payload = {"links": links_encontrados}
+        # el mensaje original puede traer URLs completas (necesarias para la detección);
+        # para hablar/mostrar como texto usamos algo corto en vez de leer la URL entera
+        if len(links_encontrados) == 1:
+            mensaje = f"Aquí está el link de {links_encontrados[0]['texto']}."
+        else:
+            mensaje = f"Aquí tienes {len(links_encontrados)} enlaces."
 
     print(f"📦 Payload final: {payload}")
     print(f"✅ Enviando: accion={accion}, mensaje={mensaje}, flujo_activo={flujo_activo}")
@@ -873,10 +1001,12 @@ async def limpiar_historial(user_id: str, _: str = Depends(verificar_identidad))
 
 
 @router.post("/hablar")
-async def texto_a_voz(request: dict):
+async def texto_a_voz(request: dict, http_request: Request):
+    user_id = obtener_user_id_de_cookie(http_request)  # 401 si no hay sesión
     texto = request.get("texto", "")
     if not texto:
         raise HTTPException(status_code=400, detail="Texto vacío")
+    
     url = f"https://texttospeech.googleapis.com/v1/text:synthesize?key={settings.GOOGLE_TTS_KEY}"
     payload = {
         "input": {"text": texto},

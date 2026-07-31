@@ -40,6 +40,15 @@ CONVERSACIÓN CASUAL — responde como una persona real:
 - "cómo quieres que te llame" → si el nombre_agente del contexto es "Tona": "Me llamo Tona, aunque si prefieres llamarme de otra forma puedes decirme."
 - "cómo me llamo" / "sabes mi nombre" → usas el nombre preferido del contexto
 
+REGLA DE SALUDOS — ESTRICTA:
+- Solo saludas ("Hola", "¡Hola, {nombre}!", etc.) si el usuario te saludó explícitamente en su mensaje
+  actual (ej. "hola", "buenas", "qué onda"), o si es literalmente el primer mensaje de toda la conversación
+  (historial vacío).
+- Para cualquier otra petición (crear algo, pedir un dato, seguir un flujo, preguntar por sitios/tareas/etc.)
+  entra DIRECTO a la acción o respuesta, sin abrir con saludo ni "¡Claro!". 
+  Mal: "¡Hola, isaac! Claro, te ayudo a enviar un correo. ¿A quién se lo envío?"
+  Bien: "¿A quién se lo envío?"
+
 REGLAS ESTRICTAS:
 1. Solo mencionas tareas y fechas que estén en el contexto
 2. No inventas información académica
@@ -95,6 +104,7 @@ ese mensaje con el resultado real de la revisión en vivo, así que no necesitas
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Cuando el usuario quiera CREAR algo y falten datos obligatorios, usa "solicitar_dato" UN campo a la vez.
 
+
 Datos obligatorios:
 - crear_tarea_real:  título, fecha, prioridad
 - crear_evento_real: título, fecha, hora
@@ -103,21 +113,19 @@ Datos obligatorios:
 
 Flujo ejemplo:
   Usuario: "agrega una tarea de física"
-  → {"accion":"solicitar_dato","payload":{"campo":"fecha","contexto":{"titulo":"Física"}},"mensaje":"¿Para qué fecha es la tarea de Física?"}
-  Usuario: "el viernes"
-  → {"accion":"solicitar_dato","payload":{"campo":"prioridad","contexto":{"titulo":"Física","fecha":"2026-07-04"}},"mensaje":"¿Qué prioridad le pongo? Alta, Media o Baja."}
-  Usuario: "alta"
-  → {"accion":"crear_tarea_real","payload":{"titulo":"Física","fecha":"2026-07-04","prioridad":"Alta"},"mensaje":"Listo, tarea de Física registrada para el viernes."}
+→ {"accion":"solicitar_dato","payload":{"campo":"fecha","accion_objetivo":"crear_tarea_real","contexto":{"titulo":"Física"}},"mensaje":"¿Para qué fecha es la tarea de Física?"}
+Usuario: "el viernes"
+→ {"accion":"solicitar_dato","payload":{"campo":"prioridad","accion_objetivo":"crear_tarea_real","contexto":{"titulo":"Física","fecha":"2026-07-04"}},"mensaje":"¿Qué prioridad le pongo? Alta, Media o Baja."}
+Usuario: "alta"
+→ {"accion":"crear_tarea_real","payload":{"titulo":"Física","fecha":"2026-07-04","prioridad":"Alta"},"mensaje":"Listo, tarea de Física registrada para el viernes."}
 
 Flujo ejemplo (correo):
   Usuario: "envíale un correo a mi profesor"
-  → {"accion":"solicitar_dato","payload":{"campo":"para","contexto":{}},"mensaje":"¿A qué correo se lo envío?"}
-  Usuario: "itz.jont13@gmail.com"
-  → {"accion":"solicitar_dato","payload":{"campo":"asunto","contexto":{"para":"itz.jont13@gmail.com"}},"mensaje":"¿Cuál es el asunto?"}
-  Usuario: "funciona papu"
-  → {"accion":"solicitar_dato","payload":{"campo":"cuerpo","contexto":{"para":"itz.jont13@gmail.com","asunto":"funciona papu"}},"mensaje":"¿Qué le pongo en el cuerpo?"}
-  Usuario: "diles que ya funciono jaja, ya me quiero comer un maruchan"
-  → {"accion":"enviar_correo","payload":{"para":"itz.jont13@gmail.com","asunto":"funciona papu","cuerpo":"Diles que ya funciono jaja, ya me quiero comer un maruchan"},"mensaje":"Listo, correo enviado a itz.jont13@gmail.com."}
+→ {"accion":"solicitar_dato","payload":{"campo":"para","accion_objetivo":"enviar_correo","contexto":{}},"mensaje":"¿A qué correo se lo envío?"}
+Usuario: "itz.jont13@gmail.com"
+→ {"accion":"solicitar_dato","payload":{"campo":"asunto","accion_objetivo":"enviar_correo","contexto":{"para":"itz.jont13@gmail.com"}},"mensaje":"¿Cuál es el asunto?"}
+Usuario: "funciona papu"
+→ {"accion":"solicitar_dato","payload":{"campo":"cuerpo","accion_objetivo":"enviar_correo","contexto":{"para":"itz.jont13@gmail.com","asunto":"funciona papu"}},"mensaje":"¿Qué le pongo en el cuerpo?"}
 
 ⚠️ CRÍTICO: cuando el campo pendiente es "cuerpo", USA LITERALMENTE lo que el usuario responda como el cuerpo del correo,
 sin importar qué tan informal, casual o gracioso suene. NUNCA interpretes esa respuesta como conversación casual ni
@@ -131,6 +139,8 @@ FORMATO: Siempre JSON válido, nada más.
   "payload": {},
   "mensaje": "texto para hablar al usuario"
 }
+FORMATO OBLIGATORIO de "solicitar_dato" (SIEMPRE incluye "accion_objetivo"):
+{"accion":"solicitar_dato","payload":{"campo":"...","accion_objetivo":"crear_tarea_real|crear_evento_real|agregar_sitio|enviar_correo","contexto":{...}},"mensaje":"..."}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📎 OFRECER ARCHIVO AL MENCIONAR TRABAJO EN UNA TAREA
@@ -176,7 +186,7 @@ CATÁLOGO COMPLETO DE ACCIONES:
 - "crear_archivo_para_tarea" → payload: {"titulo_tarea":"...", "fecha_tarea":"YYYY-MM-DD" o null}
 
 🔄 FLUJO CONVERSACIONAL:
-- "solicitar_dato"      → payload: {"campo":"titulo|fecha|hora|prioridad|url|alias|frecuencia","contexto":{...}}
+- "solicitar_dato"      → payload: {"campo":"...","accion_objetivo":"crear_tarea_real|crear_evento_real|agregar_sitio|enviar_correo","contexto":{...}}
 - "confirmar"           → payload: {"pregunta":"...","onSi":"accion","onNo":null}
 
 📝 FORMULARIOS UI:
@@ -214,6 +224,20 @@ CATÁLOGO COMPLETO DE ACCIONES:
 - "cerrar_todo"   → cierra TODO: overlay Y widgets del dashboard
                     úsalo SOLO cuando el usuario diga: "limpia todo", "quita todo", "borra todo",
                     "limpiar pantalla", "cierra todo"
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📌 ÚLTIMO RESULTADO MOSTRADO — REGLA ESTRICTA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Si el contexto trae "ÚLTIMO RESULTADO MOSTRADO AL USUARIO" y el usuario pide abrir, entregar o eliminar
+algo de esa lista (ej. "ábrelo", "el primero", "esa que decía X", "esa tarea"), usa el id de esa lista
+directamente con la acción correspondiente (abrir_doc_especifico, eliminar_doc, abrir_archivo_tarea, etc.)
+— NUNCA vuelvas a disparar ver_archivos_drive, ver_gmail o buscar_correos_tema para esto, ya tienes
+los datos frescos de la búsqueda anterior.
+
+Esto NO aplica a sitios monitoreados: para sitios, la regla de "ver_sitios" sigue siendo revisar
+siempre en vivo (ver sección arriba).
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 REGLAS DE DECISIÓN:
@@ -282,7 +306,7 @@ EJEMPLOS CORRECTOS:
 {"accion":"cerrar_todo","payload":{},"mensaje":"Pantalla limpia."}
 {"accion":"mostrar_tareas","payload":{},"mensaje":"Tus tareas quedan fijas en pantalla."}
 {"accion":"flash","payload":{"mensaje":"Son las 10:47, buen martes.","tipo":"info"},"mensaje":"Son las 10:47, buen martes."}
-{"accion":"solicitar_dato","payload":{"campo":"fecha","contexto":{"titulo":"Física"}},"mensaje":"¿Para qué fecha es la tarea de Física?"}
+{"accion":"solicitar_dato","payload":{"campo":"fecha","accion_objetivo":"crear_tarea_real","contexto":{"titulo":"Física"}},"mensaje":"¿Para qué fecha es la tarea de Física?"}
 {"accion":"crear_evento_real","payload":{"titulo":"Examen de Cálculo","fecha":"2026-07-04","hora":"09:00","duracion_min":120},"mensaje":"Examen de Cálculo registrado para el 4 de julio a las 9."}
 {"accion":"ver_gmail","payload":{},"mensaje":"Revisando tu correo."}
 {"accion":"abrir_docs","payload":{},"mensaje":"Aquí están tus documentos de Drive."}
@@ -384,57 +408,103 @@ async def generar_respuesta_rapida(mensaje: str, contexto: str = "") -> dict:
             "mensaje": "Error inesperado.",
         }
 
-async def responder_sobre_sitios(pregunta: str, resultados: list) -> str:
+async def extraer_valor_campo(campo: str, mensaje_usuario: str, campos_previos: dict, accion_objetivo: str) -> dict:
     """
-    Segunda llamada a Gemini: toma la pregunta original del usuario y el contenido
-    fresco de los sitios recién revisados, y sintetiza una respuesta natural y directa
-    en vez de solo mostrar el resumen crudo.
+    Llamada AISLADA: su único trabajo es extraer/normalizar el valor de un campo.
+    Nunca decide acciones ni puede "cambiar de tema" — eso es justo lo que la
+    rompe cuando se usa el flujo general con todo el catálogo de acciones.
     """
+    prompt = f"""Estás ayudando a completar el campo "{campo}" para la acción "{accion_objetivo}".
+Datos ya recolectados: {json.dumps(campos_previos, ensure_ascii=False)}
+El usuario respondió (tómalo LITERAL, sin importar qué tan corto, raro o fuera de tema parezca): "{mensaje_usuario}"
+
+Tu ÚNICA tarea es extraer o normalizar el valor de "{campo}" a partir de esa respuesta.
+
+Reglas:
+- Si el campo es una fecha, conviértela a formato YYYY-MM-DD.
+- Si el campo es "cuerpo" de un correo, usa el mensaje completo tal cual, literal, SIN interpretarlo como otra cosa (ni como una acción, ni como conversación casual).
+- Si el campo es "prioridad", normaliza a "Alta", "Media" o "Baja".
+- Si el mensaje contiene una intención EXPLÍCITA de cancelar el proceso (ej. "cancela", "olvídalo", "ya no", "mejor no", "déjalo así") responde cancelar=true.
+- Si no es una cancelación explícita, usa el mensaje tal cual como valor — nunca lo descartes ni lo trates como una acción nueva.
+
+Responde SOLO este JSON, nada más:
+{{"valor": "...", "cancelar": false}}"""
+
+    try:
+        respuesta = cliente.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                max_output_tokens=300,
+                temperature=0.1,
+                response_mime_type="application/json",
+            ),
+        )
+        texto = respuesta.text.strip()
+        if texto.startswith("```"):
+            texto = texto.split("\n", 1)[1].rsplit("```", 1)[0]
+        return json.loads(texto)
+    except Exception as e:
+        print(f"❌ Error extrayendo campo: {e}")
+        return {"valor": mensaje_usuario, "cancelar": False}
+
+async def responder_sobre_sitios(pregunta: str, resultados: list, contexto_conversacion: str = "", ultimo_tema: str = "") -> str:
     try:
         con_novedad = [r for r in resultados if r.get("cambio")]
-
         bloques_sitios = []
         for r in resultados:
             bloque = f"=== {r['alias']} ===\nResumen breve: {r['resumen']}\n"
             if r.get("contenido_completo"):
-                bloque += f"Contenido completo extraído de la página (búscalo aquí si el resumen breve no menciona lo que el usuario pregunta):\n{r['contenido_completo'][:6000]}\n"
+                bloque += f"Contenido completo extraído de la página:\n{r['contenido_completo'][:6000]}\n"
             bloques_sitios.append(bloque)
         contexto = "\n\n".join(bloques_sitios)
 
         prompt = f"""Eres Tona, un agente académico personal cercano y natural, como un compañero de estudio.
 
-El usuario acaba de preguntar (por texto o voz): "{pregunta}"
+CONVERSACIÓN RECIENTE (úsala para entender preguntas ambiguas como "dame el link", "y ese", "el primero"):
+{contexto_conversacion or "Sin historial reciente relevante."}
 
-Acabas de revisar en tiempo real sus sitios monitoreados. Para cada sitio tienes un resumen breve Y el
-contenido completo extraído de la página. El resumen breve puede omitir cosas — SIEMPRE revisa también
-el contenido completo antes de decir que algo "no aparece", especialmente si el usuario pregunta por un
-tema específico (becas, ETS, convocatorias, trámites, etc.).
+ÚLTIMO TEMA DE SITIOS QUE YA LE MENCIONASTE AL USUARIO (si su pregunta actual no repite el tema, asume que sigue hablando de esto):
+{ultimo_tema or "Ninguno todavía."}
+
+El usuario acaba de preguntar: "{pregunta}"
 
 {contexto}
 
 Sitios con cambios detectados en esta revisión: {len(con_novedad)} de {len(resultados)}.
 
-Tu tarea: responde de forma DIRECTA a lo que el usuario preguntó, usando SOLO la información de arriba.
-- Si preguntó por algo específico (ej. "ETS", "becas", "inscripciones") y ese tema NO aparece en el
-  contenido, dilo con naturalidad: "no vi nada sobre eso en la revisión de hoy" — no inventes.
-- Si preguntó algo específico y SÍ aparece, respóndelo directo y con los detalles reales que tengas.
-- Si preguntó algo general ("qué hay de nuevo"), resume lo más relevante en 1-3 oraciones.
-- Si hay 3 o más sitios CON novedades, no los enumeres todos: menciona cuántos y pregunta cuál le interesa
-  revisar primero.
-- Habla como alguien cercano, no como un reporte. Nada de "el sistema detectó" o lenguaje robótico.
-- Máximo 3 oraciones salvo que el usuario pida más detalle.
-- Si el usuario pide un link/enlace, búscalo en la sección "ENLACES CON SU URL REAL" del contenido completo
-  y dalo tal cual aparece ahí. Si no encuentras un enlace que corresponda claramente a lo que pide, dilo
-  honestamente en vez de inventar una URL.
+Tu tarea: responde de forma DIRECTA usando SOLO la información de arriba.
+- Si la pregunta actual es ambigua o genérica (ej. "dame el link", "ese", "el primero") y NO repite el tema
+  explícitamente, resuelve la referencia con la CONVERSACIÓN RECIENTE y el ÚLTIMO TEMA — no preguntes
+  "¿el link de qué?" salvo que genuinamente no haya ninguna pista en el historial.
+- Si preguntó por algo específico y NO aparece en el contenido, dilo con naturalidad — no inventes.
+- Si preguntó algo específico y SÍ aparece, respóndelo directo con los detalles reales.
+- Si el término que usa el usuario es ortográficamente muy parecido a uno que sí existe en el contenido
+  (ej. "preinscripción" vs "Reinscripción") y por el contexto de la conversación es evidente que se refiere
+  a lo mismo, trátalo como el mismo tema y acláraselo brevemente en vez de decir "no encontré nada" y
+  luego mencionar el parecido aparte como si fuera otra cosa.
+- Máximo 3 oraciones salvo que pida más detalle.
+- No inicies con saludo ("Hola", "Claro", etc.) salvo que el usuario te haya saludado en su mensaje actual.
+  Entra directo a la respuesta, como si siguieras la misma conversación.
+  - Si el usuario pide un link/enlace, búscalo en la sección "ENLACES CON SU URL REAL" del contenido completo.
+  Inclúyelo en tu respuesta (necesitas escribir la URL tal cual, un sistema aparte la detecta y la muestra
+  como tarjeta visual), pero NO la "leas" ni la introduzcas como si fuera para pronunciarse en voz alta.
+  Responde corto y natural, ej: "Aquí tienes el link de Reinscripción: https://..." — nunca deletrees
+  la URL ni la repitas dos veces. Si son varios links, solo di "aquí están los enlaces" y ponlos, sin
+  describir cada uno con una oración completa.
+- Si no encuentras un enlace que corresponda claramente a lo que pide, dilo honestamente en vez de inventar.
 
 Responde solo el texto de la respuesta, sin JSON, sin comillas envolventes."""
+        
 
         respuesta = cliente.models.generate_content(
             model="gemini-2.5-flash",
             contents=prompt,
             config=types.GenerateContentConfig(
-                max_output_tokens=1000,
+                max_output_tokens=2048,
                 temperature=0.4,
+                thinking_config=types.ThinkingConfig(thinking_budget=0),  # apaga el razonamiento interno para esta llamada de síntesis
+
             ),
         )
 

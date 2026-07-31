@@ -347,8 +347,10 @@ No inventes información que no esté literalmente en el texto. No agregues expl
             model="gemini-2.5-flash",
             contents=prompt,
             config=types.GenerateContentConfig(
-                max_output_tokens=500,
+                max_output_tokens=1500,
                 temperature=0.2,
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
+
             ),
         )
         texto_resumen = respuesta.text.strip() if respuesta.text else ""

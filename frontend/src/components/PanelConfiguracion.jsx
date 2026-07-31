@@ -19,6 +19,8 @@ export default function PanelConfiguracion({ userId, onCerrar }) {
   const [carpetas, setCarpetas] = useState([]);
   const [cargandoClases, setCargandoClases] = useState(false);
   const [creandoCarpetaId, setCreandoCarpetaId] = useState(null);
+  const [cargandoPago, setCargandoPago] = useState(false);
+
 
   const panelRef   = useRef(null);
   const overlayRef = useRef(null);
@@ -75,6 +77,26 @@ export default function PanelConfiguracion({ userId, onCerrar }) {
       setGuardando(false);
     }
   }
+
+  async function iniciarPagoPrueba() {
+  setCargandoPago(true);
+  try {
+    const resp = await fetch(`${API}/pagos/crear-checkout/${userId}`, {
+      method: "POST",
+      credentials: "include",
+    });
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.detail || "Error creando checkout");
+    }
+    const data = await resp.json();
+    window.location.href = data.url;
+  } catch (e) {
+    agenteBus.emit("flash", { mensaje: "No se pudo iniciar el pago: " + e.message, tipo: "error" });
+  } finally {
+    setCargandoPago(false);
+  }
+}
 
   async function agregarSitio() {
     if (!nuevaUrl.trim() || !nuevoAlias.trim()) return;
@@ -174,7 +196,7 @@ async function quitarCarpetaClase(cursoId, nombre) {
     { valor: "formal",   label: "Formal"   },
   ];
 
-  const TABS = ["perfil", "sitios", "clases"];
+  const TABS = ["perfil", "sitios", "clases", "premium"];
 
   return (
     <div ref={overlayRef} style={{
@@ -275,6 +297,31 @@ async function quitarCarpetaClase(cursoId, nombre) {
               </button>
             </div>
           )}
+
+          {tab === "premium" && (
+  <div>
+    <div style={{ fontSize: 9, color: "rgba(237,235,230,0.25)", letterSpacing: "1px", marginBottom: 6, fontFamily: T.mono }}>
+      SUSCRIPCIÓN
+    </div>
+    <div style={{ fontSize: 11, color: "rgba(237,235,230,0.3)", marginBottom: 16, fontFamily: T.sans, lineHeight: 1.5 }}>
+      Modo de prueba — ningún cargo real se realiza aquí.
+    </div>
+
+    <button
+      onClick={iniciarPagoPrueba}
+      disabled={cargandoPago}
+      style={{
+        width: "100%", background: `${T.jade}18`,
+        border: `1px solid ${T.jade}45`, borderRadius: 10,
+        padding: "12px", color: T.jade, fontSize: 13,
+        fontFamily: T.sans, cursor: cargandoPago ? "wait" : "pointer",
+        opacity: cargandoPago ? 0.6 : 1,
+      }}
+    >
+      {cargandoPago ? "Redirigiendo..." : "🧪 Probar pago (test)"}
+    </button>
+  </div>
+)}
 
           {tab === "sitios" && (
             <div>

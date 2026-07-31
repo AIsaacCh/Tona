@@ -374,32 +374,46 @@ export function TarjetaLinks() {
 
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {links.map((l, i) => (
-            <a
-              key={i}
-              href={l.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                display: "flex", alignItems: "center", justifyContent: "space-between",
-                background: `${T.turquesa}10`, border: `1px solid ${T.turquesa}25`,
-                borderRadius: 8, padding: "10px 14px",
-                color: "rgba(237,235,230,0.85)", fontSize: 12.5,
-                fontFamily: T.sans, textDecoration: "none",
-                transition: "all 0.15s ease",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = `${T.turquesa}55`;
-                e.currentTarget.style.background  = `${T.turquesa}18`;
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = `${T.turquesa}25`;
-                e.currentTarget.style.background  = `${T.turquesa}10`;
-              }}
-            >
-              <span>{l.texto}</span>
-              <span style={{ color: T.turquesa, fontSize: 13 }}>↗</span>
-            </a>
-          ))}
+  <a
+    key={i}
+    href={l.url}
+    target="_blank"
+    rel="noopener noreferrer"
+    style={{
+      display: "flex", 
+      alignItems: "center", 
+      justifyContent: "space-between",
+      gap: 10,
+      background: `${T.turquesa}10`, 
+      border: `1px solid ${T.turquesa}25`,
+      borderRadius: 8, 
+      padding: "10px 14px",
+      color: "rgba(237,235,230,0.85)", 
+      fontSize: 12.5,
+      fontFamily: T.sans, 
+      textDecoration: "none",
+      transition: "all 0.15s ease",
+    }}
+    onMouseEnter={(e) => {
+      e.currentTarget.style.borderColor = `${T.turquesa}55`;
+      e.currentTarget.style.background  = `${T.turquesa}18`;
+    }}
+    onMouseLeave={(e) => {
+      e.currentTarget.style.borderColor = `${T.turquesa}25`;
+      e.currentTarget.style.background  = `${T.turquesa}10`;
+    }}
+  >
+    <span style={{
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap",
+      minWidth: 0,
+    }}>
+      {l.texto}
+    </span>
+    <span style={{ color: T.turquesa, fontSize: 13, flexShrink: 0 }}>↗</span>
+  </a>
+))}
         </div>
       </div>
     </div>

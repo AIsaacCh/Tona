@@ -1,8 +1,8 @@
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.responses import RedirectResponse, JSONResponse
 from google_auth_oauthlib.flow import Flow
 import httpx
-from services.auth_utils import crear_token,establecer_cookie_sesion
+from services.auth_utils import crear_token, establecer_cookie_sesion, verificar_identidad
 import os
 import secrets
 from datetime import datetime, timedelta
@@ -120,7 +120,7 @@ async def google_callback(code: str, state: str):
     return response
 
 @router.get("/me")
-async def get_me(user_id: str):
+async def get_me(user_id: str, _: str = Depends(verificar_identidad)):
     usuario = obtener_usuario(user_id)
     if not usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
@@ -132,16 +132,17 @@ async def get_me(user_id: str):
         "tier": usuario.get("tier", "estudiante"),
     }
 
+
 @router.get("/check_scopes/{user_id}")
-async def check_scopes(user_id: str):
+async def check_scopes(user_id: str, _: str = Depends(verificar_identidad)):
     """Verifica qué scopes tiene el token del usuario."""
     usuario = obtener_usuario(user_id)
     if not usuario or not usuario.get("access_token"):
         return {
-            "authenticated": False, 
+            "authenticated": False,
             "message": "Usuario no encontrado o sin token"
         }
-    
+
     try:
         headers = {"Authorization": f"Bearer {usuario['access_token']}"}
         async with httpx.AsyncClient() as client:
@@ -149,32 +150,32 @@ async def check_scopes(user_id: str):
                 "https://www.googleapis.com/oauth2/v1/tokeninfo",
                 params={"access_token": usuario["access_token"]}
             )
-            
+
             if resp.status_code == 200:
                 data = resp.json()
                 scopes = data.get("scope", "").split(" ")
-                
+
                 has_drive = any(s in scopes for s in [
                     "https://www.googleapis.com/auth/drive",
                     "https://www.googleapis.com/auth/drive.file",
                     "https://www.googleapis.com/auth/drive.readonly"
                 ])
-                
+
                 has_docs = any(s in scopes for s in [
                     "https://www.googleapis.com/auth/documents",
                     "https://www.googleapis.com/auth/documents.readonly"
                 ])
-                
+
                 has_calendar = any(s in scopes for s in [
                     "https://www.googleapis.com/auth/calendar",
                     "https://www.googleapis.com/auth/calendar.events"
                 ])
-                
+
                 has_classroom = any(s in scopes for s in [
                     "https://www.googleapis.com/auth/classroom.courses.readonly",
                     "https://www.googleapis.com/auth/classroom.coursework.me"
                 ])
-                
+
                 return {
                     "authenticated": True,
                     "email": data.get("email"),
@@ -198,9 +199,12 @@ async def check_scopes(user_id: str):
             "error": str(e)
         }
 
+
 @router.get("/logout")
-async def logout(user_id: str):
+async def logout(user_id: str, _: str = Depends(verificar_identidad)):
     usuario = obtener_usuario(user_id)
     if usuario:
         guardar_usuario(user_id, {**usuario, 'access_token': None})
-    return RedirectResponse(f"{settings.FRONTEND_URL}/login")
+    response = RedirectResponse(f"{settings.FRONTEND_URL}/login")
+    response.delete_cookie("tona_session", path="/")
+    return response
