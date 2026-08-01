@@ -97,8 +97,12 @@ def guardar_oauth_state(state: str, code_verifier: str):
 
 
 def obtener_y_borrar_oauth_state(state: str):
-    """Verifica que el state exista y no haya expirado (10 min), regresa el code_verifier, y lo borra (uso único)."""
-    resp = supabase.table("oauth_states").select("*").eq("state", state).execute()
+    """
+    Borra el state de forma atómica (DELETE...RETURNING) y regresa el code_verifier
+    solo si esta llamada fue la que efectivamente encontró y borró la fila (uso único real).
+    Si el state ya no existe (ya usado, o nunca existió), regresa None.
+    """
+    resp = supabase.table("oauth_states").delete().eq("state", state).execute()
     if not resp.data:
         return None
 
@@ -110,12 +114,10 @@ def obtener_y_borrar_oauth_state(state: str):
         if creado_dt.tzinfo is not None:
             creado_dt = creado_dt.replace(tzinfo=None)
         if datetime.now() - creado_dt > timedelta(minutes=10):
-            supabase.table("oauth_states").delete().eq("state", state).execute()
-            return None
+            return None  # ya se borró arriba; solo estaba expirado
     except Exception as e:
         print(f"⚠️ Error verificando expiración de oauth_state: {e}")
 
-    supabase.table("oauth_states").delete().eq("state", state).execute()
     return fila.get("code_verifier")
 
 

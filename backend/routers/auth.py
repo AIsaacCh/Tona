@@ -56,7 +56,10 @@ async def google_login():
         prompt="consent",
     )
     guardar_oauth_state(state, flow.code_verifier)
-    return RedirectResponse(auth_url)
+    response = RedirectResponse(auth_url)
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    return response
 
 @router.get("/callback")
 async def google_callback(code: str, state: str):
