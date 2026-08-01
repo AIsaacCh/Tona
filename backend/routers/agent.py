@@ -924,13 +924,12 @@ async def chat(request_http: Request, request: MensajeRequest):
     # ──────────────────────────────────────────────────────────────────────────
     # 🔗 DETECCIÓN UNIVERSAL DE LINKS
     # ──────────────────────────────────────────────────────────────────────────
+    links_encontrados = []          # ← se agrega esta línea
     if accion in ("flash", "ver_sitios") and mensaje:
         links_encontrados = extraer_links_de_texto(mensaje)
     if links_encontrados:
         accion = "mostrar_links"
         payload = {"links": links_encontrados}
-        # el mensaje original puede traer URLs completas (necesarias para la detección);
-        # para hablar/mostrar como texto usamos algo corto en vez de leer la URL entera
         if len(links_encontrados) == 1:
             mensaje = f"Aquí está el link de {links_encontrados[0]['texto']}."
         else:
