@@ -44,23 +44,41 @@ export default function PanelConfiguracion({ userId, onCerrar }) {
     anime({ targets: panelRef.current, opacity: [0, 1], translateX: [40, 0], duration: 380, easing: "easeOutQuart" });
     }, [config]);
 
-  async function cargar() {
+
+
+  async function fetchSeguro(url) {
   try {
-    const [rc, rs, rcursos, rcarpetas] = await Promise.all([
-      fetch(`${API}/agent/config/${userId}`, { credentials: "include" }).then((r) => r.json()),
-      fetch(`${API}/tasks/sitios/${userId}`, { credentials: "include" }).then((r) => r.json()),
-      fetch(`${API}/tasks/cursos/${userId}`, { credentials: "include" }).then((r) => r.json()),
-      fetch(`${API}/tasks/drive/clases/${userId}`, { credentials: "include" }).then((r) => r.json()),
-    ]);
-    setConfig(rc);
-    setSitios(rs.sitios || []);
-    setCursos(rcursos.cursos || []);
-    setCarpetas(rcarpetas.clases || []);
+    const r = await fetch(url, { credentials: "include" });
+    if (!r.ok) {
+      console.error(`Error ${r.status} en ${url}`);
+      return null;
+    }
+    return await r.json();
   } catch (e) {
-    console.error("Error cargando config:", e);
+    console.error(`Fallo de red en ${url}:`, e);
+    return null;
   }
 }
 
+async function cargar() {
+  const [rc, rs, rcursos, rcarpetas] = await Promise.all([
+    fetchSeguro(`${API}/agent/config/${userId}`),
+    fetchSeguro(`${API}/tasks/sitios/${userId}`),
+    fetchSeguro(`${API}/tasks/cursos/${userId}`),
+    fetchSeguro(`${API}/tasks/drive/clases/${userId}`),
+  ]);
+
+  // config es lo único indispensable para poder mostrar el panel;
+  // si falla, usamos un default local en vez de dejar el panel invisible.
+  setConfig(rc || { nombre_agente: "Tona", tono: "neutral", nombre_usuario: "" });
+  setSitios(rs?.sitios || []);
+  setCursos(rcursos?.cursos || []);
+  setCarpetas(rcarpetas?.clases || []);
+
+  if (!rc) {
+    agenteBus.emit("flash", { mensaje: "No se pudo cargar tu configuración, algunos datos podrían faltar", tipo: "error" });
+  }
+}
   async function guardar() {
     setGuardando(true);
     try {

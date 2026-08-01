@@ -812,7 +812,11 @@ async def enviar_correo(user_id: str, body: EnviarCorreoRequest, _: str = Depend
 
 @router.get("/sitios/{user_id}")
 async def listar_sitios(user_id: str, _: str = Depends(verificar_identidad)):
-    return {"sitios": obtener_sitios(user_id)}
+    try:
+        return {"sitios": obtener_sitios(user_id)}
+    except Exception as e:
+        print(f"Error listando sitios: {e}")
+        return {"sitios": []}
 
 
 @router.post("/sitios/{user_id}")

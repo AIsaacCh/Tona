@@ -118,9 +118,11 @@ function IconoAnimado({ tipo, playKey }) {
 // 👋 PANTALLA DE BIENVENIDA — explica features con animación gráfica
 // ──────────────────────────────────────────────────────────────────────────────
 function BienvenidaTona({ nombreAgente = "Tona", onFinish }) {
-  const [idx, setIdx] = useState(-1); // -1 = intro, 0..N-1 = features
+  const [idx, setIdx] = useState(-1);
   const cardRef = useRef(null);
   const timerRef = useRef(null);
+  const transicionando = useRef(false); // 🔒 evita doble avance
+
 
   useEffect(() => {
     if (!cardRef.current) return;
@@ -143,26 +145,40 @@ function BienvenidaTona({ nombreAgente = "Tona", onFinish }) {
   }, [idx]);
 
   function avanzar() {
-    if (idx >= FEATURES.length - 1) {
-      onFinish?.();
-      return;
-    }
-    if (!cardRef.current) {
-      setIdx((p) => p + 1);
-      return;
-    }
-    anime({
-      targets: cardRef.current,
-      opacity: [1, 0],
-      translateY: [0, -12],
-      duration: 260,
-      easing: "easeInQuart",
-      complete: () => setIdx((p) => p + 1),
-    });
+  if (transicionando.current) return; // ya hay una transición en curso, ignora
+
+  if (idx >= FEATURES.length - 1) {
+    onFinish?.();
+    return;
   }
+  if (!cardRef.current) {
+    setIdx((p) => p + 1);
+    return;
+  }
+  transicionando.current = true;
+  anime({
+    targets: cardRef.current,
+    opacity: [1, 0],
+    translateY: [0, -12],
+    duration: 260,
+    easing: "easeInQuart",
+    complete: () => {
+      setIdx((p) => p + 1);
+      transicionando.current = false;
+    },
+  });
+}
 
   const esIntro = idx === -1;
-  const feature = !esIntro ? FEATURES[idx] : null;
+const feature = !esIntro ? FEATURES[idx] : null;
+
+useEffect(() => {
+  if (!esIntro && !feature) {
+    onFinish?.();
+  }
+}, [esIntro, feature]);
+
+if (!esIntro && !feature) return null;
 
   return (
     <div style={{
