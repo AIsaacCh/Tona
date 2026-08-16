@@ -76,15 +76,15 @@ def crear_checkout_invitado(claim_token: str) -> str:
     return session.url
 
 def reclamar_suscripcion_pendiente(claim_token: str, user_id: str) -> bool:
-    """
-    Si existe un pago de invitado pendiente con este claim_token, lo migra
-    a la tabla real de suscripciones y actualiza los metadata en Stripe
-    para que futuros webhooks ya resuelvan el user_id normalmente.
-    """
     from services.db import obtener_suscripcion_pendiente_por_token, eliminar_suscripcion_pendiente_por_token
 
     pendiente = obtener_suscripcion_pendiente_por_token(claim_token)
     if not pendiente:
+        return False
+
+    # Todavía no llega el webhook con los datos reales de Stripe
+    if not pendiente.get("stripe_customer_id") or not pendiente.get("stripe_subscription_id"):
+        print(f"⚠️ Pendiente sin datos de Stripe aún para token {claim_token}")
         return False
 
     guardar_suscripcion(user_id, {
