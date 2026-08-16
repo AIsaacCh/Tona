@@ -1,6 +1,6 @@
 import jwt
 from datetime import datetime, timedelta
-from fastapi import HTTPException, Request, Response
+from fastapi import HTTPException, Request, Response, Depends
 from config import settings
 
 ALGORITHM = "HS256"
@@ -48,12 +48,15 @@ def obtener_user_id_de_cookie(request: Request) -> str:
     return decodificar_token(token)
 
 
-def verificar_identidad(user_id: str, request: Request) -> str:
+# ✅ NUEVA: Dependency que devuelve el user_id de la cookie
+async def verificar_identidad(request: Request) -> str:
     """
-    Dependency de FastAPI: verifica que la cookie de sesión corresponda
-    al mismo user_id que se pide en la ruta.
+    Dependency de FastAPI: valida la cookie y devuelve el user_id.
+    Úsala en lugar de recibir user_id por URL o body.
     """
-    user_id_de_cookie = obtener_user_id_de_cookie(request)
-    if user_id_de_cookie != user_id:
-        raise HTTPException(status_code=403, detail="No autorizado para este usuario")
-    return user_id
+    return obtener_user_id_de_cookie(request)
+
+
+# ⚠️ OBSOLETO: Ya no se usa, pero lo mantengo por compatibilidad
+# def verificar_identidad(user_id: str, request: Request) -> str:
+#     ...

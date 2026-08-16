@@ -11,7 +11,7 @@ export function useOnboarding(userId) {
       setPaso(2); // usuario demo, no forzamos onboarding
       return;
     }
-    fetch(`${API}/agent/config/${uid}`, { credentials: "include" })
+    fetch(`${API}/agent/config`, { credentials: "include" })
       .then((r) => r.json())
       .then((data) => setPaso(data.onboarding_paso ?? 0))
       .catch(() => setPaso(0));
@@ -20,7 +20,7 @@ export function useOnboarding(userId) {
   const actualizarPaso = useCallback(async (nuevoPaso) => {
     setPaso(nuevoPaso); // optimista
     try {
-      await fetch(`${API}/agent/config/${userId}/paso`, {
+      await fetch(`${API}/agent/config/paso`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -29,7 +29,7 @@ export function useOnboarding(userId) {
     } catch (e) {
       console.error("Error actualizando onboarding_paso:", e);
     }
-  }, [userId]);
+  }, []);
 
   return { paso, actualizarPaso, cargando: paso === null };
 }

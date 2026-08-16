@@ -318,7 +318,7 @@ export function TarjetaExamen() {
 
   if (!data) return null;
 
-  const diff  = new Date(`${data.fecha}T${data.hora}`) - new Date();
+  const diff  = new Date(`${data.fecha}T${data.hora || "09:00"}`) - new Date();
   const dias  = Math.max(0, Math.floor(diff / 86400000));
   const horas = Math.max(0, Math.floor((diff % 86400000) / 3600000));
 
@@ -343,7 +343,9 @@ export function TarjetaExamen() {
         </div>
         <div style={{ padding: "14px" }}>
           <div style={{ fontSize: 15, color: "rgba(237,235,230,0.85)", fontWeight: 300, marginBottom: 4 }}>{data.materia}</div>
-          <div style={{ fontSize: 11, color: `${T.amaranto}88`, marginBottom: 14 }}>{data.fecha} · {data.hora}</div>
+          <div style={{ fontSize: 11, color: `${T.amaranto}88`, marginBottom: 14 }}>
+  {data.fecha}{data.hora ? ` · ${data.hora}` : " · hora sin especificar"}
+</div>
           <div style={{ display: "flex", gap: 10 }}>
             {[{ v: dias, l: "días" }, { v: horas, l: "horas" }].map(({ v, l }) => (
               <div key={l} style={{ flex: 1, background: `${T.amaranto}10`, borderRadius: 8, padding: "10px 12px", textAlign: "center" }}>

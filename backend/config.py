@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     STRIPE_SECRET_KEY: str
     STRIPE_WEBHOOK_SECRET: str
     STRIPE_PRICE_ID: str
+    NOTION_CLIENT_ID: Optional[str] = None
+    NOTION_CLIENT_SECRET: Optional[str] = None
+    NOTION_REDIRECT_URI: Optional[str] = None
 
     class Config:
         

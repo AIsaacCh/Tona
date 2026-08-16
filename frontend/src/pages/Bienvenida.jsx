@@ -1,73 +1,96 @@
-import { useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useState } from 'react'
 import FondoProfundidad from '../components/FondoProfundidad'
 import EsferaTona from '../components/EsferaTona'
 
 const API = import.meta.env.VITE_API_URL
-const AUTH_BASE = import.meta.env.VITE_AUTH_URL
 const JADE = 'var(--jade)'
-const COPAL = 'var(--copal, #d4a24c)'
 const FONT = "'Poppins', system-ui, sans-serif"
 
 export default function Bienvenida() {
-  const [params] = useSearchParams()
-  const token = params.get('promo')
-  const [estado, setEstado] = useState('cargando') // cargando | valido | invalido
+  const [codigo, setCodigo] = useState('')
+  const [estado, setEstado] = useState('inicial')
   const [info, setInfo] = useState(null)
 
-  useEffect(() => {
-    if (!token) { setEstado('invalido'); return }
-    fetch(`${API}/pagos/promo/${token}/validar`)
-      .then(r => r.json())
-      .then(data => {
-        if (data.valido) {
-          setInfo(data)
-          setEstado('valido')
-        } else {
-          setEstado('invalido')
-        }
-      })
-      .catch(() => setEstado('invalido'))
-  }, [token])
+  async function verificarCodigo() {
+    if (!codigo.trim()) return
+    setEstado('verificando')
+    try {
+      const resp = await fetch(`${API}/pagos/promo/${codigo.trim()}/validar`)
+      const data = await resp.json()
+      if (data.valido) {
+        setInfo(data)
+        setEstado('valido')
+      } else {
+        setEstado('invalido')
+      }
+    } catch {
+      setEstado('invalido')
+    }
+  }
 
   function continuar() {
-    localStorage.setItem('tona_promo_pendiente', token)
-    window.location.href = `${AUTH_BASE}/auth/google`
+    localStorage.setItem('tona_promo_pendiente', codigo.trim())
+    window.location.href = `/api/auth/google`
   }
 
   return (
     <div style={{ minHeight: '100vh', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
       <FondoProfundidad />
-      <div style={{ position: 'relative', zIndex: 2, textAlign: 'center', maxWidth: 440, padding: 24 }}>
+      <div style={{ position: 'relative', zIndex: 2, textAlign: 'center', maxWidth: 420, padding: 24 }}>
         <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'center' }}>
           <EsferaTona size={140} />
         </div>
 
-        {estado === 'cargando' && (
-          <p style={{ color: 'rgba(237,235,230,0.5)', fontFamily: FONT }}>Verificando invitación...</p>
-        )}
+        <div style={{ fontSize: 11, letterSpacing: '0.2em', color: JADE, marginBottom: 14, fontFamily: FONT }}>
+          UN REGALO PARA TI
+        </div>
+        <h1 style={{ fontFamily: FONT, fontSize: 26, fontWeight: 500, color: 'rgba(237,235,230,0.94)', marginBottom: 16 }}>
+          Bienvenido a Tona
+        </h1>
+        <p style={{ color: 'rgba(237,235,230,0.5)', fontFamily: FONT, fontSize: 13, lineHeight: 1.7, marginBottom: 28 }}>
+          Fuiste seleccionado para probar Tona Premium gratis. Ingresa tu código de invitación para comenzar.
+        </p>
 
-        {estado === 'invalido' && (
+        {(estado === 'inicial' || estado === 'verificando' || estado === 'invalido') && (
           <>
-            <h1 style={{ fontFamily: FONT, fontSize: 24, color: 'rgba(237,235,230,0.9)', marginBottom: 12 }}>
-              Este link ya no es válido
-            </h1>
-            <p style={{ color: 'rgba(237,235,230,0.5)', fontFamily: FONT, fontSize: 14 }}>
-              Puede que ya haya sido usado o haya expirado. Si crees que es un error, contáctanos.
-            </p>
+            <input
+              value={codigo}
+              onChange={(e) => setCodigo(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && verificarCodigo()}
+              placeholder="Tu código de invitación"
+              style={{
+                width: '100%', boxSizing: 'border-box', padding: '14px 16px',
+                borderRadius: 12, background: 'rgba(237,235,230,0.04)',
+                border: `1px solid ${estado === 'invalido' ? 'rgba(192,69,90,0.5)' : 'rgba(237,235,230,0.12)'}`,
+                color: 'rgba(237,235,230,0.9)', fontSize: 14, fontFamily: FONT,
+                textAlign: 'center', outline: 'none', marginBottom: 14,
+              }}
+            />
+            {estado === 'invalido' && (
+              <p style={{ color: '#c0455a', fontSize: 12, fontFamily: FONT, marginBottom: 14 }}>
+                Ese código no es válido o ya fue usado.
+              </p>
+            )}
+            <button
+              onClick={verificarCodigo}
+              disabled={estado === 'verificando' || !codigo.trim()}
+              style={{
+                width: '100%', padding: '14px 0', borderRadius: 30,
+                background: JADE, color: 'var(--obsidiana)', border: 'none',
+                fontFamily: FONT, fontSize: 14, fontWeight: 600,
+                cursor: codigo.trim() ? 'pointer' : 'default',
+                opacity: estado === 'verificando' ? 0.6 : 1,
+              }}
+            >
+              {estado === 'verificando' ? 'Verificando...' : 'Continuar'}
+            </button>
           </>
         )}
 
         {estado === 'valido' && (
           <>
-            <div style={{ fontSize: 11, letterSpacing: '0.2em', color: JADE, marginBottom: 14, fontFamily: FONT }}>
-              FUISTE SELECCIONADO
-            </div>
-            <h1 style={{ fontFamily: FONT, fontSize: 28, fontWeight: 500, color: 'rgba(237,235,230,0.94)', marginBottom: 16 }}>
-              Bienvenido a Tona
-            </h1>
-            <p style={{ color: 'rgba(237,235,230,0.55)', fontFamily: FONT, fontSize: 14, lineHeight: 1.7, marginBottom: 30 }}>
-              Tienes acceso a {info.dias_trial} días gratis de Tona Premium, sin costo.
+            <p style={{ color: 'rgba(237,235,230,0.6)', fontFamily: FONT, fontSize: 14, lineHeight: 1.7, marginBottom: 26 }}>
+              ¡Código válido! Tienes {info.dias_trial} días gratis de Tona Premium.
               Solo inicia sesión con Google para activarlo.
             </p>
             <button

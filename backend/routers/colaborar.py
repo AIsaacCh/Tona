@@ -1,5 +1,5 @@
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, Depends, Header,Request, Query
-from services.auth_utils import decodificar_token, verificar_identidad,obtener_user_id_de_cookie, crear_token
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, Depends, Header, Request, Query
+from services.auth_utils import decodificar_token, verificar_identidad, obtener_user_id_de_cookie, crear_token
 from pydantic import BaseModel
 from typing import Optional
 import random
@@ -29,27 +29,69 @@ def generar_codigo() -> str:
     return "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
 
 
+# ── Helpers de seguridad ─────────────────────────────────────────────────────
+
+def _verificar_participante(codigo: str, user_id: str) -> bool:
+    """Valida que el usuario sea participante activo de la sala."""
+    participantes = obtener_participantes(codigo)
+    return any(p["user_id"] == user_id for p in participantes)
+
+
+def _obtener_user_id_o_403(request: Request) -> str:
+    """Obtiene el user_id de la cookie o lanza 401."""
+    try:
+        return obtener_user_id_de_cookie(request)
+    except HTTPException:
+        raise HTTPException(status_code=401, detail="No autenticado")
+
+
+def _verificar_sala_y_participante(codigo: str, user_id: str) -> dict:
+    """
+    Verifica que la sala exista y que el usuario sea participante.
+    Retorna la sesión si todo está bien, o lanza HTTPException.
+    """
+    sesion = obtener_sesion(codigo)
+    if not sesion:
+        raise HTTPException(status_code=404, detail="Sesión no encontrada o finalizada")
+    
+    if not _verificar_participante(codigo, user_id):
+        raise HTTPException(status_code=403, detail="No eres participante de esta sala")
+    
+    return sesion
+
+
+# ── Modelos ──────────────────────────────────────────────────────────────────
+
 class CrearSesionRequest(BaseModel):
-    user_id: str
+    # ✅ ELIMINADO: user_id ya no se recibe en el body
+    pass  # Solo necesitamos la cookie
 
 
 class UnirseSesionRequest(BaseModel):
-    user_id: str
-    codigo: str
+    # ✅ ELIMINADO: user_id ya no se recibe en el body
+    pass  # Solo necesitamos la cookie y el código de la URL
 
 
 class CompartirArchivoRequest(BaseModel):
-    user_id: str
     doc_id: str
     titulo: str
 
 
 class PreguntarTonaRequest(BaseModel):
-    user_id: str
     pregunta: str
 
 
-# ── WebSocket manager ─────────────────────────────────────────────────────────
+class CerrarSesionRequest(BaseModel):
+    # ✅ ELIMINADO: user_id ya no se recibe en el body
+    pass
+
+
+class AbandonarRequest(BaseModel):
+    # ✅ ELIMINADO: user_id ya no se recibe en el body
+    pass
+
+
+# ── WebSocket manager ────────────────────────────────────────────────────────
 
 class ConnectionManager:
     def __init__(self):
@@ -76,16 +118,15 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
-# ── Endpoints REST ────────────────────────────────────────────────────────────
+# ── Endpoints REST ──────────────────────────────────────────────────────────
 
 @router.post("/crear")
-async def crear_sesion(body: CrearSesionRequest, request: Request):
-    token_user_id = obtener_user_id_de_cookie(request)
-    if token_user_id != body.user_id:
-        raise HTTPException(status_code=403, detail="No autorizado")
-
-    print(f"🔍 /crear llamado con user_id={body.user_id}")
-    usuario = obtener_usuario(body.user_id)
+async def crear_sesion(request: Request):
+    """Crea una nueva sala. El creador se obtiene de la cookie."""
+    user_id = _obtener_user_id_o_403(request)
+    
+    print(f"🔍 /crear llamado para user_id={user_id}")
+    usuario = obtener_usuario(user_id)
     if not usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
@@ -93,55 +134,52 @@ async def crear_sesion(body: CrearSesionRequest, request: Request):
     while obtener_sesion(codigo):
         codigo = generar_codigo()
 
-    crear_sesion_colaborativa(codigo, body.user_id)
-    agregar_participante(codigo, body.user_id, usuario.get("name", ""), usuario.get("email", ""))
+    crear_sesion_colaborativa(codigo, user_id)
+    agregar_participante(codigo, user_id, usuario.get("name", ""), usuario.get("email", ""))
 
     return {"codigo": codigo}
 
 
+@router.post("/unirse/{codigo}")
+async def unirse_sesion(codigo: str, request: Request):
+    """Se une a una sala existente. El user_id se obtiene de la cookie."""
+    user_id = _obtener_user_id_o_403(request)
 
-
-
-@router.post("/unirse")
-async def unirse_sesion(body: UnirseSesionRequest, request: Request):
-    token_user_id = obtener_user_id_de_cookie(request)
-    if token_user_id != body.user_id:
-        raise HTTPException(status_code=403, detail="No autorizado")
-
-    print(f"🔍 /unirse llamado con user_id={body.user_id}, codigo={body.codigo}")
-    sesion = obtener_sesion(body.codigo)
+    print(f"🔍 /unirse llamado con user_id={user_id}, codigo={codigo}")
+    sesion = obtener_sesion(codigo)
     if not sesion:
         raise HTTPException(status_code=404, detail="Código inválido o sesión finalizada")
 
-    participantes = obtener_participantes(body.codigo)
-    if len(participantes) >= 3 and not any(p["user_id"] == body.user_id for p in participantes):
+    participantes = obtener_participantes(codigo)
+    if len(participantes) >= 3 and not any(p["user_id"] == user_id for p in participantes):
         raise HTTPException(status_code=403, detail="La sesión ya tiene el máximo de 3 participantes")
 
-    usuario = obtener_usuario(body.user_id)
+    usuario = obtener_usuario(user_id)
     if not usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
-    ya_esta = any(p["user_id"] == body.user_id for p in participantes)
+    ya_esta = any(p["user_id"] == user_id for p in participantes)
     if not ya_esta:
-        agregar_participante(body.codigo, body.user_id, usuario.get("name", ""), usuario.get("email", ""))
+        agregar_participante(codigo, user_id, usuario.get("name", ""), usuario.get("email", ""))
 
-    supabase.table("colaboracion_sesiones").update({"vacia_desde": None}).eq("codigo", body.codigo).execute()
-        
+    supabase.table("colaboracion_sesiones").update({"vacia_desde": None}).eq("codigo", codigo).execute()
 
     return {
-        "codigo": body.codigo,
-        "participantes": obtener_participantes(body.codigo),
-        "archivos": obtener_archivos_compartidos(body.codigo),
-        "es_creador": sesion.get("creado_por") == body.user_id,
-        "mensajes": obtener_mensajes_colaborativos(body.codigo),
+        "codigo": codigo,
+        "participantes": obtener_participantes(codigo),
+        "archivos": obtener_archivos_compartidos(codigo),
+        "es_creador": sesion.get("creado_por") == user_id,
+        "mensajes": obtener_mensajes_colaborativos(codigo),
     }
 
-@router.get("/mi-sesion/{user_id}")
-async def obtener_mi_sesion_activa(user_id: str, _: str = Depends(verificar_identidad)):
+
+@router.get("/mi-sesion")
+async def obtener_mi_sesion_activa(request: Request):
     """
-    Busca si el usuario tiene una sesión activa, ya sea como participante actual
-    o como creador de una sesión que sigue activa (aunque haya salido).
+    Busca si el usuario tiene una sesión activa.
     """
+    user_id = _obtener_user_id_o_403(request)
+
     resp = supabase.table("colaboracion_participantes").select("codigo").eq("user_id", user_id).execute()
     for fila in (resp.data or []):
         sesion = obtener_sesion(fila["codigo"])
@@ -154,28 +192,24 @@ async def obtener_mi_sesion_activa(user_id: str, _: str = Depends(verificar_iden
 
     return {"codigo": None}
 
+
 @router.get("/{codigo}/estado")
 async def estado_sesion(codigo: str, request: Request):
-    user_id = obtener_user_id_de_cookie(request)  # 401 si no hay cookie válida
-    sesion = obtener_sesion(codigo)
-    if not sesion:
-        raise HTTPException(status_code=404, detail="Sesión no encontrada o finalizada")
-
-    participantes = obtener_participantes(codigo)
-    if not any(p["user_id"] == user_id for p in participantes):
-        raise HTTPException(status_code=403, detail="No perteneces a esta sesión")
+    """✅ AHORA VERIFICA que el usuario sea participante."""
+    user_id = _obtener_user_id_o_403(request)
+    _verificar_sala_y_participante(codigo, user_id)  # ✅ Lanza 403 si no es participante
 
     return {
-        "participantes": participantes,
+        "participantes": obtener_participantes(codigo),
         "archivos": obtener_archivos_compartidos(codigo),
     }
 
 
 @router.post("/{codigo}/compartir")
 async def compartir_archivo(codigo: str, body: CompartirArchivoRequest, request: Request):
-    token_user_id = obtener_user_id_de_cookie(request)
-    if token_user_id != body.user_id:
-        raise HTTPException(status_code=403, detail="No autorizado")
+    """✅ AHORA VERIFICA que el usuario sea participante."""
+    user_id = _obtener_user_id_o_403(request)
+    _verificar_sala_y_participante(codigo, user_id)  # ✅ Lanza 403 si no es participante
 
     from routers.tasks import get_google_headers
 
@@ -184,9 +218,9 @@ async def compartir_archivo(codigo: str, body: CompartirArchivoRequest, request:
         raise HTTPException(status_code=404, detail="Sesión no encontrada")
 
     participantes = obtener_participantes(codigo)
-    otros_emails = [p["email"] for p in participantes if p["user_id"] != body.user_id and p.get("email")]
+    otros_emails = [p["email"] for p in participantes if p["user_id"] != user_id and p.get("email")]
 
-    headers = await get_google_headers(body.user_id)
+    headers = await get_google_headers(user_id)
 
     async with httpx.AsyncClient() as client:
         for email in otros_emails:
@@ -201,27 +235,23 @@ async def compartir_archivo(codigo: str, body: CompartirArchivoRequest, request:
                 print(f"⚠️ Error compartiendo con {email}: {e}")
 
     link = f"https://docs.google.com/document/d/{body.doc_id}/edit"
-    archivo = agregar_archivo_compartido(codigo, body.user_id, body.doc_id, body.titulo, link)
+    archivo = agregar_archivo_compartido(codigo, user_id, body.doc_id, body.titulo, link)
 
     await manager.broadcast(codigo, {"tipo": "archivo_compartido", "archivo": archivo})
 
     return {"compartido": True, "archivo": archivo}
 
-class CerrarSesionRequest(BaseModel):
-    user_id: str
-
 
 @router.post("/{codigo}/cerrar")
-async def cerrar_sesion(codigo: str, body: CerrarSesionRequest, request: Request):
-    token_user_id = obtener_user_id_de_cookie(request)
-    if token_user_id != body.user_id:
-        raise HTTPException(status_code=403, detail="No autorizado")
-
+async def cerrar_sesion(codigo: str, request: Request):
+    """✅ AHORA VERIFICA que el usuario sea el creador de la sala."""
+    user_id = _obtener_user_id_o_403(request)
+    
     sesion = obtener_sesion(codigo)
     if not sesion:
         raise HTTPException(status_code=404, detail="Sesión no encontrada")
 
-    if sesion.get("creado_por") != body.user_id:
+    if sesion.get("creado_por") != user_id:
         raise HTTPException(status_code=403, detail="Solo quien creó la sesión puede cerrarla para todos")
 
     marcar_sesion_inactiva(codigo)
@@ -230,18 +260,15 @@ async def cerrar_sesion(codigo: str, body: CerrarSesionRequest, request: Request
 
     return {"cerrada": True}
 
-class AbandonarRequest(BaseModel):
-    user_id: str
-
 
 @router.post("/{codigo}/abandonar")
-async def abandonar_sesion(codigo: str, body: AbandonarRequest, request: Request):
-    token_user_id = obtener_user_id_de_cookie(request)
-    if token_user_id != body.user_id:
-        raise HTTPException(status_code=403, detail="No autorizado")
+async def abandonar_sesion(codigo: str, request: Request):
+    """✅ AHORA VERIFICA que el usuario sea participante."""
+    user_id = _obtener_user_id_o_403(request)
+    _verificar_sala_y_participante(codigo, user_id)  # ✅ Lanza 403 si no es participante
 
-    quitar_participante(codigo, body.user_id)
-    manager.desconectar(codigo, body.user_id)
+    quitar_participante(codigo, user_id)
+    manager.desconectar(codigo, user_id)
     restantes = obtener_participantes(codigo)
 
     if len(restantes) == 0:
@@ -251,7 +278,7 @@ async def abandonar_sesion(codigo: str, body: AbandonarRequest, request: Request
 
     await manager.broadcast(codigo, {
         "tipo": "participante_salio",
-        "user_id": body.user_id,
+        "user_id": user_id,
         "participantes": restantes,
     })
 
@@ -260,9 +287,9 @@ async def abandonar_sesion(codigo: str, body: AbandonarRequest, request: Request
 
 @router.post("/{codigo}/preguntar")
 async def preguntar_tona(codigo: str, body: PreguntarTonaRequest, request: Request):
-    token_user_id = obtener_user_id_de_cookie(request)
-    if token_user_id != body.user_id:
-        raise HTTPException(status_code=403, detail="No autorizado")
+    """✅ AHORA VERIFICA que el usuario sea participante."""
+    user_id = _obtener_user_id_o_403(request)
+    _verificar_sala_y_participante(codigo, user_id)  # ✅ Lanza 403 si no es participante
 
     from routers.docs import leer_doc
     from google import genai
@@ -272,10 +299,10 @@ async def preguntar_tona(codigo: str, body: PreguntarTonaRequest, request: Reque
     contexto_docs = ""
     for a in archivos[:3]:
         try:
-            data = await leer_doc(body.user_id, a["doc_id"])
+            data = await leer_doc(user_id, a["doc_id"])
             contexto_docs += f"\n\n--- Documento: {a['titulo']} ---\n{data.get('contenido', '')[:2000]}"
         except Exception as e:
-            print(f"⚠️ No se pudo leer {a['titulo']} para {body.user_id}: {e}")
+            print(f"⚠️ No se pudo leer {a['titulo']} para {user_id}: {e}")
 
     prompt = f"""Eres Tona, asistente académico, ayudando a un grupo de estudiantes que trabajan juntos en documentos compartidos.
 
@@ -299,7 +326,7 @@ Responde de forma breve y útil, en español, enfocándote en ayudar con la estr
 
     texto_respuesta = respuesta.text.strip()
 
-    guardar_mensaje_colaborativo(codigo, body.user_id, "Tona", texto_respuesta, tipo="tona", pregunta=body.pregunta)
+    guardar_mensaje_colaborativo(codigo, user_id, "Tona", texto_respuesta, tipo="tona", pregunta=body.pregunta)
 
     await manager.broadcast(codigo, {
         "tipo": "tona_respuesta",
@@ -314,6 +341,13 @@ Responde de forma breve y útil, en español, enfocándote en ayudar con la estr
 
 @router.websocket("/ws/{codigo}/{user_id}")
 async def websocket_sala(ws: WebSocket, codigo: str, user_id: str, token: str = Query(...)):
+    """
+    ✅ AHORA VERIFICA:
+    1. Token válido
+    2. El user_id de la URL coincide con el del token
+    3. El usuario es participante de la sala
+    """
+    # 1. Validar token
     try:
         if not token or decodificar_token(token) != user_id:
             await ws.close(code=4003)
@@ -322,11 +356,18 @@ async def websocket_sala(ws: WebSocket, codigo: str, user_id: str, token: str = 
         await ws.close(code=4003)
         return
 
+    # 2. Verificar que la sala existe
     sesion = obtener_sesion(codigo)
     if not sesion:
         await ws.close(code=4004)
         return
 
+    # ✅ 3. VERIFICAR que el usuario es participante de la sala
+    if not _verificar_participante(codigo, user_id):
+        await ws.close(code=4003)  # No autorizado
+        return
+
+    # ✅ 4. Ahora sí, conectar
     usuario = obtener_usuario(user_id)
     nombre = usuario.get("name", "Alguien").split()[0] if usuario else "Alguien"
 
@@ -365,7 +406,7 @@ async def websocket_sala(ws: WebSocket, codigo: str, user_id: str, token: str = 
 
 @router.get("/ws-token")
 async def obtener_ws_token(request: Request):
-    user_id = obtener_user_id_de_cookie(request)
-    # token de vida corta, solo para autenticar el handshake del websocket
-    ticket = crear_token(user_id)  # reutilizamos el mismo JWT; podrías crear uno con exp más corto si quieres
+    """Obtiene un token JWT para el handshake del WebSocket."""
+    user_id = _obtener_user_id_o_403(request)
+    ticket = crear_token(user_id)
     return {"token": ticket}

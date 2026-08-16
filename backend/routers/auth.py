@@ -2,7 +2,8 @@ from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.responses import RedirectResponse, JSONResponse
 from google_auth_oauthlib.flow import Flow
 import httpx
-from services.auth_utils import crear_token, establecer_cookie_sesion, verificar_identidad
+from services.auth_utils import crear_token, establecer_cookie_sesion, verificar_identidad, obtener_user_id_de_cookie
+from services.stripe_service import reclamar_suscripcion_pendiente, obtener_suscripcion
 import os
 import secrets
 from datetime import datetime, timedelta
@@ -27,10 +28,7 @@ SCOPES = [
     "https://www.googleapis.com/auth/documents",
     "https://www.googleapis.com/auth/gmail.send",
     "https://www.googleapis.com/auth/gmail.readonly",
-    
 ]
-
-
 
 def crear_flow():
     return Flow.from_client_config(
@@ -47,6 +45,7 @@ def crear_flow():
         redirect_uri=settings.GOOGLE_REDIRECT_URI,
     )
 
+
 @router.get("/google")
 async def google_login():
     flow = crear_flow()
@@ -60,6 +59,7 @@ async def google_login():
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
     return response
+
 
 @router.get("/callback")
 async def google_callback(code: str, state: str):
@@ -76,8 +76,6 @@ async def google_callback(code: str, state: str):
         raise HTTPException(status_code=400, detail=f"Error al obtener token: {str(e)}")
 
     credentials = flow.credentials
-    # ... el resto de la función sigue exactamente igual que antes
-    
 
     async with httpx.AsyncClient() as client:
         resp = await client.get(
@@ -89,7 +87,6 @@ async def google_callback(code: str, state: str):
         raise HTTPException(status_code=400, detail="Error al obtener perfil de Google")
 
     user_info = resp.json()
-    
 
     expires_at = (datetime.now() + timedelta(seconds=credentials.expiry.timestamp() - datetime.now().timestamp())).isoformat()
 
@@ -116,14 +113,28 @@ async def google_callback(code: str, state: str):
             'tier': 'estudiante',
         })
 
-    response = RedirectResponse(
-        f"{settings.FRONTEND_URL}/dashboard?user_id={user_id}&name={user_info.get('name', '')}"
-    )
-    establecer_cookie_sesion(response, user_id)
-    return response
+    # Reclamar suscripción pendiente
+    try:
+        reclamar_suscripcion_pendiente(user_id, email)
+    except Exception as e:
+        print(f"⚠️ Error al reclamar suscripción pendiente: {e}")
 
+    suscripcion = obtener_suscripcion(user_id)
+    tiene_acceso = suscripcion and suscripcion.get("status") in ("active", "trialing")
+
+    establecer_cookie_sesion_response = RedirectResponse(
+        f"{settings.FRONTEND_URL}/dashboard?user_id={user_id}&name={user_info.get('name', '')}"
+        if tiene_acceso else
+        f"{settings.FRONTEND_URL}/login?necesita_suscripcion=1"
+    )
+    establecer_cookie_sesion(establecer_cookie_sesion_response, user_id)
+    return establecer_cookie_sesion_response
+
+
+# ✅ ELIMINADO: user_id de la URL
 @router.get("/me")
-async def get_me(user_id: str, _: str = Depends(verificar_identidad)):
+async def get_me(user_id: str = Depends(verificar_identidad)):
+    """Obtiene información del usuario autenticado."""
     usuario = obtener_usuario(user_id)
     if not usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
@@ -136,8 +147,9 @@ async def get_me(user_id: str, _: str = Depends(verificar_identidad)):
     }
 
 
-@router.get("/check_scopes/{user_id}")
-async def check_scopes(user_id: str, _: str = Depends(verificar_identidad)):
+# ✅ ELIMINADO: user_id de la URL
+@router.get("/check_scopes")
+async def check_scopes(user_id: str = Depends(verificar_identidad)):
     """Verifica qué scopes tiene el token del usuario."""
     usuario = obtener_usuario(user_id)
     if not usuario or not usuario.get("access_token"):
@@ -203,11 +215,68 @@ async def check_scopes(user_id: str, _: str = Depends(verificar_identidad)):
         }
 
 
+# ✅ ELIMINADO: user_id de la URL
 @router.get("/logout")
-async def logout(user_id: str, _: str = Depends(verificar_identidad)):
+async def logout(user_id: str = Depends(verificar_identidad)):
     usuario = obtener_usuario(user_id)
     if usuario:
         guardar_usuario(user_id, {**usuario, 'access_token': None})
     response = RedirectResponse(f"{settings.FRONTEND_URL}/login")
     response.delete_cookie("tona_session", path="/")
     return response
+
+
+@router.get("/whoami")
+async def whoami(request: Request):
+    """Permite al frontend saber si ya existe una sesión válida."""
+    try:
+        user_id = obtener_user_id_de_cookie(request)
+    except HTTPException:
+        return {"autenticado": False}
+
+    usuario = obtener_usuario(user_id)
+    if not usuario:
+        return {"autenticado": False}
+
+    return {
+        "autenticado": True,
+        "user_id": user_id,
+        "name": usuario.get("name", ""),
+    }
+
+
+# ✅ ELIMINADO: user_id de la URL
+@router.post("/revocar")
+async def revocar_acceso(user_id: str = Depends(verificar_identidad)):
+    """Revoca el acceso de Tona a la cuenta de Google del usuario."""
+    usuario = obtener_usuario(user_id)
+    if usuario and usuario.get("access_token"):
+        try:
+            async with httpx.AsyncClient() as client:
+                await client.post(
+                    "https://oauth2.googleapis.com/revoke",
+                    params={"token": usuario["access_token"]},
+                )
+        except Exception as e:
+            print(f"⚠️ Error revocando token de Google: {e}")
+
+    if usuario:
+        guardar_usuario(user_id, {**usuario, "access_token": None, "refresh_token": None})
+
+    return {"revocado": True}
+
+
+@router.get("/verificar-cuenta")
+async def verificar_cuenta(email: str):
+    """
+    Evalúa P (cuenta existe) y Q (suscripción activa) para un email,
+    SIN crear sesión ni tocar Google. Público a propósito.
+    """
+    usuario = obtener_usuario_por_email(email)
+    if not usuario:
+        return {"existe": False, "tiene_suscripcion": False}
+
+    suscripcion = obtener_suscripcion(usuario["id"])
+    activa = bool(suscripcion) and suscripcion.get("status") in ("active", "trialing")
+
+    return {"existe": True, "tiene_suscripcion": activa}

@@ -36,8 +36,9 @@ async def get_headers(user_id: str) -> dict:
 
 # ── Listar documentos ─────────────────────────────────────────────────────────
 
-@router.get("/lista/{user_id}")
-async def listar_docs(user_id: str, _: str = Depends(verificar_identidad)):
+
+@router.get("/lista")
+async def listar_docs(user_id: str = Depends(verificar_identidad)):
     try:
         headers = await get_headers(user_id)
 
@@ -75,8 +76,12 @@ async def listar_docs(user_id: str, _: str = Depends(verificar_identidad)):
 
 # ── Buscar documento por nombre ──────────────────────────────────────────────
 
-@router.get("/buscar/{user_id}")
-async def buscar_doc_por_nombre(user_id: str, nombre: str, _: str = Depends(verificar_identidad)):
+
+@router.get("/buscar")
+async def buscar_doc_por_nombre(
+    nombre: str,
+    user_id: str = Depends(verificar_identidad)
+):
     """Busca un documento por su nombre (búsqueda parcial)."""
     try:
         headers = await get_headers(user_id)
@@ -113,8 +118,12 @@ async def buscar_doc_por_nombre(user_id: str, nombre: str, _: str = Depends(veri
 
 # ── Leer contenido de un doc ──────────────────────────────────────────────────
 
-@router.get("/contenido/{user_id}/{doc_id}")
-async def leer_doc(user_id: str, doc_id: str, _: str = Depends(verificar_identidad)):
+
+@router.get("/contenido/{doc_id}")
+async def leer_doc(
+    doc_id: str,
+    user_id: str = Depends(verificar_identidad)
+):
     try:
         headers = await get_headers(user_id)
 
@@ -165,8 +174,12 @@ def _extraer_texto(doc: dict) -> str:
 
 # ── Crear nuevo documento ─────────────────────────────────────────────────────
 
-@router.post("/crear/{user_id}")
-async def crear_doc(user_id: str, body: NuevoDoc, _: str = Depends(verificar_identidad)):
+
+@router.post("/crear")
+async def crear_doc(
+    body: NuevoDoc,
+    user_id: str = Depends(verificar_identidad)
+):
     try:
         headers = await get_headers(user_id)
         print(f"📝 Creando documento: {body.titulo}")
@@ -212,16 +225,12 @@ async def crear_doc(user_id: str, body: NuevoDoc, _: str = Depends(verificar_ide
 
 # ── Actualizar contenido de un doc ────────────────────────────────────────────
 
-# ── Actualizar contenido de un doc ────────────────────────────────────────────
 
-# ── Actualizar contenido de un doc ────────────────────────────────────────────
-
-# ── Actualizar contenido de un doc (versión robusta) ──────────────────────────
-
-# ── Actualizar contenido de un doc ────────────────────────────────────────────
-
-@router.post("/actualizar/{user_id}")
-async def actualizar_doc(user_id: str, body: ActualizarDoc, _: str = Depends(verificar_identidad)):
+@router.post("/actualizar")
+async def actualizar_doc(
+    body: ActualizarDoc,
+    user_id: str = Depends(verificar_identidad)
+):
     try:
         headers = await get_headers(user_id)
         print(f"📝 Actualizando documento: {body.doc_id}")
@@ -297,6 +306,7 @@ async def actualizar_doc(user_id: str, body: ActualizarDoc, _: str = Depends(ver
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
+
 async def _insertar_texto(headers: dict, doc_id: str, texto: str):
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -325,6 +335,7 @@ async def _insertar_texto(headers: dict, doc_id: str, texto: str):
         print(f"❌ Error en _insertar_texto: {e}")
         raise
 
+
 async def _mover_a_carpeta(headers: dict, doc_id: str, folder_id: str):
     async with httpx.AsyncClient() as client:
         resp = await client.get(
@@ -346,8 +357,12 @@ class CrearArchivoTareaRequest(BaseModel):
     curso_id: str
 
 
-@router.post("/crear_para_tarea/{user_id}")
-async def crear_doc_para_tarea(user_id: str, body: CrearArchivoTareaRequest, _: str = Depends(verificar_identidad)):
+
+@router.post("/crear_para_tarea")
+async def crear_doc_para_tarea(
+    body: CrearArchivoTareaRequest,
+    user_id: str = Depends(verificar_identidad)
+):
     from services.db import obtener_carpeta_clase, vincular_archivo_tarea
 
     carpeta = obtener_carpeta_clase(user_id, body.curso_id)
@@ -357,26 +372,32 @@ async def crear_doc_para_tarea(user_id: str, body: CrearArchivoTareaRequest, _: 
     headers = await get_headers(user_id)
     titulo_doc = f"{body.titulo_tarea} — entrega"
 
-    resp_crear = await __import__("httpx").AsyncClient().post(
-        "https://docs.googleapis.com/v1/documents",
-        headers={**headers, "Content-Type": "application/json"},
-        json={"title": titulo_doc},
-    )
-    if resp_crear.status_code not in (200, 201):
-        raise HTTPException(status_code=500, detail=f"Error creando doc: {resp_crear.text}")
+    async with httpx.AsyncClient() as client:
+        resp_crear = await client.post(
+            "https://docs.googleapis.com/v1/documents",
+            headers={**headers, "Content-Type": "application/json"},
+            json={"title": titulo_doc},
+        )
+        if resp_crear.status_code not in (200, 201):
+            raise HTTPException(status_code=500, detail=f"Error creando doc: {resp_crear.text}")
 
-    doc_id = resp_crear.json().get("documentId")
-    await _mover_a_carpeta(headers, doc_id, carpeta["drive_folder_id"])
+        doc_id = resp_crear.json().get("documentId")
+        await _mover_a_carpeta(headers, doc_id, carpeta["drive_folder_id"])
 
-    link = f"https://docs.google.com/document/d/{doc_id}/edit"
-    vincular_archivo_tarea(user_id, body.tarea_id, doc_id, titulo_doc, link, body.curso_id)
+        link = f"https://docs.google.com/document/d/{doc_id}/edit"
+        vincular_archivo_tarea(user_id, body.tarea_id, doc_id, titulo_doc, link, body.curso_id)
 
-    return {"creado": True, "doc_id": doc_id, "titulo": titulo_doc, "link": link}        
+        return {"creado": True, "doc_id": doc_id, "titulo": titulo_doc, "link": link}
+
 
 # ── Exportar como .docx ───────────────────────────────────────────────────────
 
-@router.get("/exportar/{user_id}/{doc_id}")
-async def exportar_docx(user_id: str, doc_id: str, _: str = Depends(verificar_identidad)):
+
+@router.get("/exportar/{doc_id}")
+async def exportar_docx(
+    doc_id: str,
+    user_id: str = Depends(verificar_identidad)
+):
     from fastapi.responses import StreamingResponse
     import io
 
@@ -408,16 +429,20 @@ async def exportar_docx(user_id: str, doc_id: str, _: str = Depends(verificar_id
 
 # ── Sugerencias de contenido con IA ──────────────────────────────────────────
 
-@router.post("/sugerir/{user_id}")
-async def sugerir_contenido(user_id: str, body: SugerenciaRequest, _: str = Depends(verificar_identidad)):
+
+@router.post("/sugerir")
+async def sugerir_contenido(
+    body: SugerenciaRequest,
+    user_id: str = Depends(verificar_identidad)
+):
     try:
         from services.db import obtener_tareas
         from google import genai
         from google.genai import types
 
         usuario = obtener_usuario(user_id)
-        nombre  = usuario.get("name", "").split()[0] if usuario else "estudiante"
-        tareas  = obtener_tareas(user_id)
+        nombre = usuario.get("name", "").split()[0] if usuario else "estudiante"
+        tareas = obtener_tareas(user_id)
 
         contexto_tareas = ""
         if tareas:
@@ -479,8 +504,12 @@ Usa español formal y académico. Máximo 300 palabras."""
 
 # ── Eliminar documento ─────────────────────────────────────────────────────────
 
-@router.delete("/eliminar/{user_id}/{doc_id}")
-async def eliminar_doc(user_id: str, doc_id: str, _: str = Depends(verificar_identidad)):
+
+@router.delete("/eliminar/{doc_id}")
+async def eliminar_doc(
+    doc_id: str,
+    user_id: str = Depends(verificar_identidad)
+):
     """
     Elimina un documento de Google Drive (lo mueve a la papelera).
     """
@@ -514,8 +543,12 @@ async def eliminar_doc(user_id: str, doc_id: str, _: str = Depends(verificar_ide
 
 # ── Eliminar documento permanentemente (opcional) ─────────────────────────────
 
-@router.delete("/eliminar/permanente/{user_id}/{doc_id}")
-async def eliminar_doc_permanente(user_id: str, doc_id: str, _: str = Depends(verificar_identidad)):
+
+@router.delete("/eliminar/permanente/{doc_id}")
+async def eliminar_doc_permanente(
+    doc_id: str,
+    user_id: str = Depends(verificar_identidad)
+):
     """
     Elimina un documento de Google Drive permanentemente (sin papelera).
     """
@@ -549,8 +582,12 @@ async def eliminar_doc_permanente(user_id: str, doc_id: str, _: str = Depends(ve
 
 # ── Restaurar documento de la papelera ────────────────────────────────────────
 
-@router.post("/restaurar/{user_id}/{doc_id}")
-async def restaurar_doc(user_id: str, doc_id: str, _: str = Depends(verificar_identidad)):
+
+@router.post("/restaurar/{doc_id}")
+async def restaurar_doc(
+    doc_id: str,
+    user_id: str = Depends(verificar_identidad)
+):
     """
     Restaura un documento de la papelera de Google Drive.
     """

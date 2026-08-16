@@ -2,12 +2,10 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { T } from "../tokens";
 
-
-
 const API = import.meta.env.VITE_API_URL;
 
 export function PanelColaborar({ userId, onCerrar }) {
-  const [modo, setModo] = useState("elegir"); // "elegir" | "unirse"
+  const [modo, setModo] = useState("elegir");
   const [codigo, setCodigo] = useState("");
   const [error, setError] = useState("");
   const [cargando, setCargando] = useState(false);
@@ -17,12 +15,11 @@ export function PanelColaborar({ userId, onCerrar }) {
     setCargando(true);
     setError("");
     try {
-     const resp = await fetch(`${API}/colaborar/crear`, {
-  method: "POST",
-  credentials: "include",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ user_id: userId }),
-});
+      const resp = await fetch(`${API}/colaborar/crear`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+      });
       if (resp.ok) {
         const data = await resp.json();
         navigate(`/colaborar/${data.codigo}`);
@@ -44,12 +41,11 @@ export function PanelColaborar({ userId, onCerrar }) {
     setCargando(true);
     setError("");
     try {
-     const resp = await fetch(`${API}/colaborar/unirse`, {
-  method: "POST",
-  credentials: "include",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ user_id: userId, codigo: codigo.trim().toUpperCase() }),
-});
+      const resp = await fetch(`${API}/colaborar/unirse/${codigo.trim().toUpperCase()}`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+      });
       if (resp.ok) {
         navigate(`/colaborar/${codigo.trim().toUpperCase()}`);
       } else {

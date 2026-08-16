@@ -37,26 +37,75 @@ def obtener_o_crear_customer(user_id: str) -> str:
     return customer.id
 
 
-def crear_checkout_session(user_id: str, trial_days: int = 3) -> str:
-    """Crea una Checkout Session y regresa la URL a la que redirigir."""
+def crear_checkout_session(user_id: str, trial_days: int = 3, requerir_tarjeta: bool = True, origen: str = "checkout") -> str:
     customer_id = obtener_o_crear_customer(user_id)
 
+    session_params = {
+        "customer": customer_id,
+        "payment_method_types": ["card"],
+        "line_items": [{"price": settings.STRIPE_PRICE_ID, "quantity": 1}],
+        "mode": "subscription",
+        "metadata": {"user_id": user_id, "origen": origen},
+        "subscription_data": {
+            "trial_period_days": trial_days,
+            "metadata": {"user_id": user_id, "origen": origen},
+        },
+        "success_url": f"{settings.FRONTEND_URL}/dashboard?pago=exito",
+        "cancel_url": f"{settings.FRONTEND_URL}/dashboard?pago=cancelado",
+    }
+
+    if not requerir_tarjeta:
+        session_params["payment_method_collection"] = "if_required"
+
+    session = stripe.checkout.Session.create(**session_params)
+    return session.url
+
+def crear_checkout_invitado(claim_token: str) -> str:
     session = stripe.checkout.Session.create(
-        customer=customer_id,
         payment_method_types=["card"],
         line_items=[{"price": settings.STRIPE_PRICE_ID, "quantity": 1}],
         mode="subscription",
-        metadata={"user_id": user_id},
+        metadata={"claim_token": claim_token},
         subscription_data={
-            "trial_period_days": trial_days,
-            "metadata": {"user_id": user_id},
+            "trial_period_days": 3,
+            "metadata": {"claim_token": claim_token},
         },
-        success_url=f"{settings.FRONTEND_URL}/dashboard?pago=exito",
-        cancel_url=f"{settings.FRONTEND_URL}/dashboard?pago=cancelado",
+        success_url=f"{settings.FRONTEND_URL}/post-pago?session_id={{CHECKOUT_SESSION_ID}}",
+        cancel_url=f"{settings.FRONTEND_URL}/login",
     )
-
     return session.url
 
+def reclamar_suscripcion_pendiente(claim_token: str, user_id: str) -> bool:
+    """
+    Si existe un pago de invitado pendiente con este claim_token, lo migra
+    a la tabla real de suscripciones y actualiza los metadata en Stripe
+    para que futuros webhooks ya resuelvan el user_id normalmente.
+    """
+    from services.db import obtener_suscripcion_pendiente_por_token, eliminar_suscripcion_pendiente_por_token
+
+    pendiente = obtener_suscripcion_pendiente_por_token(claim_token)
+    if not pendiente:
+        return False
+
+    guardar_suscripcion(user_id, {
+        "stripe_customer_id": pendiente["stripe_customer_id"],
+        "stripe_subscription_id": pendiente["stripe_subscription_id"],
+        "status": pendiente.get("status", "active"),
+        "tier": pendiente.get("tier", "premium"),
+        "trial_ends_at": pendiente.get("trial_ends_at"),
+        "current_period_end": pendiente.get("current_period_end"),
+        "origen": "checkout",
+    })
+
+    try:
+        stripe.Customer.modify(pendiente["stripe_customer_id"], metadata={"user_id": user_id})
+        stripe.Subscription.modify(pendiente["stripe_subscription_id"], metadata={"user_id": user_id})
+    except stripe.error.StripeError as e:
+        print(f"⚠️ No se pudo actualizar metadata en Stripe para {user_id}: {e}")
+
+    eliminar_suscripcion_pendiente_por_token(claim_token)
+    print(f"🎁 Suscripción pendiente reclamada: token → {user_id}")
+    return True
 
 def crear_portal_session(user_id: str) -> str:
     """Regresa la URL al portal de facturación de Stripe (para que el usuario cancele/actualice tarjeta)."""

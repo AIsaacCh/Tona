@@ -5,11 +5,7 @@ import { PanelParticipantes } from "../components/colaborar/PanelParticipantes";
 import { ChatSala } from "../components/colaborar/ChatSala";
 import { PanelArchivosSala } from "../components/colaborar/PanelArchivosSala";
 
-
-
-
 const API = import.meta.env.VITE_API_URL;
-const WS_DIRECT_URL = import.meta.env.VITE_WS_DIRECT_URL; // wss://tona-production-d9cc.up.railway.app/api
 
 export default function Colaborar() {
   const { codigo } = useParams();
@@ -35,84 +31,80 @@ export default function Colaborar() {
   }, []);
 
   async function unirse() {
-  try {
-   const resp = await fetch(`${API}/colaborar/unirse`, {
-  method: "POST",
-  credentials: "include",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ user_id: userId, codigo }),
-});
+    try {
+      const resp = await fetch(`${API}/colaborar/unirse/${codigo}`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+      });
 
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({}));
-      setError(err.detail || "No se pudo unir a la sesión");
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        setError(err.detail || "No se pudo unir a la sesión");
+        setCargando(false);
+        return;
+      }
+
+      const data = await resp.json();
+      setParticipantes(data.participantes || []);
+      setArchivos(data.archivos || []);
+      setEsCreador(data.es_creador || false);
+
+      const mio = (data.participantes || []).find((p) => p.user_id === userId);
+      setNombreUsuario(mio?.nombre || "");
+
+      const historialCargado = (data.mensajes || []).map((m) => {
+        if (m.tipo === "tona") {
+          return { tipo: "tona", texto: m.texto, pregunta: m.pregunta };
+        }
+        return { nombre: m.nombre, texto: m.texto };
+      });
+      setMensajes(historialCargado);
+
+      await conectarWebSocket();
       setCargando(false);
+    } catch (e) {
+      setError("Error de conexión");
+      setCargando(false);
+    }
+  }
+
+  async function reproducirVoz(texto) {
+    try {
+      const resp = await fetch(`${API}/agent/hablar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ texto }),
+      });
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio.onended = () => URL.revokeObjectURL(url);
+      audio.play();
+    } catch (e) {
+      console.error("Error reproduciendo voz:", e);
+    }
+  }
+
+  async function conectarWebSocket() {
+    let token;
+    try {
+      const resp = await fetch(`${API}/colaborar/ws-token`, { credentials: "include" });
+      const data = await resp.json();
+      token = data.token;
+    } catch (e) {
+      console.error("Error obteniendo ws-token:", e);
       return;
     }
 
-    const data = await resp.json();
-    setParticipantes(data.participantes || []);
-    setArchivos(data.archivos || []);
-    setEsCreador(data.es_creador || false);
-
-    const mio = (data.participantes || []).find((p) => p.user_id === userId);
-    setNombreUsuario(mio?.nombre || "");
-
-    const historialCargado = (data.mensajes || []).map((m) => {
-      if (m.tipo === "tona") {
-        return { tipo: "tona", texto: m.texto, pregunta: m.pregunta };
-      }
-      return { nombre: m.nombre, texto: m.texto };
-    });
-    setMensajes(historialCargado);
-
-    await conectarWebSocket();
-    setCargando(false);
-  } catch (e) {
-    setError("Error de conexión");
-    setCargando(false);
-  }
-}
-
-async function reproducirVoz(texto) {
-  try {
-    const resp = await fetch(`${API}/agent/hablar`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ texto }),
-    });
-    const blob = await resp.blob();
-    const url = URL.createObjectURL(blob);
-    const audio = new Audio(url);
-    audio.onended = () => URL.revokeObjectURL(url);
-    audio.play();
-  } catch (e) {
-    console.error("Error reproduciendo voz:", e);
-  }
-}
-
-  async function conectarWebSocket() {
-  let token;
-  try {
-    const resp = await fetch(`${API}/colaborar/ws-token`, { credentials: "include" });
-    const data = await resp.json();
-    token = data.token;
-  } catch (e) {
-    console.error("Error obteniendo ws-token:", e);
-    return;
-  }
-
-  const ws = new WebSocket(
-    `${WS_DIRECT_URL}/colaborar/ws/${codigo}/${userId}?token=${token}`
-  );
-  wsRef.current = ws;
-  
-  
+    const ws = new WebSocket(
+      `/api/colaborar/ws/${codigo}/${userId}?token=${token}`
+    );
+    wsRef.current = ws;
 
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      console.log("📩 Mensaje WebSocket recibido:", data);  // ← agrega esto
-
+      console.log("📩 Mensaje WebSocket recibido:", data);
 
       if (data.tipo === "chat") {
         setMensajes((prev) => [...prev, { nombre: data.nombre, texto: data.texto }]);
@@ -131,7 +123,6 @@ async function reproducirVoz(texto) {
         alert("La sesión ha finalizado");
         navigate("/dashboard");
       }
-      
     };
 
     ws.onclose = () => {
@@ -149,11 +140,10 @@ async function reproducirVoz(texto) {
     if (!window.confirm("¿Cerrar la sesión para todos los participantes?")) return;
     try {
       await fetch(`${API}/colaborar/${codigo}/cerrar`, {
-  method: "POST",
-  credentials: "include",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ user_id: userId }),
-});
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+      });
     } catch (e) {
       console.error("Error cerrando sesión:", e);
     }
@@ -161,19 +151,18 @@ async function reproducirVoz(texto) {
   }
 
   async function salirDeSala() {
-  try {
-   await fetch(`${API}/colaborar/${codigo}/abandonar`, {
-  method: "POST",
-  credentials: "include",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ user_id: userId }),
-});
-  } catch (e) {
-    console.error("Error saliendo de la sala:", e);
+    try {
+      await fetch(`${API}/colaborar/${codigo}/abandonar`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+      });
+    } catch (e) {
+      console.error("Error saliendo de la sala:", e);
+    }
+    if (wsRef.current) wsRef.current.close();
+    navigate("/dashboard");
   }
-  if (wsRef.current) wsRef.current.close();
-  navigate("/dashboard");
-}
 
   useEffect(() => {
     return () => {
@@ -230,7 +219,7 @@ async function reproducirVoz(texto) {
             onCerrarSesion={cerrarSesion}
             onSalir={salirDeSala}
             esCreador={esCreador}
-            />
+          />
           <PanelArchivosSala
             codigo={codigo}
             userId={userId}

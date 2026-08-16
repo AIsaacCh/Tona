@@ -1,20 +1,16 @@
-import { useRef, useEffect } from 'react'
+import { useRef, useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import anime from 'animejs'
 import FondoProfundidad from '../components/FondoProfundidad'
 import EsferaTona from '../components/EsferaTona'
-import LiquidGlass from 'liquid-glass-react'
-
 
 const JADE = 'var(--jade)'
 const JADE_LIGHT = 'var(--jade-light)'
 const COPAL = 'var(--copal, #d4a24c)'
 const FONT = "'Poppins', system-ui, sans-serif"
 
-const AUTH_BASE = import.meta.env.VITE_AUTH_URL
+const API = import.meta.env.VITE_API_URL
 
-// ─────────────────────────────────────────────────────────────────────────
-// Borde punteado (sin cambios)
-// ─────────────────────────────────────────────────────────────────────────
 function BordePunteado() {
   const horizontales = Array.from({ length: 9 })
   const verticales = Array.from({ length: 7 })
@@ -57,10 +53,6 @@ function BordePunteado() {
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// Esfera ambiental — ahora centrada y hundida en el fondo, como la pirámide
-// de la referencia: grande pero tenue, sugiriendo distancia, no protagonismo
-// ─────────────────────────────────────────────────────────────────────────
 function EsferaAmbiente() {
   const ref = useRef(null)
 
@@ -103,36 +95,7 @@ function IconoGoogle() {
     </svg>
   )
 }
-// ─────────────────────────────────────────────────────────────────────────
-// Tarjeta con borde de luz recorriendo el contorno — anillo real vía mask,
-// así el brillo queda geométricamente confinado a la orilla, nunca al centro
-// ─────────────────────────────────────────────────────────────────────────
-// ─────────────────────────────────────────────────────────────────────────
-// Filtro de vidrio esmerilado real: turbulencia + feDisplacementMap distorsiona
-// lo que hay detrás (no solo lo desenfoca), + una neblina blanquecina encima —
-// así es como se ve opaco sin ser oscuro
-// ─────────────────────────────────────────────────────────────────────────
-function FiltroVidrioEsmerilado() {
-  return (
-    <svg style={{ position: 'absolute', width: 0, height: 0 }} aria-hidden="true">
-      <filter id="vidrioEsmerilado" x="-20%" y="-20%" width="140%" height="140%">
-        <feTurbulence type="fractalNoise" baseFrequency="0.012 0.018" numOctaves="2" seed="11" result="ruido" />
-        <feGaussianBlur in="ruido" stdDeviation="4" result="ruidoSuave" />
-        <feDisplacementMap in="SourceGraphic" in2="ruidoSuave" scale="55" xChannelSelector="R" yChannelSelector="G" result="distorsionado" />
-        <feGaussianBlur in="distorsionado" stdDeviation="16" />
-      </filter>
-    </svg>
-  )
-}
 
-
-// ─────────────────────────────────────────────────────────────────────────
-// Tarjeta con borde de luz + vidrio real vía liquid-glass-react
-// ─────────────────────────────────────────────────────────────────────────
-// ─────────────────────────────────────────────────────────────────────────
-// Tarjeta con borde de luz — vidrio con CSS puro (sin dependencia externa,
-// hasta resolver por qué liquid-glass-react rompía el render)
-// ─────────────────────────────────────────────────────────────────────────
 function TarjetaLogin({ children }) {
   return (
     <div style={{ position: 'relative', borderRadius: 28, boxShadow: '0 40px 90px rgba(0,0,0,0.55)' }}>
@@ -188,33 +151,109 @@ function TarjetaLogin({ children }) {
   )
 }
 
-function RuidoVidrio() {
-  return (
-    <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', borderRadius: 28 }}>
-      <filter id="ruidoVidrio">
-        <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="7" result="ruido" />
-        <feColorMatrix in="ruido" type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.035 0" />
-      </filter>
-      <rect width="100%" height="100%" filter="url(#ruidoVidrio)" />
-    </svg>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────────────
-// LOGIN
-// ─────────────────────────────────────────────────────────────────────────
 export default function Login() {
   const izqRef = useRef(null)
   const cardRef = useRef(null)
+  const [verificandoSesion, setVerificandoSesion] = useState(true)
+  const [cargandoAccion, setCargandoAccion] = useState(null)
+  const [params] = useSearchParams()
+  const necesitaSuscripcion = params.get('necesita_suscripcion') === '1'
+  
+  const [mostrarEmailForm, setMostrarEmailForm] = useState(false)
+  const [emailInput, setEmailInput] = useState('')
+  const [mensajeEstado, setMensajeEstado] = useState(null)
+  const [verificando, setVerificando] = useState(false)
 
   useEffect(() => {
-    anime({ targets: izqRef.current, opacity: [0, 1], translateY: [16, 0], duration: 800, easing: 'easeOutExpo' })
-    anime({ targets: cardRef.current, opacity: [0, 1], translateY: [24, 0], scale: [0.97, 1], duration: 800, delay: 150, easing: 'easeOutExpo' })
+    fetch(`${API}/auth/whoami`, { credentials: 'include' })
+      .then(r => r.json())
+      .then(data => {
+        if (data.autenticado) {
+          window.location.href = `/dashboard?user_id=${data.user_id}&name=${encodeURIComponent(data.name || '')}`
+        } else {
+          setVerificandoSesion(false)
+        }
+      })
+      .catch(() => setVerificandoSesion(false))
   }, [])
 
-  const handleGoogleLogin = () => {
-    window.location.href = `${AUTH_BASE}/auth/google`
+  useEffect(() => {
+    if (verificandoSesion) return
+    anime({ targets: izqRef.current, opacity: [0, 1], translateY: [16, 0], duration: 800, easing: 'easeOutExpo' })
+    anime({ targets: cardRef.current, opacity: [0, 1], translateY: [24, 0], scale: [0.97, 1], duration: 800, delay: 150, easing: 'easeOutExpo' })
+  }, [verificandoSesion])
+
+  const [claimTokenActual, setClaimTokenActual] = useState(() => crypto.randomUUID())
+  const suscribirEnProceso = useRef(false)
+
+  async function handleSuscribirse() {
+    if (suscribirEnProceso.current) return
+    suscribirEnProceso.current = true
+    setCargandoAccion('suscribir')
+
+    let token = claimTokenActual
+    let intentos = 0
+
+    while (intentos < 2) {
+      localStorage.setItem('tona_claim_pendiente', token)
+      try {
+        const resp = await fetch(`${API}/pagos/crear-checkout-invitado`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ claim_token: token }),
+        })
+
+        if (resp.status === 409) {
+          token = crypto.randomUUID()
+          setClaimTokenActual(token)
+          intentos++
+          continue
+        }
+
+        const data = await resp.json()
+        if (data.url) {
+          window.location.href = data.url
+          return
+        } else {
+          break
+        }
+      } catch (e) {
+        break
+      }
+    }
+
+    setCargandoAccion(null)
+    suscribirEnProceso.current = false
   }
+
+  async function handleVerificarCuenta() {
+    if (!emailInput.trim()) return
+    setVerificando(true)
+    setMensajeEstado(null)
+    try {
+      const resp = await fetch(`${API}/auth/verificar-cuenta?email=${encodeURIComponent(emailInput.trim())}`)
+      const data = await resp.json()
+
+      if (!data.existe) {
+        setMensajeEstado('no_encontrada')
+      } else if (!data.tiene_suscripcion) {
+        setMensajeEstado('sin_suscripcion')
+      } else {
+        setCargandoAccion('login')
+        window.location.href = `/api/auth/google`
+      }
+    } catch (e) {
+      console.error('Error verificando cuenta:', e)
+    } finally {
+      setVerificando(false)
+    }
+  }
+
+  function handleTengoCodigo() {
+    window.location.href = '/bienvenida'
+  }
+
+  if (verificandoSesion) return null
 
   return (
     <div className="tona-app" style={{
@@ -231,9 +270,7 @@ export default function Login() {
         alignItems: 'center', position: 'relative', zIndex: 2,
       }}>
 
-        {/* columna izquierda — identidad, con su propio "espacio" de contraste */}
         <div ref={izqRef} style={{ opacity: 0, position: 'relative', padding: '30px 34px 30px 0' }}>
-          {/* scrim propio — independiente de dónde caiga la esfera, garantiza contraste */}
           <div style={{
             position: 'absolute', inset: '-10% -6%', zIndex: -1, borderRadius: 40,
             background: 'radial-gradient(ellipse at 30% 40%, rgba(5,5,4,0.55) 0%, transparent 72%)',
@@ -270,50 +307,227 @@ export default function Login() {
           </a>
         </div>
 
-        {/* columna derecha — tarjeta de acceso */}
         <div ref={cardRef} style={{ opacity: 0 }}>
           <TarjetaLogin>
-            {/* logo — pendiente, lo integras tú */}
             <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 26, height: 56 }} />
 
             <h2 style={{
               textAlign: 'center', fontFamily: FONT, fontWeight: 500, fontSize: 15,
               letterSpacing: '0.28em', color: 'rgba(237,235,230,0.9)', margin: '0 0 16px',
             }}>
-              INICIA SESIÓN
+              ACCEDE A TONA
             </h2>
 
             <p style={{
               textAlign: 'center', fontSize: 13, lineHeight: 1.7, color: 'rgba(237,235,230,0.42)',
               fontFamily: FONT, fontWeight: 300, maxWidth: 280, margin: '0 auto',
             }}>
-              Accede con tu cuenta de Google para continuar.
+              Elige una opción para continuar.
             </p>
 
-            {/* separador — empuja el botón hacia el centro visual de la tarjeta alargada */}
-            <div style={{ flex: 1, minHeight: 40 }} />
+            {necesitaSuscripcion && (
+              <p style={{ 
+                color: '#c0455a', 
+                fontSize: 12, 
+                textAlign: 'center', 
+                margin: '16px 0 12px', 
+                fontFamily: FONT,
+                background: 'rgba(192, 69, 90, 0.08)',
+                padding: '8px 12px',
+                borderRadius: 8,
+                border: '1px solid rgba(192, 69, 90, 0.2)',
+              }}>
+                Necesitas una suscripción activa para continuar. Elige una opción abajo.
+              </p>
+            )}
+
+            <div style={{ flex: 1, minHeight: 30 }} />
+
+            {!mostrarEmailForm ? (
+              <button
+                onClick={() => setMostrarEmailForm(true)}
+                disabled={cargandoAccion !== null}
+                style={{
+                  width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  gap: 12, padding: '16px 0', borderRadius: 30, marginBottom: 12,
+                  background: 'linear-gradient(180deg, rgba(46,201,144,0.1), rgba(46,201,144,0.02))',
+                  border: `1px solid ${JADE}66`, color: JADE_LIGHT,
+                  fontFamily: FONT, fontSize: 13, letterSpacing: '0.08em', fontWeight: 500,
+                  cursor: cargandoAccion ? 'default' : 'pointer',
+                  opacity: cargandoAccion ? 0.4 : 1,
+                  transition: 'background 0.25s ease, border-color 0.25s ease, opacity 0.25s ease',
+                }}
+                onMouseEnter={(e) => {
+                  if (cargandoAccion === null) {
+                    e.currentTarget.style.background = 'linear-gradient(180deg, rgba(46,201,144,0.16), rgba(46,201,144,0.04))'
+                    e.currentTarget.style.borderColor = JADE
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (cargandoAccion === null) {
+                    e.currentTarget.style.background = 'linear-gradient(180deg, rgba(46,201,144,0.1), rgba(46,201,144,0.02))'
+                    e.currentTarget.style.borderColor = `${JADE}66`
+                  }
+                }}
+              >
+                <IconoGoogle />
+                Ya tengo cuenta — Iniciar sesión
+              </button>
+            ) : (
+              <div style={{ marginBottom: 12 }}>
+                <input
+                  type="email"
+                  value={emailInput}
+                  onChange={(e) => setEmailInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleVerificarCuenta()}
+                  placeholder="tu@email.com"
+                  autoFocus
+                  style={{
+                    width: '100%', boxSizing: 'border-box', padding: '13px 16px', marginBottom: 10,
+                    borderRadius: 12, background: 'rgba(237,235,230,0.04)',
+                    border: '1px solid rgba(237,235,230,0.15)', color: 'rgba(237,235,230,0.9)',
+                    fontSize: 13, fontFamily: FONT, outline: 'none', textAlign: 'center',
+                  }}
+                />
+
+                {mensajeEstado === 'no_encontrada' && (
+                  <div style={{ marginBottom: 10 }}>
+                    <p style={{ color: '#c0455a', fontSize: 12, fontFamily: FONT, marginBottom: 10, textAlign: 'center' }}>
+                      No encontramos una cuenta con ese correo.
+                    </p>
+                    <button 
+                      onClick={handleSuscribirse} 
+                      style={{ 
+                        width: '100%', padding: '13px 0', borderRadius: 30, 
+                        background: `${COPAL}12`, border: `1px solid ${COPAL}55`, 
+                        color: COPAL, fontFamily: FONT, fontSize: 13, cursor: 'pointer',
+                        transition: 'background 0.25s ease, border-color 0.25s ease',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = `${COPAL}22`
+                        e.currentTarget.style.borderColor = COPAL
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = `${COPAL}12`
+                        e.currentTarget.style.borderColor = `${COPAL}55`
+                      }}
+                    >
+                      Suscribirme (3 días gratis)
+                    </button>
+                  </div>
+                )}
+
+                {mensajeEstado === 'sin_suscripcion' && (
+                  <div style={{ marginBottom: 10 }}>
+                    <p style={{ color: JADE_LIGHT, fontSize: 12, fontFamily: FONT, marginBottom: 10, textAlign: 'center' }}>
+                      Tu cuenta existe, pero no tienes una suscripción activa.
+                    </p>
+                    <button 
+                      onClick={handleSuscribirse} 
+                      style={{ 
+                        width: '100%', padding: '13px 0', borderRadius: 30, 
+                        background: `${COPAL}12`, border: `1px solid ${COPAL}55`, 
+                        color: COPAL, fontFamily: FONT, fontSize: 13, cursor: 'pointer',
+                        transition: 'background 0.25s ease, border-color 0.25s ease',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = `${COPAL}22`
+                        e.currentTarget.style.borderColor = COPAL
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = `${COPAL}12`
+                        e.currentTarget.style.borderColor = `${COPAL}55`
+                      }}
+                    >
+                      Activar suscripción
+                    </button>
+                  </div>
+                )}
+
+                <button
+                  onClick={handleVerificarCuenta}
+                  disabled={verificando || !emailInput.trim()}
+                  style={{
+                    width: '100%', padding: '14px 0', borderRadius: 30,
+                    background: 'linear-gradient(180deg, rgba(46,201,144,0.1), rgba(46,201,144,0.02))',
+                    border: `1px solid ${emailInput.trim() ? JADE : 'rgba(237,235,230,0.15)'}`,
+                    color: emailInput.trim() ? JADE_LIGHT : 'rgba(237,235,230,0.3)',
+                    fontFamily: FONT, fontSize: 13, 
+                    cursor: emailInput.trim() && !verificando ? 'pointer' : 'default',
+                    opacity: 1,
+                    transition: 'background 0.25s ease, border-color 0.25s ease, color 0.25s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (emailInput.trim() && !verificando) {
+                      e.currentTarget.style.background = 'linear-gradient(180deg, rgba(46,201,144,0.16), rgba(46,201,144,0.04))'
+                      e.currentTarget.style.borderColor = JADE
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (emailInput.trim() && !verificando) {
+                      e.currentTarget.style.background = 'linear-gradient(180deg, rgba(46,201,144,0.1), rgba(46,201,144,0.02))'
+                      e.currentTarget.style.borderColor = JADE
+                    }
+                  }}
+                >
+                  {verificando ? 'Verificando...' : 'Continuar'}
+                </button>
+              </div>
+            )}
 
             <button
-              onClick={handleGoogleLogin}
+              onClick={handleSuscribirse}
+              disabled={cargandoAccion !== null}
               style={{
-                width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                gap: 12, padding: '16px 0', borderRadius: 30,
-                background: 'linear-gradient(180deg, rgba(46,201,144,0.1), rgba(46,201,144,0.02))',
-                border: `1px solid ${JADE}66`, color: JADE_LIGHT,
-                fontFamily: FONT, fontSize: 13, letterSpacing: '0.08em', fontWeight: 500,
-                cursor: 'pointer', transition: 'background 0.25s ease, border-color 0.25s ease',
+                width: '100%', padding: '15px 0', borderRadius: 30, marginBottom: 12,
+                background: `${COPAL}12`, border: `1px solid ${COPAL}55`, color: COPAL,
+                fontFamily: FONT, fontSize: 13, letterSpacing: '0.05em', fontWeight: 500,
+                cursor: cargandoAccion ? 'default' : 'pointer',
+                opacity: cargandoAccion && cargandoAccion !== 'suscribir' ? 0.4 : 1,
+                transition: 'background 0.25s ease, border-color 0.25s ease, opacity 0.25s ease',
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'linear-gradient(180deg, rgba(46,201,144,0.16), rgba(46,201,144,0.04))'
-                e.currentTarget.style.borderColor = JADE
+                if (cargandoAccion === null) {
+                  e.currentTarget.style.background = `${COPAL}22`
+                  e.currentTarget.style.borderColor = COPAL
+                }
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'linear-gradient(180deg, rgba(46,201,144,0.1), rgba(46,201,144,0.02))'
-                e.currentTarget.style.borderColor = `${JADE}66`
+                if (cargandoAccion === null) {
+                  e.currentTarget.style.background = `${COPAL}12`
+                  e.currentTarget.style.borderColor = `${COPAL}55`
+                }
               }}
             >
-              <IconoGoogle />
-              CONTINUAR CON GOOGLE
+              {cargandoAccion === 'suscribir' ? 'Redirigiendo...' : 'Soy nuevo — Suscribirme (3 días gratis)'}
+            </button>
+
+            <button
+              onClick={handleTengoCodigo}
+              disabled={cargandoAccion !== null}
+              style={{
+                width: '100%', padding: '13px 0', borderRadius: 30,
+                background: 'transparent', border: '1px solid rgba(237,235,230,0.15)',
+                color: 'rgba(237,235,230,0.5)',
+                fontFamily: FONT, fontSize: 12.5,
+                cursor: cargandoAccion ? 'default' : 'pointer',
+                opacity: cargandoAccion ? 0.4 : 1,
+                transition: 'background 0.25s ease, border-color 0.25s ease, opacity 0.25s ease',
+              }}
+              onMouseEnter={(e) => {
+                if (cargandoAccion === null) {
+                  e.currentTarget.style.background = 'rgba(237,235,230,0.05)'
+                  e.currentTarget.style.borderColor = 'rgba(237,235,230,0.3)'
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (cargandoAccion === null) {
+                  e.currentTarget.style.background = 'transparent'
+                  e.currentTarget.style.borderColor = 'rgba(237,235,230,0.15)'
+                }
+              }}
+            >
+              Tengo un código de invitación
             </button>
 
             <div style={{

@@ -121,8 +121,7 @@ function BienvenidaTona({ nombreAgente = "Tona", onFinish }) {
   const [idx, setIdx] = useState(-1);
   const cardRef = useRef(null);
   const timerRef = useRef(null);
-  const transicionando = useRef(false); // 🔒 evita doble avance
-
+  const transicionando = useRef(false);
 
   useEffect(() => {
     if (!cardRef.current) return;
@@ -141,44 +140,43 @@ function BienvenidaTona({ nombreAgente = "Tona", onFinish }) {
       avanzar();
     }, idx === -1 ? 2600 : 4200);
     return () => clearTimeout(timerRef.current);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idx]);
 
   function avanzar() {
-  if (transicionando.current) return; // ya hay una transición en curso, ignora
+    if (transicionando.current) return;
 
-  if (idx >= FEATURES.length - 1) {
-    onFinish?.();
-    return;
-  }
-  if (!cardRef.current) {
-    setIdx((p) => p + 1);
-    return;
-  }
-  transicionando.current = true;
-  anime({
-    targets: cardRef.current,
-    opacity: [1, 0],
-    translateY: [0, -12],
-    duration: 260,
-    easing: "easeInQuart",
-    complete: () => {
+    if (idx >= FEATURES.length - 1) {
+      onFinish?.();
+      return;
+    }
+    if (!cardRef.current) {
       setIdx((p) => p + 1);
-      transicionando.current = false;
-    },
-  });
-}
+      return;
+    }
+    transicionando.current = true;
+    anime({
+      targets: cardRef.current,
+      opacity: [1, 0],
+      translateY: [0, -12],
+      duration: 260,
+      easing: "easeInQuart",
+      complete: () => {
+        setIdx((p) => p + 1);
+        transicionando.current = false;
+      },
+    });
+  }
 
   const esIntro = idx === -1;
-const feature = !esIntro ? FEATURES[idx] : null;
+  const feature = !esIntro ? FEATURES[idx] : null;
 
-useEffect(() => {
-  if (!esIntro && !feature) {
-    onFinish?.();
-  }
-}, [esIntro, feature]);
+  useEffect(() => {
+    if (!esIntro && !feature) {
+      onFinish?.();
+    }
+  }, [esIntro, feature]);
 
-if (!esIntro && !feature) return null;
+  if (!esIntro && !feature) return null;
 
   return (
     <div style={{
@@ -187,7 +185,6 @@ if (!esIntro && !feature) return null;
       display: "flex", alignItems: "center", justifyContent: "center",
       flexDirection: "column", gap: 28,
     }}>
-      {/* Progreso */}
       <div style={{ display: "flex", gap: 8 }}>
         {[-1, ...FEATURES.map((_, i) => i)].map((v, i) => (
           <div key={i} style={{
@@ -318,7 +315,7 @@ const PASOS = [
 ];
 
 // ──────────────────────────────────────────────────────────────────────────────
-// ⚙️ PANEL DE PERSONALIZACIÓN (antes era el componente completo)
+// ⚙️ PANEL DE PERSONALIZACIÓN
 // ──────────────────────────────────────────────────────────────────────────────
 function PanelPersonalizacion({ userId, esPrimeraVez, onCompletado }) {
   const [paso,   setPaso]   = useState(0);
@@ -399,8 +396,7 @@ function PanelPersonalizacion({ userId, esPrimeraVez, onCompletado }) {
   async function guardarConfig() {
     setGuardando(true);
     try {
-      // Guardar config en el backend — esto marca onboarding_paso = 2 en el server
-      await fetch(`${API}/agent/config/${userId}`, {
+      await fetch(`${API}/agent/config`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -411,9 +407,8 @@ function PanelPersonalizacion({ userId, esPrimeraVez, onCompletado }) {
         }),
       });
 
-      // Guardar sitios si los hay
       for (const sitio of sitiosAgregados) {
-        await fetch(`${API}/tasks/sitios/${userId}`, {
+        await fetch(`${API}/tasks/sitios`, {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
@@ -665,12 +660,9 @@ const inputStyle = {
 };
 
 // ──────────────────────────────────────────────────────────────────────────────
-// 🚀 EXPORT PRINCIPAL — decide qué pantalla mostrar según onboarding_paso
+// 🚀 EXPORT PRINCIPAL
 // ──────────────────────────────────────────────────────────────────────────────
 export default function OnboardingTona({ userId, paso, onAvanzarPaso, onCompletado }) {
-  // paso 0 → nunca vio la bienvenida
-  // paso 1 → ya vio la bienvenida, falta el panel de personalización
-  // paso 2 → falta elegir qué clases de Classroom sincronizar con Drive
   if (paso === 0) {
     return (
       <BienvenidaTona
@@ -707,7 +699,7 @@ function PanelClasesClassroom({ userId, onCompletado }) {
   const cardRef = useRef(null);
 
   useEffect(() => {
-    fetch(`${API}/tasks/cursos/${userId}`, { credentials: "include" })
+    fetch(`${API}/tasks/cursos`, { credentials: "include" })
       .then((r) => r.json())
       .then((data) => {
         const lista = data.cursos || [];
@@ -716,7 +708,7 @@ function PanelClasesClassroom({ userId, onCompletado }) {
       })
       .catch(() => setError("No se pudieron cargar tus clases de Classroom."))
       .finally(() => setCargando(false));
-  }, [userId]);
+  }, []);
 
   useEffect(() => {
     if (!cardRef.current) return;
@@ -744,7 +736,7 @@ function PanelClasesClassroom({ userId, onCompletado }) {
     setGuardando(true);
     setError("");
     try {
-      await fetch(`${API}/tasks/drive/estructura/${userId}`, {
+      await fetch(`${API}/tasks/drive/estructura`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },

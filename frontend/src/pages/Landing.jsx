@@ -6,7 +6,6 @@ import LaptopHero, { NavBar } from '../components/LaptopHero'
 import { DemoTareas, DemoHorario, DemoDocs, DemoCorreo, DemoVoz } from '../components/WidgetsCapacidades'
 import FondoProfundidad from '../components/FondoProfundidad'
 
-
 const JADE = 'var(--jade)'
 const JADE_LIGHT = 'var(--jade-light)'
 const TURQUESA = 'var(--turquesa, #3fb8b0)'
@@ -297,6 +296,50 @@ export default function Landing() {
   const navigate = useNavigate()
   const irALogin = () => navigate('/login')
 
+  // Función para iniciar suscripción desde el landing
+  async function iniciarSuscripcionDesdeLanding() {
+  try {
+    const respWhoami = await fetch(`${import.meta.env.VITE_API_URL}/auth/whoami`, { credentials: 'include' })
+    const dataWhoami = await respWhoami.json()
+
+    if (dataWhoami.autenticado) {
+      // Ya tiene cuenta: revisa si ya tiene acceso activo antes de dejarlo pagar de nuevo
+      const respEstado = await fetch(`${import.meta.env.VITE_API_URL}/pagos/estado/${dataWhoami.user_id}`, { credentials: 'include' })
+      const dataEstado = await respEstado.json()
+
+      if (dataEstado.activo) {
+        // Ya está pagando o en trial — lo mandamos directo al Dashboard, nada de Stripe
+        window.location.href = `/dashboard?user_id=${dataWhoami.user_id}&name=${encodeURIComponent(dataWhoami.name || '')}`
+        return
+      }
+
+      // Tiene cuenta pero sin suscripción activa (canceló, o nunca pagó): checkout normal con su user_id
+      const respCheckout = await fetch(`${import.meta.env.VITE_API_URL}/pagos/crear-checkout/${dataWhoami.user_id}`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+      const dataCheckout = await respCheckout.json()
+      if (dataCheckout.url) window.location.href = dataCheckout.url
+      return
+    }
+
+    // No tiene cuenta todavía: flujo de invitado normal
+    const claimToken = crypto.randomUUID()
+    localStorage.setItem('tona_claim_pendiente', claimToken)
+    const resp = await fetch(`${import.meta.env.VITE_API_URL}/pagos/crear-checkout-invitado`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ claim_token: claimToken }),
+    })
+    const data = await resp.json()
+    if (data.url) window.location.href = data.url
+  } catch (e) {
+    console.error('Error iniciando suscripción desde landing:', e)
+  }
+}
+
   return (
     <div className="tona-app" style={{ minHeight: '100vh', width: '100%', overflowY: 'auto', overflowX: 'hidden', position: 'relative' }}>
       <FondoProfundidad />
@@ -311,7 +354,8 @@ export default function Landing() {
         ))}
       </section>
 
-      <SeccionPrecio onEntrar={irALogin} />
+      {/* ✅ Cambio: ahora usa iniciarSuscripcionDesdeLanding en lugar de irALogin */}
+      <SeccionPrecio onEntrar={iniciarSuscripcionDesdeLanding} />
     </div>
   )
 }

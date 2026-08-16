@@ -6,7 +6,7 @@ import { agenteBus } from "./AgenteTona";
 const API = import.meta.env.VITE_API_URL;
 
 export default function PanelDocs({ userId, onCerrar }) {
-  const [vista,        setVista]        = useState("lista");   // lista | editor | carpeta
+  const [vista,        setVista]        = useState("lista");
   const [docs,         setDocs]         = useState([]);
   const [cargando,     setCargando]     = useState(true);
   const [docActual,    setDocActual]    = useState(null);
@@ -27,7 +27,6 @@ export default function PanelDocs({ userId, onCerrar }) {
   const overlayRef = useRef(null);
   const textareaRef = useRef(null);
 
-  // ── Animación de entrada ──────────────────────────────────────────────────
   useEffect(() => {
     anime({ targets: overlayRef.current, opacity: [0, 1], duration: 250, easing: "easeOutQuart" });
     anime.timeline({ easing: "easeOutQuart" })
@@ -44,7 +43,6 @@ export default function PanelDocs({ userId, onCerrar }) {
     return agenteBus.on("cerrar_todo", cerrar);
   }, [cerrar]);
 
-  // ── Cargar lista de docs y clases ────────────────────────────────────────
   useEffect(() => {
     cargarDocs();
     cargarClases();
@@ -52,7 +50,7 @@ export default function PanelDocs({ userId, onCerrar }) {
 
   async function cargarClases() {
     try {
-      const resp = await fetch(`${API}/tasks/drive/clases/${userId}`, { credentials: "include" });
+      const resp = await fetch(`${API}/tasks/drive/clases`, { credentials: "include" });
       if (resp.ok) setClases((await resp.json()).clases || []);
     } catch (e) { console.error("Error cargando clases:", e); }
   }
@@ -60,9 +58,7 @@ export default function PanelDocs({ userId, onCerrar }) {
   async function cargarDocs() {
     setCargando(true);
     try {
-      const resp = await fetch(`${API}/docs/lista/${userId}`, {
-        credentials: "include"
-      });
+      const resp = await fetch(`${API}/docs/lista`, { credentials: "include" });
       if (resp.ok) {
         const data = await resp.json();
         setDocs(data.docs || []);
@@ -74,13 +70,12 @@ export default function PanelDocs({ userId, onCerrar }) {
     }
   }
 
-  // ── Abrir carpeta de clase ────────────────────────────────────────────────
   async function abrirCarpetaClase(clase) {
     setCarpetaActual(clase);
     setVista("carpeta");
     setCargandoCarpeta(true);
     try {
-      const resp = await fetch(`${API}/tasks/drive/carpeta/${userId}/${clase.curso_id}`, { credentials: "include" });
+      const resp = await fetch(`${API}/tasks/drive/carpeta/${clase.curso_id}`, { credentials: "include" });
       if (resp.ok) setArchivosCarpeta((await resp.json()).archivos || []);
     } catch (e) { console.error("Error cargando carpeta:", e); }
     finally { setCargandoCarpeta(false); }
@@ -91,7 +86,6 @@ export default function PanelDocs({ userId, onCerrar }) {
     else window.open(archivo.url, "_blank");
   }
 
-  // ── Abrir doc existente ───────────────────────────────────────────────────
   async function abrirDoc(doc) {
     if (!doc || !doc.id) {
       console.error("Documento inválido:", doc);
@@ -104,9 +98,7 @@ export default function PanelDocs({ userId, onCerrar }) {
     setVista("editor");
     setSugerencia("");
     try {
-      const resp = await fetch(`${API}/docs/contenido/${userId}/${doc.id}`, {
-        credentials: "include"
-      });
+      const resp = await fetch(`${API}/docs/contenido/${doc.id}`, { credentials: "include" });
       if (resp.ok) {
         const data = await resp.json();
         setContenido(data.contenido || "");
@@ -120,7 +112,6 @@ export default function PanelDocs({ userId, onCerrar }) {
     }
   }
 
-  // ── Crear doc nuevo ───────────────────────────────────────────────────────
   async function crearDoc() {
     if (!nuevoTitulo.trim()) return;
     setCreandoNuevo(false);
@@ -136,12 +127,11 @@ export default function PanelDocs({ userId, onCerrar }) {
     }, 300);
   }
 
-  // ── Guardar documento con título (para creación desde chat) ──────────────
   async function guardarDocConTitulo(titulo) {
     if (!titulo.trim() || guardando) return;
     setGuardando(true);
     try {
-      const resp = await fetch(`${API}/docs/crear/${userId}`, {
+      const resp = await fetch(`${API}/docs/crear`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -163,7 +153,6 @@ export default function PanelDocs({ userId, onCerrar }) {
     }
   }
 
-  // ── Guardar doc ───────────────────────────────────────────────────────────
   async function guardarDoc() {
     if (!contenido.trim() || guardando) return;
     
@@ -175,10 +164,9 @@ export default function PanelDocs({ userId, onCerrar }) {
     setGuardando(true);
     try {
       if (docActual && docActual.id) {
-        // ✅ ACTUALIZAR DOCUMENTO EXISTENTE
         console.log(`📝 Actualizando documento existente: ${docActual.id} - ${tituloFinal}`);
         
-        const resp = await fetch(`${API}/docs/actualizar/${userId}`, {
+        const resp = await fetch(`${API}/docs/actualizar`, {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
@@ -194,10 +182,9 @@ export default function PanelDocs({ userId, onCerrar }) {
           agenteBus.emit("flash", { mensaje: `Error al guardar: ${error.detail || "Error desconocido"}`, tipo: "error" });
         }
       } else {
-        // ✅ CREAR DOCUMENTO NUEVO
         console.log(`📝 Creando nuevo documento: ${tituloFinal}`);
         
-        const resp = await fetch(`${API}/docs/crear/${userId}`, {
+        const resp = await fetch(`${API}/docs/crear`, {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
@@ -227,7 +214,6 @@ export default function PanelDocs({ userId, onCerrar }) {
     }
   }
 
-  // ── Eliminar documento ──────────────────────────────────────────────────────
   async function eliminarDoc(docId, docTitulo, e) {
     e.stopPropagation();
     
@@ -237,7 +223,7 @@ export default function PanelDocs({ userId, onCerrar }) {
     if (!confirmar) return;
     
     try {
-      const resp = await fetch(`${API}/docs/eliminar/${userId}/${docId}`, {
+      const resp = await fetch(`${API}/docs/eliminar/${docId}`, {
         method: "DELETE",
         credentials: "include",
       });
@@ -264,19 +250,17 @@ export default function PanelDocs({ userId, onCerrar }) {
     }
   }
 
-  // ── Exportar como .docx ───────────────────────────────────────────────────
   function exportarDocx() {
     if (!docActual) return;
-    window.open(`${API}/docs/exportar/${userId}/${docActual.id}`, "_blank");
+    window.open(`${API}/docs/exportar/${docActual.id}`, "_blank");
   }
 
-  // ── Sugerencias de IA ─────────────────────────────────────────────────────
   async function pedirSugerencia() {
     if (cargSuger) return;
     setCargSuger(true);
     setSugerencia("");
     try {
-      const resp = await fetch(`${API}/docs/sugerir/${userId}`, {
+      const resp = await fetch(`${API}/docs/sugerir`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -306,7 +290,6 @@ export default function PanelDocs({ userId, onCerrar }) {
     setSugerencia("");
   }
 
-  // ── Eventos desde el agente ──────────────────────────────────────────────
   useEffect(() => {
     return agenteBus.on("panel_docs_crear_con_titulo", ({ titulo }) => {
       setVista("editor");
@@ -334,7 +317,7 @@ export default function PanelDocs({ userId, onCerrar }) {
       setContenido("Cargando...");
       
       try {
-        const resp = await fetch(`${API}/docs/contenido/${userId}/${doc_id}`, { credentials: "include" });
+        const resp = await fetch(`${API}/docs/contenido/${doc_id}`, { credentials: "include" });
         if (resp.ok) {
           const data = await resp.json();
           setContenido(data.contenido || "");
@@ -348,9 +331,8 @@ export default function PanelDocs({ userId, onCerrar }) {
         console.error("❌ Error abriendo doc:", e);
       }
     });
-  }, [userId]);
+  }, []);
 
-  // ── Render carpeta de clase ───────────────────────────────────────────────
   const TIPO_COLOR_CARPETA = {
     pdf: T.amaranto, docx: T.turquesa, doc: T.turquesa,
     xlsx: T.jade, sheet: T.jade, slides: T.copal,
@@ -433,7 +415,6 @@ export default function PanelDocs({ userId, onCerrar }) {
     </div>
   );
 
-  // ── Render lista ──────────────────────────────────────────────────────────
   const renderLista = () => (
     <div>
       <div style={{
@@ -503,7 +484,6 @@ export default function PanelDocs({ userId, onCerrar }) {
         </div>
       )}
 
-      {/* ── Carpetas de clase ── */}
       {clases.length > 0 && (
         <div style={{ marginBottom: 16 }}>
           <div style={{ fontSize: 9, color: `${T.jade}88`, letterSpacing: "1px", fontFamily: T.mono, marginBottom: 8 }}>
@@ -636,7 +616,6 @@ export default function PanelDocs({ userId, onCerrar }) {
     </div>
   );
 
-  // ── Render editor ─────────────────────────────────────────────────────────
   const renderEditor = () => (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       <div style={{
@@ -862,7 +841,6 @@ export default function PanelDocs({ userId, onCerrar }) {
     </div>
   );
 
-  // ── Render principal ──────────────────────────────────────────────────────
   return (
     <div
       ref={overlayRef}

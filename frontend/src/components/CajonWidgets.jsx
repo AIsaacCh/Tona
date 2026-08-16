@@ -2,7 +2,7 @@ import React from "react";
 import { T } from "../tokens";
 import {
   WidgetTareasSm, WidgetRecordatoriosSm, WidgetCalendarioSm,
-  WidgetContadorRegresivоSm, WidgetMateriasSm, WidgetCalificacionesSm,
+  WidgetContadorRegresivoSm, WidgetMateriasSm,
   WidgetHorarioSm, WidgetTareaDetalleSm, WidgetNotasSm,
   WidgetArchivosSm, WidgetClimaSm, WidgetEstadisticasSm, WidgetAccionesSm,
 } from "./widgets/index";
@@ -11,9 +11,8 @@ const CATALOGO = [
   { id: "tareas",        titulo: "Tareas",          categoria: "productividad", Sm: WidgetTareasSm        },
   { id: "recordatorios", titulo: "Recordatorios",   categoria: "productividad", Sm: WidgetRecordatoriosSm },
   { id: "calendario",    titulo: "Calendario",      categoria: "productividad", Sm: WidgetCalendarioSm    },
-  { id: "contador",      titulo: "Cuenta regresiva",categoria: "productividad", Sm: WidgetContadorRegresivоSm },
+  { id: "contador",      titulo: "Cuenta regresiva",categoria: "productividad", Sm: WidgetContadorRegresivoSm },
   { id: "materias",      titulo: "Materias",        categoria: "academico",     Sm: WidgetMateriasSm      },
-  { id: "calificaciones",titulo: "Calificaciones",  categoria: "academico",     Sm: WidgetCalificacionesSm},
   { id: "horario",       titulo: "Horario",         categoria: "academico",     Sm: WidgetHorarioSm       },
   { id: "tarea_detalle", titulo: "Tarea detalle",   categoria: "academico",     Sm: WidgetTareaDetalleSm  },
   { id: "notas",         titulo: "Notas",           categoria: "info",          Sm: WidgetNotasSm         },
@@ -114,3 +113,4 @@ export default function CajonWidgets({ lado = "derecho", visible, onAgregar, wid
     </div>
   );
 }
+

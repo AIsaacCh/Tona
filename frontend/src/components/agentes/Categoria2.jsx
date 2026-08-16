@@ -150,20 +150,29 @@ const TAREAS_MOCK = [
 ];
 
 const HORARIO_MOCK = [
-  { dia: "LUNES",     clases: ["Cálculo 07:00", "Física 10:00"] },
-  { dia: "MARTES",    clases: ["Programación 09:00", "Inglés 12:00"] },
-  { dia: "MIÉRCOLES", clases: ["SO 08:00", "Cálculo 11:00"] },
-  { dia: "JUEVES",    clases: ["Física 07:00", "Programación 10:00"] },
-  { dia: "VIERNES",   clases: ["Inglés 09:00", "SO 13:00"] },
+  { dia: "LUNES", clases: [
+    { materia: "Cálculo", hora_inicio: "07:00", hora_fin: "09:00" },
+    { materia: "Física", hora_inicio: "10:00", hora_fin: "12:00" },
+  ]},
+  { dia: "MARTES", clases: [
+    { materia: "Programación", hora_inicio: "09:00", hora_fin: "11:00" },
+    { materia: "Inglés", hora_inicio: "12:00", hora_fin: "13:30" },
+  ]},
+  { dia: "MIERCOLES", clases: [
+    { materia: "SO", hora_inicio: "08:00", hora_fin: "10:00" },
+    { materia: "Cálculo", hora_inicio: "11:00", hora_fin: "13:00" },
+  ]},
+  { dia: "JUEVES", clases: [
+    { materia: "Física", hora_inicio: "07:00", hora_fin: "09:00" },
+    { materia: "Programación", hora_inicio: "10:00", hora_fin: "12:00" },
+  ]},
+  { dia: "VIERNES", clases: [
+    { materia: "Inglés", hora_inicio: "09:00", hora_fin: "11:00" },
+    { materia: "SO", hora_inicio: "13:00", hora_fin: "14:30" },
+  ]},
 ];
 
-const CALS_MOCK = [
-  { materia: "Cálculo",      cal: 8.5 },
-  { materia: "Programación", cal: 9.8 },
-  { materia: "Física",       cal: 7.2 },
-  { materia: "Inglés",       cal: 8.0 },
-  { materia: "SO",           cal: 6.9 },
-];
+
 
 const MATERIA_MOCK = {
   nombre: "Cálculo", promedio: "8.5", progreso: 78, pendientes: 2,
@@ -194,10 +203,7 @@ export function VistaListaTareas() {
     if (!id) return;
     setData((prev) => prev.map((t) => t.id === id ? { ...t, done: true } : t));
     try {
-      await fetch(`${API}/tasks/completar/${userId}/${id}`, {
-  method: "POST",
-  credentials: "include",
-});
+      await fetch(`${API}/tasks/completar/${id}`, { method: "POST", credentials: "include" });
     } catch (e) {
       console.error("Error completando tarea:", e);
     }
@@ -208,7 +214,7 @@ export function VistaListaTareas() {
   const filtradas = data
     .filter((t) => filtro === "todas" || t.prioridad === filtro)
     .filter((t) => filtroFuente === "todas" || t.fuente === filtroFuente);
-  const FUENTE_COLOR = { classroom: T.jade, calendar: T.turquesa, manual: T.copal };
+  const FUENTE_COLOR = { classroom: T.jade, calendar: T.turquesa, manual: T.copal, examen: T.amaranto };
 
   return (
     <VistaShell
@@ -231,11 +237,12 @@ export function VistaListaTareas() {
       
       <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
         {[
-          { val: "todas",     label: "Todas" },
-          { val: "classroom", label: "Classroom" },
-          { val: "calendar",  label: "Calendario" },
-          { val: "manual",    label: "Mías" },
-        ].map(({ val, label }) => (
+  { val: "todas",     label: "Todas" },
+  { val: "classroom", label: "Classroom" },
+  { val: "calendar",  label: "Calendario" },
+  { val: "manual",    label: "Mías" },
+  { val: "examen",    label: "Exámenes" },
+].map(({ val, label }) => (
           <button key={val} onClick={() => setFiltroFuente(val)} style={{
             ...badge(val === "todas" ? T.turquesa : FUENTE_COLOR[val] || T.copal),
             background: filtroFuente === val
@@ -486,89 +493,155 @@ export function VistaCalendario() {
 
 // ── VistaHorario ──────────────────────────────────────────────────────────────
 
+const ABREV_DIA = { lunes: "LUN", martes: "MAR", miercoles: "MIÉ", jueves: "JUE", viernes: "VIE", sabado: "SÁB" };
+const ORDEN_DIA = { lunes: 0, martes: 1, miercoles: 2, jueves: 3, viernes: 4, sabado: 5 };
+const MESES_CORTOS = ["ENE","FEB","MAR","ABR","MAY","JUN","JUL","AGO","SEP","OCT","NOV","DIC"];
+const PALETA_MATERIA = [T.turquesa, T.copal];
+
+function colorMateria(nombre = "") {
+  let hash = 0;
+  for (let i = 0; i < nombre.length; i++) hash = (hash * 31 + nombre.charCodeAt(i)) >>> 0;
+  return PALETA_MATERIA[hash % PALETA_MATERIA.length];
+}
+
+function lunesDeEstaSemana() {
+  const hoy = new Date();
+  const dow = hoy.getDay(); // 0=domingo
+  const offset = dow === 0 ? -6 : 1 - dow;
+  const lunes = new Date(hoy);
+  lunes.setDate(hoy.getDate() + offset);
+  return lunes;
+}
+
+function fechaDelDia(diaLower) {
+  const idx = ORDEN_DIA[diaLower];
+  if (idx === undefined) return "";
+  const d = new Date(lunesDeEstaSemana());
+  d.setDate(d.getDate() + idx);
+  return `${d.getDate()} ${MESES_CORTOS[d.getMonth()]}`;
+}
+
+function normalizarClase(c) {
+  // Soporta tanto el formato viejo (string "Materia HH:MM") como el nuevo (objeto)
+  if (typeof c === "string") {
+    const match = c.match(/^(.+?)\s+(\d{1,2}:\d{2})$/);
+    return match ? { materia: match[1], hora_inicio: match[2], hora_fin: null } : { materia: c, hora_inicio: null, hora_fin: null };
+  }
+  return c;
+}
+
+function minutosDesde(hora) {
+  if (!hora) return null;
+  const [h, m] = hora.split(":").map(Number);
+  return h * 60 + m;
+}
+
+function formatDuracion(totalMin) {
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
+
+{/*queda pendiente trasladar esta vista a el widget en pantalla*/}
 export function VistaHorario() {
   const [data, setData] = useState(null);
 
   useEffect(() => {
-    const off1 = agenteBus.on("ver_horario",   (p) => { setData(p ?? HORARIO_MOCK); });
-    const off2 = agenteBus.on("cerrar_todo",   () => setData(null));
-    const off3 = agenteBus.on("cerrar_vista",  () => setData(null));
+    const off1 = agenteBus.on("ver_horario",  (p) => { setData(p && p.length ? p : HORARIO_MOCK); });
+    const off2 = agenteBus.on("cerrar_todo",  () => setData(null));
+    const off3 = agenteBus.on("cerrar_vista", () => setData(null));
     return () => { off1(); off2(); off3(); };
   }, []);
 
   if (!data) return null;
-  const hoyIdx = new Date().getDay();
+
+  const hoyLower = ["domingo","lunes","martes","miercoles","jueves","viernes","sabado"][new Date().getDay()];
+
+  const dias = data.map((d) => ({ ...d, diaLower: (d.dia || "").toLowerCase(), clases: d.clases.map(normalizarClase) }));
+
+  const materiasUnicas = new Set(dias.flatMap((d) => d.clases.map((c) => c.materia)));
+  const minutosTotales = dias.reduce((acc, d) => acc + d.clases.reduce((a, c) => {
+    const ini = minutosDesde(c.hora_inicio), fin = minutosDesde(c.hora_fin);
+    return a + (ini !== null && fin !== null ? Math.max(0, fin - ini) : 0);
+  }, 0), 0);
 
   return (
     <VistaShell
       titulo="TONA · HORARIO SEMANAL" categoria="academico"
-      ancho={420} alto={460}
+      ancho={460} alto={560}
       onCerrar={() => setData(null)}
       onFijar={() => { agenteBus.emit("convertir_a_widget", { tipo: "horario" }); }}
     >
-      {data.map((d, i) => (
-        <div key={d.dia} style={{
-          marginBottom: 12,
-          background: i + 1 === hoyIdx ? `${T.turquesa}08` : "transparent",
-          borderRadius: 8, padding: "8px 10px",
-        }}>
-          <div style={{ ...txt(i + 1 === hoyIdx ? 0.7 : 0.3, 9), letterSpacing: "1px", fontFamily: T.mono, marginBottom: 8 }}>
-            {d.dia} {i + 1 === hoyIdx && "· HOY"}
-          </div>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {d.clases.map((c) => (
-              <span key={c} style={{ ...badge(T.turquesa), fontSize: 11, padding: "4px 10px" }}>{c}</span>
-            ))}
-          </div>
-        </div>
-      ))}
-    </VistaShell>
-  );
-}
-
-// ── VistaCalificaciones ───────────────────────────────────────────────────────
-
-export function VistaCalificaciones() {
-  const [data, setData] = useState(null);
-
-  useEffect(() => {
-    const off1 = agenteBus.on("ver_calificaciones", (p) => { setData(p ?? CALS_MOCK); });
-    const off2 = agenteBus.on("cerrar_todo",         () => setData(null));
-    const off3 = agenteBus.on("cerrar_vista",        () => setData(null));
-    return () => { off1(); off2(); off3(); };
-  }, []);
-
-  if (!data) return null;
-  const prom = (data.reduce((a, c) => a + c.cal, 0) / data.length).toFixed(1);
-
-  return (
-    <VistaShell
-      titulo="TONA · CALIFICACIONES" categoria="academico"
-      ancho={380} alto={420}
-      onCerrar={() => setData(null)}
-      onFijar={() => { agenteBus.emit("convertir_a_widget", { tipo: "calificaciones" }); }}
-    >
-      <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 20, padding: "0 0 16px", borderBottom: `1px solid ${T.cen}` }}>
-        <span style={{ fontFamily: T.mono, fontSize: 40, color: T.jade, lineHeight: 1 }}>{prom}</span>
-        <span style={txt(0.35, 12)}>promedio general</span>
-      </div>
-      {data.map((c) => {
-        const color = c.cal >= 9 ? T.jade : c.cal >= 7 ? T.copal : T.amaranto;
+      {dias.map((d) => {
+        const esHoy = d.diaLower === hoyLower;
         return (
-          <div key={c.materia} style={{ marginBottom: 14 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
-              <span style={txt(0.6)}>{c.materia}</span>
-              <span style={{ ...txt(0.9, 13), fontFamily: T.mono, color }}>{c.cal.toFixed(1)}</span>
+          <div key={d.dia} style={{
+            display: "flex", gap: 14, marginBottom: 14,
+            paddingLeft: 12, borderLeft: `2px solid ${esHoy ? T.turquesa : T.mutedLow}`,
+          }}>
+            <div style={{ width: 58, flexShrink: 0, paddingTop: 2 }}>
+              <div style={{ ...txt(esHoy ? 0.95 : 0.55, 13), fontFamily: T.mono, fontWeight: esHoy ? 600 : 400, color: esHoy ? T.turquesa : undefined, letterSpacing: "0.5px" }}>
+                {ABREV_DIA[d.diaLower] || d.dia}
+              </div>
+              <div style={{ ...txt(0.3, 9), marginTop: 3, letterSpacing: "0.5px" }}>
+                {fechaDelDia(d.diaLower)}
+              </div>
+              {esHoy && (
+                <div style={{ width: 5, height: 5, borderRadius: "50%", background: T.turquesa, marginTop: 6 }} />
+              )}
             </div>
-            <div style={{ height: 3, background: T.mutedLow, borderRadius: 2, overflow: "hidden" }}>
-              <div style={{ width: `${(c.cal / 10) * 100}%`, height: "100%", background: color, borderRadius: 2, transition: "width 0.8s ease" }} />
+
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
+              {d.clases.length === 0 && (
+                <div style={{ ...txt(0.2, 11), padding: "8px 0" }}>Sin clases</div>
+              )}
+              {d.clases.map((c, i) => {
+                const color = colorMateria(c.materia);
+                return (
+                  <div key={i} style={{
+                    background: `${color}14`, borderLeft: `3px solid ${color}`,
+                    borderRadius: "0 8px 8px 0", padding: "8px 12px",
+                  }}>
+                    <div style={{ ...txt(0.85, 12.5), fontWeight: 500 }}>{c.materia}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 3 }}>
+                      <span style={{ fontSize: 10, opacity: 0.6 }}>🕐</span>
+                      <span style={{ ...txt(0.4, 10.5), fontFamily: T.mono }}>
+                        {c.hora_inicio}{c.hora_fin ? ` – ${c.hora_fin}` : ""}
+                      </span>
+                      {c.aula && <span style={{ ...txt(0.3, 10) }}>· {c.aula}</span>}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         );
       })}
+
+      <div style={{
+        display: "flex", marginTop: 8, paddingTop: 14,
+        borderTop: `1px solid ${T.cen}`, gap: 0,
+      }}>
+        <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 15 }}>📖</span>
+          <div>
+            <div style={{ ...txt(0.7, 12) }}>{materiasUnicas.size} materias</div>
+          </div>
+        </div>
+        <div style={{ width: 1, background: T.cen, margin: "2px 14px" }} />
+        <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 15 }}>🕐</span>
+          <div>
+            <div style={{ ...txt(0.7, 12) }}>{formatDuracion(minutosTotales)} semanales</div>
+          </div>
+        </div>
+      </div>
     </VistaShell>
   );
 }
+
+
 
 // ── VistaMaterias ─────────────────────────────────────────────────────────────
 
@@ -586,7 +659,7 @@ export function VistaMaterias() {
         setData({ nombre: p.nombre || "Cargando...", tareas: [], anuncios: [], pendientes: 0 });
         setTab("tareas");
         try {
-          const resp = await fetch(`${API}/tasks/materia/${userId}/${p.curso_id}`, { credentials: "include" });
+          const resp = await fetch(`${API}/tasks/materia/${p.curso_id}`, { credentials: "include" });
           if (resp.ok) {
             const det = await resp.json();
             setData({
@@ -613,7 +686,7 @@ export function VistaMaterias() {
         setData({ ...MATERIA_MOCK, nombre: p.nombre });
         setTab("tareas");
         try {
-          const resp = await fetch(`${API}/tasks/cursos/${userId}`, { credentials: "include" });
+          const resp = await fetch(`${API}/tasks/cursos`, { credentials: "include" });
           if (resp.ok) {
             const d = await resp.json();
             setCursos(d.cursos || []);

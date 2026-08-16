@@ -5,6 +5,7 @@ from typing import Optional, List
 from services.db import obtener_horario, guardar_horario_completo, agregar_clase_horario, eliminar_clase_horario
 from config import settings
 import base64
+import json
 
 router = APIRouter()
 
@@ -22,26 +23,61 @@ class HorarioCompleto(BaseModel):
     clases: List[ClaseManual]
 
 
-@router.get("/{user_id}")
-async def listar_horario(user_id: str, _: str = Depends(verificar_identidad)):
+# ✅ CORREGIDO - sin {user_id}
+@router.get("/")
+async def listar_horario(user_id: str = Depends(verificar_identidad)):
     return {"horario": obtener_horario(user_id)}
 
 
-@router.post("/{user_id}/manual")
-async def agregar_clase(user_id: str, body: ClaseManual, _: str = Depends(verificar_identidad)):
+# ✅ NUEVO ENDPOINT - GET /horario (sin slash)
+@router.get("")
+async def obtener_horario_endpoint(user_id: str = Depends(verificar_identidad)):
+    from services.db import obtener_horario
+    clases = obtener_horario(user_id)
+    dias_orden = {"lunes": 0, "martes": 1, "miercoles": 2, "jueves": 3, "viernes": 4, "sabado": 5}
+    agrupado = {}
+    for c in clases:
+        dia = (c.get("dia") or "").lower()
+        agrupado.setdefault(dia, []).append({
+            "materia": c.get("materia"),
+            "hora_inicio": c.get("hora_inicio"),
+            "hora_fin": c.get("hora_fin"),
+            "aula": c.get("aula"),
+        })
+    for dia in agrupado:
+        agrupado[dia].sort(key=lambda x: x.get("hora_inicio") or "")
+    return [
+        {"dia": dia.upper(), "clases": agrupado[dia]}
+        for dia in sorted(agrupado.keys(), key=lambda d: dias_orden.get(d, 99))
+    ]
+
+
+# ✅ CORREGIDO - sin {user_id}
+@router.post("/manual")
+async def agregar_clase(
+    body: ClaseManual,
+    user_id: str = Depends(verificar_identidad)
+):
     clase = agregar_clase_horario(user_id, body.model_dump())
     return {"agregada": True, "clase": clase}
 
 
-@router.delete("/{user_id}/{clase_id}")
-async def eliminar_clase(user_id: str, clase_id: str, _: str = Depends(verificar_identidad)):
+# ✅ CORREGIDO - sin {user_id}
+@router.delete("/{clase_id}")
+async def eliminar_clase(
+    clase_id: str,
+    user_id: str = Depends(verificar_identidad)
+):
     eliminar_clase_horario(user_id, clase_id)
     return {"eliminada": True}
 
 
-@router.post("/{user_id}/analizar")
-async def analizar_horario_archivo(user_id: str, file: UploadFile = File(...), _: str = Depends(verificar_identidad)):
-
+# ✅ CORREGIDO - sin {user_id}
+@router.post("/analizar")
+async def analizar_horario_archivo(
+    file: UploadFile = File(...),
+    user_id: str = Depends(verificar_identidad)
+):
     """
     Recibe una imagen o PDF, le pide a Gemini que extraiga el horario.
     Regresa las clases propuestas SIN guardarlas — el usuario debe confirmar.
@@ -89,14 +125,6 @@ Reglas:
             ),
         )
 
-        # Diagnóstico: por qué se detuvo la generación
-        try:
-            finish_reason = respuesta.candidates[0].finish_reason
-            print(f"🔍 finish_reason: {finish_reason}")
-        except Exception:
-            pass
-
-        import json
         texto = respuesta.text.strip()
         print(f"📝 Respuesta cruda de Gemini (horario):\n{texto[:500]}")
 
@@ -122,8 +150,13 @@ Reglas:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/{user_id}/confirmar")
-async def confirmar_horario(user_id: str, body: HorarioCompleto, reemplazar: bool = True, _: str = Depends(verificar_identidad)):
+# ✅ CORREGIDO - sin {user_id}
+@router.post("/confirmar")
+async def confirmar_horario(
+    body: HorarioCompleto,
+    reemplazar: bool = True,
+    user_id: str = Depends(verificar_identidad)
+):
     """
     Guarda las clases confirmadas por el usuario después de revisar la propuesta de la IA.
     reemplazar=True → reemplaza todo el horario existente
@@ -135,3 +168,51 @@ async def confirmar_horario(user_id: str, body: HorarioCompleto, reemplazar: boo
         for c in body.clases:
             agregar_clase_horario(user_id, c.model_dump())
     return {"guardado": True, "total": len(body.clases)}
+
+
+# ✅ NUEVO - endpoint para corregir clases con IA
+@router.post("/corregir_clase")
+async def corregir_clase(
+    body: dict,
+    user_id: str = Depends(verificar_identidad)
+):
+    """Reinterpreta UNA clase del horario según una corrección en lenguaje natural."""
+    from google import genai
+    from google.genai import types
+
+    cliente = genai.Client(
+        vertexai=True,
+        project=settings.GOOGLE_CLOUD_PROJECT,
+        location=settings.GOOGLE_CLOUD_LOCATION,
+    )
+
+    prompt = f"""Tienes esta clase de un horario escolar, ya extraída de una imagen:
+{json.dumps(body.get('clase'), ensure_ascii=False)}
+
+El usuario dio esta corrección en lenguaje natural: "{body.get('correccion', '')}"
+
+Aplica SOLO el cambio que el usuario pide. Deja los demás campos exactamente igual.
+Los horarios van en formato de 24 horas "HH:MM". Los días válidos son:
+lunes, martes, miercoles, jueves, viernes, sabado.
+
+Responde SOLO este JSON, nada más, con la clase ya corregida:
+{{"materia": "...", "dia": "...", "hora_inicio": "HH:MM", "hora_fin": "HH:MM", "aula": "..."}}"""
+
+    try:
+        respuesta = cliente.models.generate_content(
+            model="gemini-2.5-flash-lite",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                max_output_tokens=300,
+                temperature=0.1,
+                response_mime_type="application/json",
+            ),
+        )
+        texto = respuesta.text.strip()
+        if texto.startswith("```"):
+            texto = texto.split("\n", 1)[1].rsplit("```", 1)[0]
+        clase_corregida = json.loads(texto)
+        return {"clase": clase_corregida}
+    except Exception as e:
+        print(f"❌ Error corrigiendo clase: {e}")
+        raise HTTPException(status_code=500, detail="No se pudo interpretar la corrección")

@@ -5,6 +5,9 @@ import Dashboard from './pages/Dashboard'
 import Colaborar from './pages/Colaborar'
 import Bienvenida from './pages/Bienvenida'
 import EsferaFlotante from './components/EsferaFlotante'
+import PostPago from './pages/PostPago'
+import SalaEstudio from './pages/SalaEstudio'
+
 
 function App() {
   return (
@@ -16,6 +19,8 @@ function App() {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/colaborar/:codigo" element={<Colaborar />} />
         <Route path="/bienvenida" element={<Bienvenida />} />
+        <Route path="/post-pago" element={<PostPago />} />
+        <Route path="/estudio/:sesionId" element={<SalaEstudio />} />
       </Routes>
     </BrowserRouter>
   )

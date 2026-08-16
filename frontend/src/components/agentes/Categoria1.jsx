@@ -198,15 +198,12 @@ export function ConfirmacionAccion() {
     anime.timeline({ easing: "easeOutQuart" })
       .add({ targets: ref.current, opacity: [0, 1], scale: [0.85, 1.02], duration: 350 })
       .add({ targets: ref.current, scale: [1.02, 1], duration: 200, easing: "easeOutElastic(1,0.6)" });
-    anime({
-      targets: ref.current,
-      borderTopColor: [`${T.copal}00`, `${T.copal}66`],
-      borderColor:    [`${T.copal}00`, `${T.copal}33`],
-      duration: 500, easing: "easeOutQuart",
-    });
   }, [data]);
 
   if (!data) return null;
+
+  const esDestructiva = /eliminar|borrar/i.test(data.onSi || "");
+  const accent = esDestructiva ? T.amaranto : T.jade;
 
   function responder(accion) {
     if (accion && accion !== "null") agenteBus.emit(accion, data.contexto || {});
@@ -219,47 +216,50 @@ export function ConfirmacionAccion() {
     <div ref={overlayRef} style={{
       position: "fixed", inset: 0, zIndex: 600,
       display: "flex", alignItems: "center", justifyContent: "center",
-      background: "rgba(0,0,0,0.4)", backdropFilter: "blur(4px)", opacity: 0,
+      background: "rgba(0,0,0,0.45)", backdropFilter: "blur(6px)", opacity: 0,
     }}>
       <div ref={ref} style={{
-        width: 300, background: "rgba(10,12,14,0.97)",
-        border: `1px solid ${T.copal}33`, borderTop: `1px solid ${T.copal}66`,
-        borderRadius: 16, padding: "24px 28px",
-        boxShadow: `0 8px 48px rgba(0,0,0,0.6), 0 0 40px ${T.copal}08`,
-        backdropFilter: "blur(20px)", opacity: 0,
+        width: 320, background: "rgba(10,12,14,0.98)",
+        border: `1px solid ${accent}30`, borderTop: `2px solid ${accent}`,
+        borderRadius: 18, padding: "26px 28px",
+        boxShadow: `0 12px 56px rgba(0,0,0,0.65), 0 0 48px ${accent}0a`,
+        backdropFilter: "blur(24px)", opacity: 0,
       }}>
-        <div style={{ fontSize: 9, color: `${T.copal}88`, letterSpacing: "1.5px", marginBottom: 12, fontFamily: T.mono }}>
-          TONA · CONFIRMAR
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+          <span style={{ fontSize: 16 }}>{esDestructiva ? "⚠️" : "✓"}</span>
+          <span style={{ fontSize: 9, color: `${accent}99`, letterSpacing: "1.5px", fontFamily: T.mono }}>
+            TONA · CONFIRMAR
+          </span>
         </div>
-        <div style={{ fontSize: 14, color: "rgba(237,235,230,0.8)", fontWeight: 300, lineHeight: 1.5, marginBottom: 20 }}>
+        <div style={{ fontSize: 14.5, color: "rgba(237,235,230,0.85)", fontWeight: 300, lineHeight: 1.55, marginBottom: 24 }}>
           {data.pregunta}
         </div>
         <div style={{ display: "flex", gap: 10 }}>
-          <button onClick={() => responder(data.onSi)}  style={btnConfirm(T.jade)}>Sí, confirmar</button>
-          <button onClick={() => responder(data.onNo)}  style={btnConfirm(T.amaranto)}>Cancelar</button>
-          <button onClick={() => responder(data.onSi)} style={btnConfirm(T.jade)}>
+          <button onClick={() => responder(data.onSi)} style={btnConfirm(accent)}>
             {data.labelSi || "Sí, confirmar"}
           </button>
-<button onClick={() => responder(data.onNo)} style={btnConfirm(T.amaranto)}>
-  {data.labelNo || "Cancelar"}
-</button>
+          <button onClick={() => responder(data.onNo)} style={btnConfirm("rgba(237,235,230,0.3)", true)}>
+            {data.labelNo || "Cancelar"}
+          </button>
         </div>
       </div>
     </div>
   );
 }
 
-function btnConfirm(color) {
+
+
+
+function btnConfirm(color, sutil = false) {
   return {
-    flex: 1, background: `${color}15`,
-    border: `1px solid ${color}40`, borderRadius: 8,
-    padding: "9px 0", color, fontSize: 12,
+    flex: 1, background: sutil ? "transparent" : `${color}18`,
+    border: `1px solid ${color}${sutil ? "25" : "45"}`, borderRadius: 10,
+    padding: "10px 0", color, fontSize: 12.5,
     fontFamily: T.sans, fontWeight: 300,
     cursor: "pointer", letterSpacing: "0.3px",
+    transition: "background 0.15s, border-color 0.15s",
   };
 }
-
-
 
 // ── IndicadorPensando ─────────────────────────────────────────────────────────
 

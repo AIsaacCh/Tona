@@ -3,16 +3,201 @@ import anime from "animejs";
 import { T } from "../tokens";
 import { agenteBus } from "./AgenteTona";
 
-
 const API = import.meta.env.VITE_API_URL;
+
+// ──────────────────────────────────────────────────────────────────────────────
+// 🆕 HELPERS NUEVOS
+// ──────────────────────────────────────────────────────────────────────────────
 
 const DIAS_LABEL = {
   lunes: "Lunes", martes: "Martes", miercoles: "Miércoles",
   jueves: "Jueves", viernes: "Viernes", sabado: "Sábado",
 };
 
+function formatHora12(hora24) {
+  if (!hora24) return "";
+  const [h, m] = hora24.split(":").map(Number);
+  const periodo = h >= 12 ? "p.m." : "a.m.";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${m.toString().padStart(2, "0")} ${periodo}`;
+}
+
+function describirClase(c) {
+  const dia = DIAS_LABEL[c.dia] || c.dia;
+  const rango = c.hora_fin
+    ? `de ${formatHora12(c.hora_inicio)} a ${formatHora12(c.hora_fin)}`
+    : `a las ${formatHora12(c.hora_inicio)}`;
+  const aulaTxt = c.aula ? `, en el aula ${c.aula}` : "";
+  return `${c.materia} — ${dia} ${rango}${aulaTxt}`;
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// 🆕 COMPONENTE REVISIÓN GUIADA
+// ──────────────────────────────────────────────────────────────────────────────
+
+function RevisionGuiada({ clases: clasesIniciales, onTerminar, onCancelar }) {
+  const [clases, setClases] = useState(clasesIniciales);
+  const [indice, setIndice] = useState(0);
+  const [confirmadas, setConfirmadas] = useState([]);
+  const [texto, setTexto] = useState("");
+  const [corrigiendo, setCorrigiendo] = useState(false);
+  const [error, setError] = useState("");
+  const cardRef = useRef(null);
+
+  const claseActual = clases[indice];
+
+  useEffect(() => {
+    if (!cardRef.current) return;
+    anime({ targets: cardRef.current, opacity: [0, 1], translateY: [14, 0], duration: 320, easing: "easeOutQuart" });
+  }, [indice]);
+
+  function avanzarCard(cb) {
+    anime({
+      targets: cardRef.current, opacity: [1, 0], translateY: [0, -10],
+      duration: 200, easing: "easeInQuart", complete: cb,
+    });
+  }
+
+  function confirmarClaseActual() {
+    avanzarCard(() => {
+      const nuevasConfirmadas = [...confirmadas, claseActual];
+      if (indice + 1 >= clases.length) {
+        onTerminar(nuevasConfirmadas);
+      } else {
+        setConfirmadas(nuevasConfirmadas);
+        setIndice((i) => i + 1);
+        setTexto("");
+        setError("");
+      }
+    });
+  }
+
+  function omitirClaseActual() {
+    avanzarCard(() => {
+      const nuevasClases = clases.filter((_, i) => i !== indice);
+      if (nuevasClases.length === 0) {
+        onTerminar(confirmadas);
+        return;
+      }
+      setClases(nuevasClases);
+      if (indice >= nuevasClases.length) {
+        onTerminar(confirmadas);
+      } else {
+        setTexto("");
+        setError("");
+      }
+    });
+  }
+
+  async function enviarCorreccion() {
+    if (!texto.trim() || corrigiendo) return;
+    setCorrigiendo(true);
+    setError("");
+    try {
+      const resp = await fetch(`${API}/horario/corregir_clase`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clase: claseActual, correccion: texto.trim() }),
+      });
+      if (!resp.ok) throw new Error();
+      const data = await resp.json();
+      setClases((prev) => prev.map((c, i) => (i === indice ? data.clase : c)));
+      setTexto("");
+    } catch {
+      setError("No entendí la corrección, ¿puedes decirlo de otra forma?");
+    } finally {
+      setCorrigiendo(false);
+    }
+  }
+
+  if (!claseActual) return null;
+
+  return (
+    <div>
+      <div style={{ fontSize: 10, color: "rgba(237,235,230,0.3)", fontFamily: T.mono, letterSpacing: "1px", marginBottom: 14 }}>
+        CLASE {indice + 1} DE {clases.length}
+      </div>
+
+      <div ref={cardRef} style={{
+        background: `${T.turquesa}08`, border: `1px solid ${T.turquesa}25`,
+        borderRadius: 12, padding: "20px 18px", marginBottom: 16, opacity: 0,
+      }}>
+        <div style={{ fontSize: 9, color: `${T.turquesa}77`, fontFamily: T.mono, letterSpacing: "1px", marginBottom: 8 }}>
+          TONA DETECTÓ
+        </div>
+        <div style={{ fontSize: 15, color: "rgba(237,235,230,0.9)", fontFamily: T.serif, lineHeight: 1.5 }}>
+          {describirClase(claseActual)}
+        </div>
+      </div>
+
+      <div style={{ fontSize: 11, color: "rgba(237,235,230,0.45)", marginBottom: 10 }}>
+        ¿Está bien así, o hay algo que corregir?
+      </div>
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+        <input
+          value={texto}
+          onChange={(e) => setTexto(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && enviarCorreccion()}
+          placeholder='Ej: "no, es de 8:30 a 10" o "el aula es 305"'
+          disabled={corrigiendo}
+          style={{ ...inputStyle("100%"), boxSizing: "border-box", flex: 1 }}
+        />
+        <button
+          onClick={enviarCorreccion}
+          disabled={corrigiendo || !texto.trim()}
+          style={{
+            background: `${T.copal}15`, border: `1px solid ${T.copal}35`, borderRadius: 8,
+            padding: "0 14px", color: T.copal, fontSize: 12, fontFamily: T.sans,
+            cursor: corrigiendo ? "wait" : "pointer", flexShrink: 0,
+          }}
+        >
+          {corrigiendo ? "..." : "Corregir"}
+        </button>
+      </div>
+
+      {error && <div style={{ fontSize: 11, color: T.amaranto, marginBottom: 10 }}>{error}</div>}
+
+      <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
+        <button
+          onClick={omitirClaseActual}
+          style={{
+            flex: 1, background: "transparent", border: `1px solid ${T.amaranto}25`,
+            borderRadius: 9, padding: "11px 0", color: `${T.amaranto}77`,
+            fontSize: 12, fontFamily: T.sans, cursor: "pointer",
+          }}
+        >
+          No es una clase real
+        </button>
+        <button
+          onClick={confirmarClaseActual}
+          style={{
+            flex: 2, background: `${T.jade}18`, border: `1px solid ${T.jade}45`,
+            borderRadius: 9, padding: "11px 0", color: T.jade,
+            fontSize: 13, fontFamily: T.sans, cursor: "pointer",
+          }}
+        >
+          Sí, está bien →
+        </button>
+      </div>
+
+      <button
+        onClick={onCancelar}
+        style={{ marginTop: 14, width: "100%", background: "transparent", border: "none", color: "rgba(237,235,230,0.3)", fontSize: 11, fontFamily: T.sans, cursor: "pointer" }}
+      >
+        ← cancelar y volver a subir el archivo
+      </button>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// 📚 COMPONENTE PRINCIPAL PanelHorario
+// ──────────────────────────────────────────────────────────────────────────────
+
 export function PanelHorario({ onCerrar }) {
-  const [paso, setPaso] = useState("elegir"); // "elegir" | "subir" | "analizando" | "confirmar" | "manual"
+  const [paso, setPaso] = useState("elegir");
   const [clasesPropuestas, setClasesPropuestas] = useState([]);
   const [error, setError] = useState("");
   const [reemplazar, setReemplazar] = useState(true);
@@ -21,7 +206,6 @@ export function PanelHorario({ onCerrar }) {
   const ref = useRef(null);
   const overlayRef = useRef(null);
 
-  // Estado del formulario manual
   const [materia, setMateria] = useState("");
   const [dia, setDia] = useState("lunes");
   const [horaInicio, setHoraInicio] = useState("");
@@ -54,12 +238,11 @@ export function PanelHorario({ onCerrar }) {
       const formData = new FormData();
       formData.append("file", file);
 
-      const resp = await fetch(`${API}/horario/${userId}/analizar`, {
-  method: "POST",
-  credentials: "include",
-  body: formData,
-});
-   
+      const resp = await fetch(`${API}/horario/analizar`, {
+        method: "POST",
+        credentials: "include",
+        body: formData,
+      });
 
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({}));
@@ -83,55 +266,40 @@ export function PanelHorario({ onCerrar }) {
     }
   }
 
-  function editarClase(index, campo, valor) {
-    setClasesPropuestas((prev) =>
-      prev.map((c, i) => (i === index ? { ...c, [campo]: valor } : c))
-    );
-  }
+  // ──────────────────────────────────────────────────────────────────────────
+  // 🆕 NUEVA FUNCIÓN guardarRevisionGuiada (reemplaza a confirmarGuardado)
+  // ──────────────────────────────────────────────────────────────────────────
 
-  function eliminarClasePropuesta(index) {
-    setClasesPropuestas((prev) => prev.filter((_, i) => i !== index));
-  }
-
-  async function confirmarGuardado() {
-    if (guardando) return;
-    if (clasesPropuestas.length === 0) {
-      setError("No hay clases para guardar");
+  async function guardarRevisionGuiada(clasesFinales) {
+    if (clasesFinales.length === 0) {
+      setError("No quedó ninguna clase para guardar");
+      setPaso("subir");
       return;
     }
     setGuardando(true);
     setError("");
-
     try {
-      const resp = await fetch(
-  `${API}/horario/${userId}/confirmar?reemplazar=${reemplazar}`,
-  {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ clases: clasesPropuestas }),
-  }
-);
-
+      const resp = await fetch(`${API}/horario/confirmar?reemplazar=${reemplazar}`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clases: clasesFinales }),
+      });
       if (!resp.ok) throw new Error("No se pudo guardar el horario");
-
       agenteBus.emit("flash", { mensaje: "Horario guardado correctamente", tipo: "exito" });
       cerrar();
     } catch (e) {
       setError(e.message || "Error al guardar");
-    } finally {
       setGuardando(false);
     }
   }
 
-  // ── Modo manual ──────────────────────────────────────────────────────────
-
   function agregarClaseManual() {
-  console.log("materia:", materia, "horaInicio:", horaInicio);
-  if (!materia.trim() || !horaInicio) {
-    setError("Materia y hora de inicio son obligatorias");
-    return;
-  }
+    console.log("materia:", materia, "horaInicio:", horaInicio);
+    if (!materia.trim() || !horaInicio) {
+      setError("Materia y hora de inicio son obligatorias");
+      return;
+    }
   
     setClasesAgregadas((prev) => [
       ...prev,
@@ -159,14 +327,14 @@ export function PanelHorario({ onCerrar }) {
 
     try {
       const resp = await fetch(
-  `${API}/horario/${userId}/confirmar?reemplazar=${reemplazar}`,
-  {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ clases: clasesAgregadas }),
-  }
-);
+        `${API}/horario/confirmar?reemplazar=${reemplazar}`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ clases: clasesAgregadas }),
+        }
+      );
 
       if (!resp.ok) throw new Error("No se pudo guardar el horario");
 
@@ -299,81 +467,34 @@ export function PanelHorario({ onCerrar }) {
             </div>
           )}
 
-          {paso === "confirmar" && (
+          {/* ────────────────────────────────────────────────────────────────── */}
+          {/* 🆕 NUEVO BLOQUE paso === "confirmar" (Reemplazo completo)       */}
+          {/* ────────────────────────────────────────────────────────────────── */}
+
+          {paso === "confirmar" && !guardando && (
             <>
-              <div style={{ fontSize: 12, color: "rgba(237,235,230,0.6)", marginBottom: 16, lineHeight: 1.5 }}>
-                Revisa las clases detectadas. Puedes editar cualquier dato antes de guardar.
-              </div>
-
-              {clasesPropuestas.map((c, i) => (
-                <div key={i} style={{
-                  background: "rgba(237,235,230,0.03)",
-                  border: `1px solid ${T.turquesa}18`,
-                  borderRadius: 10, padding: "12px 14px", marginBottom: 10,
-                }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-                    <input
-                      value={c.materia}
-                      onChange={(e) => editarClase(i, "materia", e.target.value)}
-                      style={inputStyle(140)}
-                      placeholder="Materia"
-                    />
-                    <button
-                      onClick={() => eliminarClasePropuesta(i)}
-                      style={{ background: "transparent", border: "none", color: `${T.amaranto}66`, fontSize: 14, cursor: "pointer" }}
-                    >✕</button>
-                  </div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <select
-                      value={c.dia}
-                      onChange={(e) => editarClase(i, "dia", e.target.value)}
-                      style={inputStyle(110)}
-                    >
-                      {Object.entries(DIAS_LABEL).map(([val, label]) => (
-                        <option key={val} value={val}>{label}</option>
-                      ))}
-                    </select>
-                    <input
-                      type="time"
-                      value={c.hora_inicio}
-                      onChange={(e) => editarClase(i, "hora_inicio", e.target.value)}
-                      style={inputStyle(90)}
-                    />
-                    <input
-                      type="time"
-                      value={c.hora_fin || ""}
-                      onChange={(e) => editarClase(i, "hora_fin", e.target.value)}
-                      style={inputStyle(90)}
-                    />
-                    <input
-                      value={c.aula || ""}
-                      onChange={(e) => editarClase(i, "aula", e.target.value)}
-                      placeholder="Aula"
-                      style={inputStyle(80)}
-                    />
-                  </div>
-                </div>
-              ))}
-
               <div style={{
-                display: "flex", gap: 8, marginTop: 16, marginBottom: 16,
+                display: "flex", gap: 8, marginBottom: 20,
                 padding: "10px 12px", background: `${T.copal}08`,
                 border: `1px solid ${T.copal}20`, borderRadius: 8,
               }}>
                 <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 11, color: "rgba(237,235,230,0.6)" }}>
-                  <input
-                    type="checkbox"
-                    checked={reemplazar}
-                    onChange={(e) => setReemplazar(e.target.checked)}
-                  />
+                  <input type="checkbox" checked={reemplazar} onChange={(e) => setReemplazar(e.target.checked)} />
                   Reemplazar horario existente (si lo desmarcas, solo se agregan estas clases)
                 </label>
               </div>
-
-              {error && (
-                <div style={{ fontSize: 11, color: T.amaranto, marginBottom: 12 }}>{error}</div>
-              )}
+              <RevisionGuiada
+                clases={clasesPropuestas}
+                onTerminar={guardarRevisionGuiada}
+                onCancelar={() => { setPaso("subir"); setClasesPropuestas([]); }}
+              />
             </>
+          )}
+
+          {paso === "confirmar" && guardando && (
+            <div style={{ textAlign: "center", padding: "40px 0", fontSize: 12, color: `${T.turquesa}aa`, fontFamily: T.mono }}>
+              Guardando tu horario...
+            </div>
           )}
 
           {paso === "manual" && (
@@ -487,32 +608,7 @@ export function PanelHorario({ onCerrar }) {
           )}
         </div>
 
-        {paso === "confirmar" && (
-          <div style={{ display: "flex", gap: 10, padding: "14px 20px", borderTop: `1px solid ${T.turquesa}12`, flexShrink: 0 }}>
-            <button
-              onClick={confirmarGuardado}
-              disabled={guardando}
-              style={{
-                flex: 2, background: `${T.turquesa}18`, border: `1px solid ${T.turquesa}45`,
-                borderRadius: 9, padding: "11px 0", color: T.turquesa,
-                fontSize: 13, fontFamily: T.sans, fontWeight: 300, cursor: guardando ? "wait" : "pointer",
-                opacity: guardando ? 0.5 : 1,
-              }}
-            >
-              {guardando ? "Guardando..." : "Confirmar y guardar"}
-            </button>
-            <button
-              onClick={() => { setPaso("subir"); setClasesPropuestas([]); }}
-              style={{
-                flex: 1, background: "transparent", border: `1px solid ${T.amaranto}25`,
-                borderRadius: 9, padding: "11px 0", color: `${T.amaranto}66`,
-                fontSize: 12, fontFamily: T.sans, cursor: "pointer",
-              }}
-            >
-              Cancelar
-            </button>
-          </div>
-        )}
+        {/* 🗑️ ELIMINADO: Footer fijo para paso === "confirmar" (los botones ahora están dentro de RevisionGuiada) */}
 
         {paso === "manual" && clasesAgregadas.length > 0 && (
           <div style={{ display: "flex", gap: 10, padding: "14px 20px", borderTop: `1px solid ${T.jade}12`, flexShrink: 0 }}>

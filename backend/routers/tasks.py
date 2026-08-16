@@ -216,8 +216,12 @@ async def _buscar_carpeta_existente(headers: dict, nombre: str, parent_id: str) 
     return None
 
 
-@router.post("/drive/estructura/{user_id}")
-async def crear_estructura_clases(user_id: str, body: EstructuraClasesRequest, _: str = Depends(verificar_identidad)):
+
+@router.post("/drive/estructura")
+async def crear_estructura_clases(
+    body: EstructuraClasesRequest,
+    user_id: str = Depends(verificar_identidad)
+):
     """
     Crea (si no existe) classroom/clases/<nombre_clase> en Drive para cada
     curso aceptado, y guarda el mapeo curso_id -> drive_folder_id.
@@ -258,8 +262,13 @@ async def crear_estructura_clases(user_id: str, body: EstructuraClasesRequest, _
         print(f"❌ Error creando estructura de clases: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.delete("/drive/carpeta/{user_id}/{curso_id}")
-async def quitar_carpeta_clase(user_id: str, curso_id: str, _: str = Depends(verificar_identidad)):
+
+
+@router.delete("/drive/carpeta/{curso_id}")
+async def quitar_carpeta_clase(
+    curso_id: str,
+    user_id: str = Depends(verificar_identidad)
+):
     """
     Solo elimina el VÍNCULO guardado (curso_id → drive_folder_id). No borra la carpeta
     real de Drive, para no arriesgar archivos que el usuario ya tenga guardados ahí.
@@ -267,8 +276,10 @@ async def quitar_carpeta_clase(user_id: str, curso_id: str, _: str = Depends(ver
     eliminar_carpeta_clase(user_id, curso_id)
     return {"eliminado": True}
 
-@router.get("/drive/clases/{user_id}")
-async def listar_clases_con_carpeta(user_id: str, _: str = Depends(verificar_identidad)):
+
+
+@router.get("/drive/clases")
+async def listar_clases_con_carpeta(user_id: str = Depends(verificar_identidad)):
     from services.db import obtener_carpetas_clases
     carpetas = obtener_carpetas_clases(user_id)
     return {"clases": [
@@ -277,8 +288,12 @@ async def listar_clases_con_carpeta(user_id: str, _: str = Depends(verificar_ide
     ]}
 
 
-@router.get("/drive/carpeta/{user_id}/{curso_id}")
-async def listar_archivos_carpeta_clase(user_id: str, curso_id: str, _: str = Depends(verificar_identidad)):
+
+@router.get("/drive/carpeta/{curso_id}")
+async def listar_archivos_carpeta_clase(
+    curso_id: str,
+    user_id: str = Depends(verificar_identidad)
+):
     carpeta = obtener_carpeta_clase(user_id, curso_id)
     if not carpeta:
         return {"archivos": [], "carpeta_existe": False}
@@ -320,8 +335,13 @@ async def listar_archivos_carpeta_clase(user_id: str, curso_id: str, _: str = De
 
 # ── Google Drive - Búsqueda de entregas ──────────────────────────────────────
 
-@router.get("/drive/buscar_entrega/{user_id}/{curso_id}")
-async def buscar_entrega_en_drive(user_id: str, curso_id: str, titulo: str, _: str = Depends(verificar_identidad)):
+
+@router.get("/drive/buscar_entrega/{curso_id}")
+async def buscar_entrega_en_drive(
+    curso_id: str,
+    titulo: str,
+    user_id: str = Depends(verificar_identidad)
+):
     """
     Busca archivos DENTRO de la carpeta de Drive de esa clase (nunca fuera de ella)
     cuyo nombre se parezca al título de la tarea. Regresa candidatos ordenados por similitud.
@@ -374,8 +394,12 @@ class EntregarTareaRequest(BaseModel):
     archivo_id: str     # id del archivo en Drive ya confirmado por el usuario
 
 
-@router.post("/classroom/entregar/{user_id}")
-async def entregar_tarea_real(user_id: str, body: EntregarTareaRequest, _: str = Depends(verificar_identidad)):
+
+@router.post("/classroom/entregar")
+async def entregar_tarea_real(
+    body: EntregarTareaRequest,
+    user_id: str = Depends(verificar_identidad)
+):
     """
     ÚNICA función que entrega de verdad en Classroom. Solo se llama cuando el
     usuario confirmó explícitamente (botón 'Sí, confirmar'). Nunca se dispara
@@ -437,8 +461,9 @@ async def entregar_tarea_real(user_id: str, body: EntregarTareaRequest, _: str =
 
 # ── Google Drive - Archivos generales ────────────────────────────────────────
 
-@router.get("/drive/{user_id}")
-async def obtener_drive(user_id: str, _: str = Depends(verificar_identidad)):
+
+@router.get("/drive")
+async def obtener_drive(user_id: str = Depends(verificar_identidad)):
     cached = obtener_cache(user_id, "drive")
     if cached:
         return cached
@@ -491,13 +516,36 @@ async def obtener_drive(user_id: str, _: str = Depends(verificar_identidad)):
 
 # ── Sync Google (Classroom + Calendar) ───────────────────────────────────────
 
-@router.get("/sync/{user_id}")
-async def sincronizar_todo(user_id: str, _: str = Depends(verificar_identidad)):
+
+@router.get("/sync")
+async def sincronizar_todo(user_id: str = Depends(verificar_identidad)):
     tareas_classroom = await _obtener_classroom(user_id)
     eventos_calendar = await _obtener_calendar(user_id)
 
     existentes = obtener_tareas(user_id)
     manuales   = [t for t in existentes if t.get("fuente") == "manual"]
+
+    # Preservar completado local — Classroom/Calendar no saben que el usuario
+    # ya marcó algo como hecho desde Tona, así que no dejamos que el sync lo resetee.
+    ids_completadas = {t["id"] for t in existentes if t.get("completada")}
+    for t in tareas_classroom:
+        if t["id"] in ids_completadas:
+            t["completada"] = True
+    for t in eventos_calendar:
+        if t["id"] in ids_completadas:
+            t["completada"] = True
+
+    if not tareas_classroom:
+        anteriores_classroom = [t for t in existentes if t.get("fuente") == "classroom"]
+        if anteriores_classroom:
+            print(f"⚠️ Classroom regresó vacío para {user_id}, conservando {len(anteriores_classroom)} tareas anteriores")
+            tareas_classroom = anteriores_classroom
+
+    if not eventos_calendar:
+        anteriores_calendar = [t for t in existentes if t.get("fuente") == "calendar"]
+        if anteriores_calendar:
+            print(f"⚠️ Calendar regresó vacío para {user_id}, conservando {len(anteriores_calendar)} eventos anteriores")
+            eventos_calendar = anteriores_calendar
 
     todas = tareas_classroom + eventos_calendar + manuales
     todas.sort(key=lambda x: (x.get("fecha_limite") is None, x.get("fecha_limite") or "9999"))
@@ -659,8 +707,12 @@ async def _obtener_calendar(user_id: str) -> list:
 
 # ── Gmail ─────────────────────────────────────────────────────────────────────
 
-@router.get("/gmail/{user_id}")
-async def obtener_gmail(user_id: str, max_resultados: int = 10, _: str = Depends(verificar_identidad)):
+
+@router.get("/gmail")
+async def obtener_gmail(
+    max_resultados: int = 10,
+    user_id: str = Depends(verificar_identidad)
+):
     cached = obtener_cache(user_id, "gmail")
     if cached:
         return cached
@@ -716,8 +768,14 @@ async def obtener_gmail(user_id: str, max_resultados: int = 10, _: str = Depends
         print(f"Error Gmail: {e}")
         return {"correos": [], "total_no_leidos": 0}
 
-@router.get("/gmail/buscar/{user_id}")
-async def buscar_gmail_por_tema(user_id: str, tema: str, dias: int = 14, _: str = Depends(verificar_identidad)):
+
+
+@router.get("/gmail/buscar")
+async def buscar_gmail_por_tema(
+    tema: str,
+    dias: int = 14,
+    user_id: str = Depends(verificar_identidad)
+):
     """
     Busca correos por tema, filtrando por antigüedad (Gmail hace el filtro nativo).
     Si el usuario no especifica días, default a 14 (2 semanas).
@@ -774,8 +832,12 @@ class EnviarCorreoRequest(BaseModel):
     asunto:str
     cuerpo:str
 
-@router.post("/gmail/enviar/{user_id}")
-async def enviar_correo(user_id: str, body: EnviarCorreoRequest, _: str = Depends(verificar_identidad)):
+
+@router.post("/gmail/enviar")
+async def enviar_correo(
+    body: EnviarCorreoRequest,
+    user_id: str = Depends(verificar_identidad)
+):
     """
     Envía un correo real usando el scope gmail.send ya autorizado.
     """
@@ -804,14 +866,15 @@ async def enviar_correo(user_id: str, body: EnviarCorreoRequest, _: str = Depend
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Erros enviando correo: {e}")
+        print(f"Error enviando correo: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 # ── Sitios monitoreados ───────────────────────────────────────────────────────
 
-@router.get("/sitios/{user_id}")
-async def listar_sitios(user_id: str, _: str = Depends(verificar_identidad)):
+
+@router.get("/sitios")
+async def listar_sitios(user_id: str = Depends(verificar_identidad)):
     try:
         return {"sitios": obtener_sitios(user_id)}
     except Exception as e:
@@ -819,8 +882,12 @@ async def listar_sitios(user_id: str, _: str = Depends(verificar_identidad)):
         return {"sitios": []}
 
 
-@router.post("/sitios/{user_id}")
-async def crear_sitio(user_id: str, body: SitioMonitoreo, _: str = Depends(verificar_identidad)):
+
+@router.post("/sitios")
+async def crear_sitio(
+    body: SitioMonitoreo,
+    user_id: str = Depends(verificar_identidad)
+):
     usuario = obtener_usuario(user_id)
     if not usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
@@ -836,14 +903,22 @@ async def crear_sitio(user_id: str, body: SitioMonitoreo, _: str = Depends(verif
     return {"creado": True, "sitio": sitio}
 
 
-@router.delete("/sitios/{user_id}/{sitio_id}")
-async def borrar_sitio(user_id: str, sitio_id: str, _: str = Depends(verificar_identidad)):
+
+@router.delete("/sitios/{sitio_id}")
+async def borrar_sitio(
+    sitio_id: str,
+    user_id: str = Depends(verificar_identidad)
+):
     eliminar_sitio(user_id, sitio_id)
     return {"eliminado": True}
 
 
-@router.post("/sitios/{user_id}/{sitio_id}/revisar")
-async def revisar_sitio_ahora(user_id: str, sitio_id: str, _: str = Depends(verificar_identidad)):
+
+@router.post("/sitios/{sitio_id}/revisar")
+async def revisar_sitio_ahora(
+    sitio_id: str,
+    user_id: str = Depends(verificar_identidad)
+):
     """Fuerza revisión inmediata de un sitio."""
     from services.scheduler import _revisar_sitio
     resultado = await _revisar_sitio(user_id, sitio_id)
@@ -858,8 +933,12 @@ async def revisar_sitio_ahora(user_id: str, sitio_id: str, _: str = Depends(veri
 
 # ── Tareas manuales ───────────────────────────────────────────────────────────
 
-@router.post("/manual/{user_id}")
-async def crear_tarea_manual(user_id: str, body: TareaManual, _: str = Depends(verificar_identidad)):
+
+@router.post("/manual")
+async def crear_tarea_manual(
+    body: TareaManual,
+    user_id: str = Depends(verificar_identidad)
+):
     usuario = obtener_usuario(user_id)
     if not usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
@@ -881,8 +960,12 @@ async def crear_tarea_manual(user_id: str, body: TareaManual, _: str = Depends(v
     return {"creada": True, "tarea": nueva}
 
 
-@router.delete("/manual/{user_id}/{tarea_id}")
-async def eliminar_tarea_manual(user_id: str, tarea_id: str, _: str = Depends(verificar_identidad)):
+
+@router.delete("/manual/{tarea_id}")
+async def eliminar_tarea_manual(
+    tarea_id: str,
+    user_id: str = Depends(verificar_identidad)
+):
     tareas = obtener_tareas(user_id)
     tarea  = next((t for t in tareas if t.get("id") == tarea_id), None)
     if not tarea:
@@ -893,8 +976,12 @@ async def eliminar_tarea_manual(user_id: str, tarea_id: str, _: str = Depends(ve
     return {"eliminada": True}
 
 
-@router.post("/completar/{user_id}/{tarea_id}")
-async def completar_tarea(user_id: str, tarea_id: str, _: str = Depends(verificar_identidad)):
+
+@router.post("/completar/{tarea_id}")
+async def completar_tarea(
+    tarea_id: str,
+    user_id: str = Depends(verificar_identidad)
+):
     tareas = obtener_tareas(user_id)
     for t in tareas:
         if t.get("id") == tarea_id:
@@ -905,8 +992,12 @@ async def completar_tarea(user_id: str, tarea_id: str, _: str = Depends(verifica
 
 # ── Crear evento en Google Calendar ──────────────────────────────────────────
 
-@router.post("/evento/{user_id}")
-async def crear_evento_calendar(user_id: str, body: EventoCalendar, _: str = Depends(verificar_identidad)):
+
+@router.post("/evento")
+async def crear_evento_calendar(
+    body: EventoCalendar,
+    user_id: str = Depends(verificar_identidad)
+):
     try:
         headers = await get_google_headers(user_id)
 
@@ -961,8 +1052,12 @@ async def crear_evento_calendar(user_id: str, body: EventoCalendar, _: str = Dep
 
 # ── Detalle de materia (Classroom) ────────────────────────────────────────────
 
-@router.get("/materia/{user_id}/{curso_id}")
-async def obtener_detalle_materia(user_id: str, curso_id: str, _: str = Depends(verificar_identidad)):
+
+@router.get("/materia/{curso_id}")
+async def obtener_detalle_materia(
+    curso_id: str,
+    user_id: str = Depends(verificar_identidad)
+):
     try:
         headers = await get_google_headers(user_id)
 
@@ -1018,8 +1113,9 @@ async def obtener_detalle_materia(user_id: str, curso_id: str, _: str = Depends(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/cursos/{user_id}")
-async def obtener_cursos(user_id: str, _: str = Depends(verificar_identidad)):
+
+@router.get("/cursos")
+async def obtener_cursos(user_id: str = Depends(verificar_identidad)):
     try:
         headers = await get_google_headers(user_id)
         async with httpx.AsyncClient() as client:
@@ -1039,10 +1135,40 @@ async def obtener_cursos(user_id: str, _: str = Depends(verificar_identidad)):
         return {"cursos": []}
 
 
+
+@router.get("/curso/{curso_id}")
+async def obtener_resumen_curso(
+    curso_id: str,
+    user_id: str = Depends(verificar_identidad)
+):
+    tareas = obtener_tareas(user_id)
+    tareas_curso = [t for t in tareas if t.get("curso_id") == curso_id]
+
+    completadas = [t for t in tareas_curso if t.get("completada")]
+    pendientes = [t for t in tareas_curso if not t.get("completada") and t.get("fecha_limite")]
+    sin_fecha = [t for t in tareas_curso if not t.get("completada") and not t.get("fecha_limite")]
+
+    pendientes_ordenadas = sorted(pendientes, key=lambda t: t.get("fecha_limite") or "9999")
+    proxima_entrega = pendientes_ordenadas[0] if pendientes_ordenadas else None
+
+    return {
+        "tareas_pendientes": pendientes_ordenadas,
+        "tareas_completadas": completadas,
+        "tareas_sin_fecha": sin_fecha,
+        "conteos": {
+            "pendientes": len(pendientes),
+            "completadas": len(completadas),
+            "sin_fecha": len(sin_fecha),
+        },
+        "proxima_entrega": proxima_entrega,
+    }
+
+
 # ── Diagnóstico y renovación manual de token ────────────────────────────────
 
-@router.get("/token_status/{user_id}")
-async def token_status(user_id: str, _: str = Depends(verificar_identidad)):
+
+@router.get("/token_status")
+async def token_status(user_id: str = Depends(verificar_identidad)):
     """Diagnóstico del estado del token de acceso."""
     usuario = obtener_usuario(user_id)
     if not usuario:
@@ -1087,8 +1213,9 @@ async def token_status(user_id: str, _: str = Depends(verificar_identidad)):
     }
 
 
-@router.post("/refresh_token/{user_id}")
-async def refresh_token_manual(user_id: str, _: str = Depends(verificar_identidad)):
+
+@router.post("/refresh_token")
+async def refresh_token_manual(user_id: str = Depends(verificar_identidad)):
     """Renueva manualmente el token de acceso."""
     print(f"🔄 Refresh manual solicitado para {user_id}")
     usuario = obtener_usuario(user_id)
@@ -1133,8 +1260,9 @@ async def refresh_token_manual(user_id: str, _: str = Depends(verificar_identida
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/{user_id}")
-async def obtener_tareas_usuario(user_id: str, _: str = Depends(verificar_identidad)):
+
+@router.get("/")
+async def obtener_tareas_usuario(user_id: str = Depends(verificar_identidad)):
     tareas = obtener_tareas(user_id)
     return {
         "tareas":   tareas,

@@ -1,4 +1,3 @@
-// Dashboard.jsx
 import { useState, useEffect, useRef } from "react";
 import anime from "animejs";
 import EsferaTona from "../components/EsferaTona";
@@ -13,15 +12,16 @@ import { useSearchParams } from "react-router-dom";
 import { FlashMensaje, ConfirmacionAccion, IndicadorPensando,TarjetaLinks } from "../components/agentes/Categoria1";
 import { FormNuevaTarea, FormNuevoRecordatorio, FormNuevaNota, TarjetaExamen, TarjetaArchivo, NotificacionUrgente } from "../components/agentes/Categoria3y4";
 import { ConfirmarCreacion } from "../components/agentes/ConfirmarCreacion";
-import { VistaListaTareas,VistaGmail,VistaCalendario, VistaHorario, VistaCalificaciones, VistaMaterias, VistaArchivosDrive } from "../components/agentes/Categoria2";
+import { VistaListaTareas,VistaGmail,VistaCalendario, VistaHorario, VistaMaterias, VistaArchivosDrive } from "../components/agentes/Categoria2";
 import OnboardingTona from "../components/OnboardingTona";
 import PanelConfiguracion from "../components/PanelConfiguracion";
 import PanelDocs from "../components/PanelDocs";
 import { PanelHorario } from "../components/PanelHorario";
 import { useNavigate } from "react-router-dom";
 import { PanelColaborar } from "../components/PanelColaborar";
+import { PanelSalaEstudio } from "../components/PanelSalaEstudio";
 import { useOnboarding } from "../hooks/useOnboarding";
-
+import PanelCompleto from "../components/PanelCompleto";
 
 
 
@@ -29,9 +29,8 @@ import {
   WidgetTareas, WidgetTareasSm,
   WidgetRecordatorios, WidgetRecordatoriosSm,
   WidgetCalendario, WidgetCalendarioSm,
-  WidgetContadorRegresivo, WidgetContadorRegresivоSm,
+  WidgetContadorRegresivo, WidgetContadorRegresivoSm,
   WidgetMaterias, WidgetMateriasSm,
-  WidgetCalificaciones, WidgetCalificacionesSm,
   WidgetHorario, WidgetHorarioSm,
   WidgetTareaDetalle, WidgetTareaDetalleSm,
   WidgetNotas, WidgetNotasSm,
@@ -42,8 +41,6 @@ import {
 } from "../components/widgets/index";
 
 const API = import.meta.env.VITE_API_URL;
-
-
 
 function getTiempo() {
   const h = new Date().getHours();
@@ -86,9 +83,8 @@ const WIDGET_MAP = {
   tareas: { Md: WidgetTareas, Sm: WidgetTareasSm, titulo: "Tareas", categoria: "productividad" },
   recordatorios: { Md: WidgetRecordatorios, Sm: WidgetRecordatoriosSm, titulo: "Recordatorios", categoria: "productividad" },
   calendario: { Md: WidgetCalendario, Sm: WidgetCalendarioSm, titulo: "Calendario", categoria: "productividad" },
-  contador: { Md: WidgetContadorRegresivo, Sm: WidgetContadorRegresivоSm, titulo: "Cuenta regresiva", categoria: "productividad" },
+  contador: { Md: WidgetContadorRegresivo, Sm: WidgetContadorRegresivoSm, titulo: "Cuenta regresiva", categoria: "productividad" },
   materias: { Md: WidgetMaterias, Sm: WidgetMateriasSm, titulo: "Materias", categoria: "academico" },
-  calificaciones: { Md: WidgetCalificaciones, Sm: WidgetCalificacionesSm, titulo: "Calificaciones", categoria: "academico" },
   horario: { Md: WidgetHorario, Sm: WidgetHorarioSm, titulo: "Horario", categoria: "academico" },
   tarea_detalle: { Md: WidgetTareaDetalle, Sm: WidgetTareaDetalleSm, titulo: "Tarea detalle", categoria: "academico" },
   notas: { Md: WidgetNotas, Sm: WidgetNotasSm, titulo: "Notas", categoria: "info" },
@@ -100,9 +96,68 @@ const WIDGET_MAP = {
 
 let nextId = 1;
 
-// ──────────────────────────────────────────────────────────────────────────────
-// 🚀 DASHBOARD PRINCIPAL (con onboarding y configuración)
-// ──────────────────────────────────────────────────────────────────────────────
+function BloqueoSuscripcion({ userId }) {
+  async function handlePagar() {
+    const resp = await fetch(`${API}/pagos/crear-checkout`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    const data = await resp.json();
+    if (data.url) window.location.href = data.url;
+  }
+
+  async function handleCerrarSesion() {
+  try {
+    await fetch(`${API}/auth/revocar`, { method: "POST", credentials: "include" });
+  } catch (e) {
+  }
+
+  try {
+    await fetch(`${API}/auth/logout`, {
+      method: "GET",
+      credentials: "include",
+      redirect: "manual",
+    });
+  } catch (e) {
+  }
+
+  localStorage.clear();
+  window.location.href = "/login";
+}
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 9999,
+      background: "rgba(9,11,13,0.97)", backdropFilter: "blur(12px)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+    }}>
+      <div style={{ maxWidth: 380, textAlign: "center", padding: 24 }}>
+        <h2 style={{ color: "rgba(237,235,230,0.94)", fontSize: 22, marginBottom: 16 }}>
+          Tu prueba gratuita terminó
+        </h2>
+        <p style={{ color: "rgba(237,235,230,0.5)", fontSize: 14, lineHeight: 1.7, marginBottom: 30 }}>
+          Esperamos que hayas disfrutado Tona Premium. Para seguir usándolo, activa tu suscripción.
+        </p>
+        <button onClick={handlePagar} style={{
+          width: "100%", padding: "14px 0", borderRadius: 30, marginBottom: 12,
+          background: "var(--jade)", color: "var(--obsidiana)", border: "none",
+          fontSize: 14, fontWeight: 600, cursor: "pointer",
+        }}>
+          Suscribirme por $120 MXN/mes
+        </button>
+        <button onClick={handleCerrarSesion} style={{
+          width: "100%", padding: "12px 0", borderRadius: 30,
+          background: "transparent", color: "rgba(237,235,230,0.4)",
+          border: "1px solid rgba(237,235,230,0.15)", fontSize: 13, cursor: "pointer",
+        }}>
+          Cerrar sesión
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function Dashboard() {
   const [params] = useSearchParams();
@@ -116,32 +171,118 @@ export default function Dashboard() {
   const { paso, actualizarPaso, cargando } = useOnboarding(userId);
   const [panelConfig, setPanelConfig] = useState(false);
 
+  const promoYaIntentado = useRef(false);
+
+  useEffect(() => {
+    if (!userId || userId === "demo") return;
+    if (promoYaIntentado.current) return;
+
+    const promoPendiente = localStorage.getItem("tona_promo_pendiente");
+    console.log("🎟️ promo pendiente encontrado en localStorage:", promoPendiente);
+    if (!promoPendiente) return;
+
+    promoYaIntentado.current = true;
+    localStorage.removeItem("tona_promo_pendiente");
+
+    fetch(`${API}/pagos/crear-checkout`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ promo_token: promoPendiente }),
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        console.log("🎟️ respuesta de crear-checkout:", data);
+        if (data.url) window.location.href = data.url;
+        else agenteBus.emit("flash", { mensaje: "No se pudo activar tu promoción", tipo: "error" });
+      })
+      .catch((e) => {
+        console.error("🎟️ error activando promo:", e);
+        agenteBus.emit("flash", { mensaje: "Error activando tu promoción", tipo: "error" });
+      });
+  }, [userId]);
+
+  const claimYaIntentado = useRef(false);
+  const [chequeandoEstado, setChequeandoEstado] = useState(true);
+  const [bloqueado, setBloqueado] = useState(false);
+
+useEffect(() => {
+  if (!userId || userId === "demo") return;
+  if (claimYaIntentado.current) return;
+  claimYaIntentado.current = true;
+
+    async function reclamarYVerificar() {
+      const claimPendiente = localStorage.getItem("tona_claim_pendiente");
+
+      if (claimPendiente) {
+        localStorage.removeItem("tona_claim_pendiente");
+        try {
+          await fetch(`${API}/pagos/reclamar`, {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ claim_token: claimPendiente }),
+          });
+        } catch (e) {
+          console.error("Error reclamando suscripción:", e);
+        }
+      }
+
+      try {
+        const resp = await fetch(`${API}/pagos/estado`, { credentials: "include" });
+        const data = await resp.json();
+        setBloqueado(data.bloqueado);
+      } catch (e) {
+        console.error("Error verificando estado de suscripción:", e);
+      } finally {
+        setChequeandoEstado(false);
+      }
+    }
+
+    reclamarYVerificar();
+  }, [userId]);
+
   useEffect(() => {
   if (!userId || userId === "demo") return;
-  const promoPendiente = localStorage.getItem("tona_promo_pendiente");
-  if (!promoPendiente) return;
 
-  localStorage.removeItem("tona_promo_pendiente"); // evita reintentos duplicados
+  async function revisarEstado() {
+    try {
+      const resp = await fetch(`${API}/pagos/estado`, { credentials: "include" });
+      const data = await resp.json();
+      setBloqueado(data.bloqueado);
+    } catch (e) {
+      console.error("Error revisando estado periódico:", e);
+    }
+  }
 
-  fetch(`${API}/pagos/crear-checkout/${userId}`, {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ promo_token: promoPendiente }),
-  })
-    .then((r) => r.json())
-    .then((data) => {
-      if (data.url) window.location.href = data.url;
-      else agenteBus.emit("flash", { mensaje: "No se pudo activar tu promoción", tipo: "error" });
-    })
-    .catch(() => {
-      agenteBus.emit("flash", { mensaje: "Error activando tu promoción", tipo: "error" });
-    });
+  const intervalo = setInterval(revisarEstado, 60000);
+
+  function alVolverALaPestana() {
+    if (document.visibilityState === "visible") revisarEstado();
+  }
+  document.addEventListener("visibilitychange", alVolverALaPestana);
+
+  return () => {
+    clearInterval(intervalo);
+    document.removeEventListener("visibilitychange", alVolverALaPestana);
+  };
 }, [userId]);
 
   useEffect(() => {
     return agenteBus.on("abrir_configuracion", () => setPanelConfig(true));
   }, []);
+
+  useEffect(() => {
+    if (!userId || userId === "demo") return;
+    fetch(`${API}/agent/saludo`, { credentials: "include" })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.saludo) {
+          agenteBus.emit("tona_habla", { texto: data.saludo });
+        }
+      })
+      .catch((e) => console.error("Error obteniendo saludo:", e));
+  }, [userId]);
 
   if (cargando) return null;
 
@@ -162,14 +303,13 @@ export default function Dashboard() {
       params={params}
       panelConfig={panelConfig}
       setPanelConfig={setPanelConfig}
+      bloqueado={bloqueado}
+      chequeandoEstado={chequeandoEstado}
     />
   );
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// 🧩 DASHBOARD PRINCIPAL
-// ──────────────────────────────────────────────────────────────────────────────
-function DashboardPrincipal({ userId, params, panelConfig, setPanelConfig }) {
+function DashboardPrincipal({ userId, params, panelConfig, setPanelConfig, bloqueado, chequeandoEstado }) {
   const nombre = (params.get("name") || "Isaac").split(" ")[0];
   const tiempo = getTiempo();
   const tema = TEMAS[tiempo];
@@ -185,15 +325,22 @@ function DashboardPrincipal({ userId, params, panelConfig, setPanelConfig }) {
   const [panelDocs, setPanelDocs] = useState(false);
   const [panelHorario, setPanelHorario] = useState(false);
   const [panelColaborar, setPanelColaborar] = useState(false);
+  const [panelEstudio, setPanelEstudio] = useState(false);
+  const [modoUI, setModoUI] = useState("compacto");
+  const [panelesAbiertos, setPanelesAbiertos] = useState(true);
 
-  
-
-  // ✅ Persistir user_id
   useEffect(() => {
     if (userId && userId !== "demo") {
       localStorage.setItem("tona_user_id", userId);
     }
   }, [userId]);
+
+  useEffect(() => {
+    return agenteBus.on("modo_ui", ({ modo }) => {
+      console.log("🖥️ modo_ui recibido:", modo);
+      setModoUI(modo || "compacto");
+    });
+  }, []);
 
   useEffect(() => {
     if (!userId || userId === "demo") return;
@@ -211,13 +358,12 @@ function DashboardPrincipal({ userId, params, panelConfig, setPanelConfig }) {
     return () => clearTimeout(t);
   }, [userId]);
 
-  // ✅ Sincronizar Classroom + Calendar
   useEffect(() => {
     if (!userId || userId === "demo") return;
-    fetch(`${API}/tasks/sync/${userId}`, {
-  method: "GET",
-  credentials: "include",
-})
+    fetch(`${API}/tasks/sync`, {
+      method: "GET",
+      credentials: "include",
+    })
       .then((r) => r.json())
       .then((data) => console.log("📚 Sync inicial:", data))
       .catch((e) => console.error("❌ Error sincronizando al cargar:", e));
@@ -261,7 +407,6 @@ function DashboardPrincipal({ userId, params, panelConfig, setPanelConfig }) {
       mostrar_recordatorios: () => agregarWidgetRef.current("recordatorios"),
       mostrar_calendario: () => agregarWidgetRef.current("calendario"),
       mostrar_materias: () => agregarWidgetRef.current("materias"),
-      mostrar_calificaciones: () => agregarWidgetRef.current("calificaciones"),
       mostrar_horario: () => agregarWidgetRef.current("horario"),
       mostrar_notas: () => agregarWidgetRef.current("notas"),
       mostrar_archivos: () => agregarWidgetRef.current("archivos"),
@@ -269,16 +414,16 @@ function DashboardPrincipal({ userId, params, panelConfig, setPanelConfig }) {
       mostrar_estadisticas: () => agregarWidgetRef.current("estadisticas"),
       mostrar_acciones: () => agregarWidgetRef.current("acciones"),
       convertir_a_widget: ({ tipo }) => agregarWidgetRef.current(tipo),
-      abrir_docs:   () => setPanelDocs(true),
+      abrir_docs: () => setPanelDocs(true),
       abrir_editor: (p) => setPanelDocs(true),
-      crear_doc:    () => setPanelDocs(true),
+      crear_doc: () => setPanelDocs(true),
       cerrar_todo: () => setWidgets([]),
       tona_habla: async ({ texto }) => {
         try {
           const resp = await fetch(`${API}/agent/hablar`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            credentials: "include", 
+            credentials: "include",
             body: JSON.stringify({ texto }),
           });
           const arrayBuffer = await resp.arrayBuffer();
@@ -292,10 +437,8 @@ function DashboardPrincipal({ userId, params, panelConfig, setPanelConfig }) {
           };
           audio.load();
         } catch {
-          // fallback silencioso
         }
       },
-      // ✅ ACCIONES DE DOCUMENTOS
       abrir_docs_con_titulo: ({ titulo }) => {
         setPanelDocs(true);
         setTimeout(() => {
@@ -316,6 +459,7 @@ function DashboardPrincipal({ userId, params, panelConfig, setPanelConfig }) {
   function cerrarTodo() {
     agenteBus.emit("cerrar_todo", {});
     setWidgets([]);
+    setModoUI("compacto");
   }
 
   function agregarWidget(tipo) {
@@ -345,6 +489,7 @@ function DashboardPrincipal({ userId, params, panelConfig, setPanelConfig }) {
     if (!texto.trim() || enviando) return;
 
     const tipoCierre = detectarCierre(texto);
+    
 
     if (tipoCierre === "total") {
       cerrarTodo();
@@ -355,6 +500,12 @@ function DashboardPrincipal({ userId, params, panelConfig, setPanelConfig }) {
 
     if (tipoCierre === "vista") {
       agenteBus.emit("cerrar_vista", {});
+      setInput("");
+      return;
+    }
+
+    if (tipoCierre === "panel") {
+      agenteBus.emit("modo_ui", { modo: "compacto" });
       setInput("");
       return;
     }
@@ -372,23 +523,26 @@ function DashboardPrincipal({ userId, params, panelConfig, setPanelConfig }) {
   }
 
   const navigate = useNavigate();
-async function iniciarColaboracion() {
+  async function iniciarColaboracion() {
   try {
-    const resp = await fetch(`${API}/colaborar/mi-sesion/${userId}`, {
-  credentials: "include",
-});
-    const data = await resp.json();
+    const resp = await fetch(`${API}/colaborar/mi-sesion`, {
+      credentials: "include",
+    });
+      
+      const data = await resp.json();
 
-    if (data.codigo) {
-      navigate(`/colaborar/${data.codigo}`);
-    } else {
+      if (data.codigo) {
+        navigate(`/colaborar/${data.codigo}`);
+      } else {
+        setPanelColaborar(true);
+      }
+    } catch (e) {
+      console.error("Error verificando sesión activa:", e);
       setPanelColaborar(true);
     }
-  } catch (e) {
-    console.error("Error verificando sesión activa:", e);
-    setPanelColaborar(true);
   }
-}
+
+  
 
   function handleInput(e) {
     setInput(e.target.value);
@@ -401,9 +555,17 @@ async function iniciarColaboracion() {
     }
   }
 
+  if (chequeandoEstado) return null;
+  if (bloqueado) return <BloqueoSuscripcion userId={userId} />;
+
+  const anchoIzqCompleto = modoUI === "completo" && panelesAbiertos ? 240 : 0;
+  const anchoDerCompleto = modoUI === "completo" && panelesAbiertos ? 300 : 0;
+  const offsetCompleto = (anchoIzqCompleto - anchoDerCompleto) / 2;
+  const tamEsfera = modoUI === "completo" ? (panelesAbiertos ? 220 : 300) : 480;
+  
+
   return (
     <div style={s.root}>
-      {/* Fondo ambiental */}
       <div style={{
         position: "absolute", inset: 0, zIndex: 0,
         background: `radial-gradient(ellipse at 20% 10%, ${tema.luz1} 0%, transparent 60%),
@@ -411,66 +573,90 @@ async function iniciarColaboracion() {
         pointerEvents: "none",
       }} />
 
-      {/* Efectos de fondo */}
-      {tiempo === "noche" && <EstrellasFugaces color={tema.acento} colorAlt={tema.jade} />}
-      {(tiempo === "manana" || tiempo === "tarde") && <Aves color={tema.textoDim} />}
+      {modoUI === "compacto" && tiempo === "noche" && <EstrellasFugaces color={tema.acento} colorAlt={tema.jade} />}
+      {modoUI === "compacto" && (tiempo === "manana" || tiempo === "tarde") && <Aves color={tema.textoDim} />}
 
-      {/* Cajón de widgets */}
-      <CajonWidgets
-        lado="izquierdo"
-        visible={editMode}
-        onAgregar={agregarWidget}
-        widgetsActivos={widgets}
-      />
+      {modoUI === "compacto" && (
+        <CajonWidgets
+          lado="izquierdo"
+          visible={editMode}
+          onAgregar={agregarWidget}
+          widgetsActivos={widgets}
+        />
+      )}
 
-      {/* Info top-left */}
-      <div style={s.infoTL}>
-        <span style={{ ...s.weather, color: tema.textoDim }}>
-          {tema.saludo}, {nombre} · Despejado 18°C
-        </span>
-        <span style={s.clock}>{hora}</span>
-      </div>
+      {modoUI === "compacto" && (
+        <div style={s.infoTL}>
+          <span style={{ ...s.weather, color: tema.textoDim }}>
+            {tema.saludo}, {nombre} · Despejado 18°C
+          </span>
+          <span style={s.clock}>{hora}</span>
+        </div>
+      )}
 
-      {/* Top-right */}
-      <div style={s.infoTR}>
-        <span style={s.urgentDot} />
-        <span style={s.urgentText}>2 urgentes</span>
-        <button
-          style={{ ...s.editBtn, ...(editMode ? s.editBtnActive : {}) }}
-          onClick={() => setEditMode((p) => !p)}
-          title={editMode ? "Salir de edición" : "Personalizar pantalla"}
+      {modoUI === "compacto" && (
+        <div style={s.infoTR}>
+          <span style={s.urgentDot} />
+          <span style={s.urgentText}>2 urgentes</span>
+          <button
+            style={s.editBtn}
+            onClick={() => setModoUI("completo")}
+            title="Abrir panel completo"
+          >
+            ⤢
+          </button>
+          <button
+            style={{ ...s.editBtn, ...(editMode ? s.editBtnActive : {}) }}
+            onClick={() => setEditMode((p) => !p)}
+            title={editMode ? "Salir de edición" : "Personalizar pantalla"}
+          >
+            {editMode ? "✕" : "⊞"}
+          </button>
+        </div>
+      )}
+
+      {modoUI === "compacto" && (
+        <div
+          ref={btnCerrarRef}
+          style={{ ...s.btnCerrarWrap, opacity: 0, pointerEvents: hayContenido ? "auto" : "none" }}
         >
-          {editMode ? "✕" : "⊞"}
-        </button>
-      </div>
+          <button onClick={cerrarTodo} style={s.btnCerrar}>
+            <span style={s.btnCerrarDot} />
+            limpiar pantalla
+          </button>
+        </div>
+      )}
 
-      {/* Botón limpiar pantalla */}
+      {modoUI === "compacto" && (
+        <div style={s.titleWrap}>
+          <h1 style={{ ...s.title, color: tema.acento }}>TONA</h1>
+          <div style={{
+            ...s.titleLine,
+            background: `linear-gradient(90deg, transparent, ${tema.jade}55, transparent)`,
+          }} />
+        </div>
+      )}
+
       <div
-        ref={btnCerrarRef}
-        style={{ ...s.btnCerrarWrap, opacity: 0, pointerEvents: hayContenido ? "auto" : "none" }}
+        style={{
+          ...s.sphereWrap,
+          paddingTop: modoUI === "completo" ? 90 : 0,
+          transform: `translateX(${offsetCompleto}px)`,
+          transition: "padding-top 0.4s ease, transform 0.4s ease",
+        }}
       >
-        <button onClick={cerrarTodo} style={s.btnCerrar}>
-          <span style={s.btnCerrarDot} />
-          limpiar pantalla
-        </button>
-      </div>
-
-      {/* Título */}
-      <div style={s.titleWrap}>
-        <h1 style={{ ...s.title, color: tema.acento }}>TONA</h1>
         <div style={{
-          ...s.titleLine,
-          background: `linear-gradient(90deg, transparent, ${tema.jade}55, transparent)`,
-        }} />
+          position: "relative",
+          width: tamEsfera,
+          height: tamEsfera,
+          transition: "width 0.4s ease, height 0.4s ease",
+        }}>
+          <EsferaTona size={tamEsfera} />
+          
+        </div>
       </div>
 
-      {/* Esfera */}
-      <div style={s.sphereWrap}>
-        <EsferaTona size={480} />
-      </div>
-
-      {/* Bottom — mic + input */}
-      <div style={s.bottomWrap}>
+      <div style={{ ...s.bottomWrap, transform: `translateX(${offsetCompleto}px)`, transition: "transform 0.4s ease" }}>
         <div style={s.micWrap}>
           <MicTona size={72} userId={userId} onToggle={setMicActivo} />
         </div>
@@ -511,15 +697,19 @@ async function iniciarColaboracion() {
         </div>
       </div>
 
-      {/* Widgets flotantes */}
-      {widgets.map((w) => {
+      {modoUI === "compacto" && widgets.map((w) => {
         const def = WIDGET_MAP[w.tipo];
         if (!def) return null;
+
         return (
           <WidgetShell
-            key={w.id} id={w.id}
-            titulo={def.titulo} categoria={def.categoria}
-            x={w.x} y={w.y} size={w.size}
+            key={w.id}
+            id={w.id}
+            titulo={def.titulo}
+            categoria={def.categoria}
+            x={w.x}
+            y={w.y}
+            size={w.size}
             onClose={cerrarWidget}
             onMove={moverWidget}
             onResize={resizarWidget}
@@ -530,7 +720,6 @@ async function iniciarColaboracion() {
         );
       })}
 
-      {/* Componentes del agente */}
       <FlashMensaje />
       <ConfirmacionAccion />
       <TarjetaLinks />
@@ -538,7 +727,6 @@ async function iniciarColaboracion() {
       <VistaListaTareas />
       <VistaCalendario />
       <VistaHorario />
-      <VistaCalificaciones />
       <VistaMaterias />
       <FormNuevaTarea />
       <FormNuevoRecordatorio />
@@ -550,135 +738,200 @@ async function iniciarColaboracion() {
       <VistaArchivosDrive />
       <VistaGmail />
 
-      {/* 📄 Botón de documentos flotante */}
-      <button
-        onClick={() => setPanelDocs(true)}
-        title="Documentos"
-        style={{
-          position:       "fixed",
-          bottom:         148,
-          right:          28,
-          zIndex:         300,
-          width:          40,
-          height:         40,
-          borderRadius:   "50%",
-          background:     "rgba(9,11,13,0.85)",
-          border:         `1px solid ${T.turquesa}22`,
-          color:          `${T.turquesa}66`,
-          fontSize:       14,
-          cursor:         "pointer",
-          backdropFilter: "blur(8px)",
-          display:        "flex",
-          alignItems:     "center",
-          justifyContent: "center",
-          transition:     "all 0.2s ease",
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.borderColor = `${T.turquesa}55`;
-          e.currentTarget.style.color = T.turquesa;
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.borderColor = `${T.turquesa}22`;
-          e.currentTarget.style.color = `${T.turquesa}66`;
-        }}
-      >
-        ✎
-      </button>
+      {modoUI === "compacto" && (
+        <>
+          <button
+            onClick={() => setPanelDocs(true)}
+            title="Documentos"
+            style={{
+              position: "fixed",
+              bottom: 148,
+              right: 28,
+              zIndex: 300,
+              width: 40,
+              height: 40,
+              borderRadius: "50%",
+              background: "rgba(9,11,13,0.85)",
+              border: `1px solid ${T.turquesa}22`,
+              color: `${T.turquesa}66`,
+              fontSize: 14,
+              cursor: "pointer",
+              backdropFilter: "blur(8px)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              transition: "all 0.2s ease",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = `${T.turquesa}55`;
+              e.currentTarget.style.color = T.turquesa;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = `${T.turquesa}22`;
+              e.currentTarget.style.color = `${T.turquesa}66`;
+            }}
+          >
+            ✎
+          </button>
 
-      {/* ⚙️ Botón de configuración flotante */}
-      <button
-        onClick={() => setPanelConfig(true)}
-        title="Configuración"
-        style={{
-          position: "fixed",
-          bottom: 100,
-          right: 28,
-          zIndex: 300,
-          width: 40,
-          height: 40,
-          borderRadius: "50%",
-          background: "rgba(9,11,13,0.85)",
-          border: `1px solid ${T.copal}22`,
-          color: `${T.copal}66`,
-          fontSize: 16,
-          cursor: "pointer",
-          backdropFilter: "blur(8px)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          transition: "all 0.2s ease",
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.borderColor = `${T.copal}55`;
-          e.currentTarget.style.color = T.copal;
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.borderColor = `${T.copal}22`;
-          e.currentTarget.style.color = `${T.copal}66`;
-        }}
-      >
-        ⚙
-      </button>
+          <button
+            onClick={() => setPanelConfig(true)}
+            title="Configuración"
+            style={{
+              position: "fixed",
+              bottom: 100,
+              right: 28,
+              zIndex: 300,
+              width: 40,
+              height: 40,
+              borderRadius: "50%",
+              background: "rgba(9,11,13,0.85)",
+              border: `1px solid ${T.copal}22`,
+              color: `${T.copal}66`,
+              fontSize: 16,
+              cursor: "pointer",
+              backdropFilter: "blur(8px)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              transition: "all 0.2s ease",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = `${T.copal}55`;
+              e.currentTarget.style.color = T.copal;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = `${T.copal}22`;
+              e.currentTarget.style.color = `${T.copal}66`;
+            }}
+          >
+            ⚙
+          </button>
 
+          <button
+            onClick={() => setPanelHorario(true)}
+            title="Configurar horario"
+            style={{
+              position: "fixed",
+              bottom: 52,
+              right: 28,
+              zIndex: 300,
+              width: 40,
+              height: 40,
+              borderRadius: "50%",
+              background: "rgba(9,11,13,0.85)",
+              border: `1px solid ${T.jade}22`,
+              color: `${T.jade}66`,
+              fontSize: 16,
+              cursor: "pointer",
+              backdropFilter: "blur(8px)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              transition: "all 0.2s ease",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = `${T.jade}55`;
+              e.currentTarget.style.color = T.jade;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = `${T.jade}22`;
+              e.currentTarget.style.color = `${T.jade}66`;
+            }}
+          >
+            📅
+          </button>
 
+          <button
+            onClick={iniciarColaboracion}
+            title="Entrar a colaborar"
+            style={{
+              position: "fixed",
+              bottom: 4,
+              right: 28,
+              zIndex: 300,
+              width: 40,
+              height: 40,
+              borderRadius: "50%",
+              background: "rgba(9,11,13,0.85)",
+              border: `1px solid ${T.amaranto}22`,
+              color: `${T.amaranto}66`,
+              fontSize: 16,
+              cursor: "pointer",
+              backdropFilter: "blur(8px)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            🤝
+          </button>
 
-      {/* 📅 Botón de horario flotante */}
-      <button
-        onClick={() => setPanelHorario(true)}
-        title="Configurar horario"
-        style={{
-          position: "fixed",
-          bottom: 52,
-          right: 28,
-          zIndex: 300,
-          width: 40,
-          height: 40,
-          borderRadius: "50%",
-          background: "rgba(9,11,13,0.85)",
-          border: `1px solid ${T.jade}22`,
-          color: `${T.jade}66`,
-          fontSize: 16,
-          cursor: "pointer",
-          backdropFilter: "blur(8px)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          transition: "all 0.2s ease",
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.borderColor = `${T.jade}55`;
-          e.currentTarget.style.color = T.jade;
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.borderColor = `${T.jade}22`;
-          e.currentTarget.style.color = `${T.jade}66`;
-        }}
-      >
-        📅
-      </button>
+          <button
+            onClick={() => setPanelEstudio(true)}
+            title="Sala de estudio"
+            style={{
+              position: "fixed",
+              bottom: 4,
+              right: 76,
+              zIndex: 300,
+              width: 40,
+              height: 40,
+              borderRadius: "50%",
+              background: "rgba(9,11,13,0.85)",
+              border: `1px solid ${T.jade}22`,
+              color: `${T.jade}66`,
+              fontSize: 16,
+              cursor: "pointer",
+              backdropFilter: "blur(8px)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              transition: "all 0.2s ease",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = `${T.jade}55`;
+              e.currentTarget.style.color = T.jade;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = `${T.jade}22`;
+              e.currentTarget.style.color = `${T.jade}66`;
+            }}
+          >
+            🧪
+          </button>
+        </>
+      )}
 
-<button onClick={iniciarColaboracion} title="Entrar a colaborar" style={{ position: "fixed", bottom: 4, right: 28, zIndex: 300, width: 40, height: 40, borderRadius: "50%", background: "rgba(9,11,13,0.85)", border: `1px solid ${T.amaranto}22`, color: `${T.amaranto}66`, fontSize: 16, cursor: "pointer", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-  🤝
-</button>
+      <PanelCompleto
+        activo={modoUI === "completo"}
+        userId={userId}
+        panelesAbiertos={panelesAbiertos}
+        setPanelesAbiertos={setPanelesAbiertos}
+        onSalirPanel={() => setModoUI("compacto")}
+      />
 
-
-
-      {/* Panel de configuración */}
       {panelConfig && (
         <PanelConfiguracion
           userId={userId}
           onCerrar={() => setPanelConfig(false)}
         />
       )}
-      {/*Panel de Colaboracion*/}
-      {panelColaborar && (
-  <PanelColaborar
-    userId={userId}
-    onCerrar={() => setPanelColaborar(false)}
-  />
-)}
 
-      {/* Panel de documentos */}
+      {panelColaborar && (
+        <PanelColaborar
+          userId={userId}
+          onCerrar={() => setPanelColaborar(false)}
+        />
+      )}
+
+      {panelEstudio && (
+        <PanelSalaEstudio
+          userId={userId}
+          onCerrar={() => setPanelEstudio(false)}
+        />
+      )}
+
       {panelDocs && (
         <PanelDocs
           userId={userId}
@@ -686,21 +939,15 @@ async function iniciarColaboracion() {
         />
       )}
 
-      {/* Panel de horario */}
       {panelHorario && (
         <PanelHorario
           onCerrar={() => setPanelHorario(false)}
         />
       )}
-
-
     </div>
   );
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// 🎨 ESTILOS
-// ──────────────────────────────────────────────────────────────────────────────
 const s = {
   root: {
     position: "relative",
@@ -715,7 +962,8 @@ const s = {
   },
   infoTL: {
     position: "absolute",
-    top: 24, left: 28,
+    top: 24,
+    left: 28,
     display: "flex",
     flexDirection: "column",
     gap: 2,
@@ -736,7 +984,8 @@ const s = {
   },
   infoTR: {
     position: "absolute",
-    top: 24, right: 28,
+    top: 24,
+    right: 28,
     display: "flex",
     alignItems: "center",
     gap: 10,
@@ -744,7 +993,8 @@ const s = {
   },
   urgentDot: {
     display: "inline-block",
-    width: 6, height: 6,
+    width: 6,
+    height: 6,
     borderRadius: "50%",
     background: T.amaranto,
   },
@@ -773,7 +1023,8 @@ const s = {
   },
   btnCerrarWrap: {
     position: "absolute",
-    bottom: 36, left: 28,
+    bottom: 36,
+    left: 28,
     zIndex: 20,
   },
   btnCerrar: {
@@ -794,7 +1045,8 @@ const s = {
   },
   btnCerrarDot: {
     display: "inline-block",
-    width: 6, height: 6,
+    width: 6,
+    height: 6,
     borderRadius: "50%",
     background: T.amaranto,
     opacity: 0.7,
