@@ -63,13 +63,11 @@ def _verificar_sala_y_participante(codigo: str, user_id: str) -> dict:
 # ── Modelos ──────────────────────────────────────────────────────────────────
 
 class CrearSesionRequest(BaseModel):
-    # ✅ ELIMINADO: user_id ya no se recibe en el body
-    pass  # Solo necesitamos la cookie
+    pass
 
 
 class UnirseSesionRequest(BaseModel):
-    # ✅ ELIMINADO: user_id ya no se recibe en el body
-    pass  # Solo necesitamos la cookie y el código de la URL
+    pass
 
 
 class CompartirArchivoRequest(BaseModel):
@@ -82,12 +80,10 @@ class PreguntarTonaRequest(BaseModel):
 
 
 class CerrarSesionRequest(BaseModel):
-    # ✅ ELIMINADO: user_id ya no se recibe en el body
     pass
 
 
 class AbandonarRequest(BaseModel):
-    # ✅ ELIMINADO: user_id ya no se recibe en el body
     pass
 
 
@@ -197,7 +193,7 @@ async def obtener_mi_sesion_activa(request: Request):
 async def estado_sesion(codigo: str, request: Request):
     """✅ AHORA VERIFICA que el usuario sea participante."""
     user_id = _obtener_user_id_o_403(request)
-    _verificar_sala_y_participante(codigo, user_id)  # ✅ Lanza 403 si no es participante
+    _verificar_sala_y_participante(codigo, user_id)
 
     return {
         "participantes": obtener_participantes(codigo),
@@ -209,7 +205,7 @@ async def estado_sesion(codigo: str, request: Request):
 async def compartir_archivo(codigo: str, body: CompartirArchivoRequest, request: Request):
     """✅ AHORA VERIFICA que el usuario sea participante."""
     user_id = _obtener_user_id_o_403(request)
-    _verificar_sala_y_participante(codigo, user_id)  # ✅ Lanza 403 si no es participante
+    _verificar_sala_y_participante(codigo, user_id)
 
     from routers.tasks import get_google_headers
 
@@ -265,7 +261,7 @@ async def cerrar_sesion(codigo: str, request: Request):
 async def abandonar_sesion(codigo: str, request: Request):
     """✅ AHORA VERIFICA que el usuario sea participante."""
     user_id = _obtener_user_id_o_403(request)
-    _verificar_sala_y_participante(codigo, user_id)  # ✅ Lanza 403 si no es participante
+    _verificar_sala_y_participante(codigo, user_id)
 
     quitar_participante(codigo, user_id)
     manager.desconectar(codigo, user_id)
@@ -289,9 +285,9 @@ async def abandonar_sesion(codigo: str, request: Request):
 async def preguntar_tona(codigo: str, body: PreguntarTonaRequest, request: Request):
     """✅ AHORA VERIFICA que el usuario sea participante."""
     user_id = _obtener_user_id_o_403(request)
-    _verificar_sala_y_participante(codigo, user_id)  # ✅ Lanza 403 si no es participante
+    _verificar_sala_y_participante(codigo, user_id)
 
-    from routers.docs import leer_doc
+    from routers.docs import leer_doc_con_usuario
     from google import genai
     from google.genai import types
 
@@ -299,7 +295,8 @@ async def preguntar_tona(codigo: str, body: PreguntarTonaRequest, request: Reque
     contexto_docs = ""
     for a in archivos[:3]:
         try:
-            data = await leer_doc(user_id, a["doc_id"])
+            # ✅ CORREGIDO: usa la función que acepta user_id explícito
+            data = await leer_doc_con_usuario(a["doc_id"], user_id)
             contexto_docs += f"\n\n--- Documento: {a['titulo']} ---\n{data.get('contenido', '')[:2000]}"
         except Exception as e:
             print(f"⚠️ No se pudo leer {a['titulo']} para {user_id}: {e}")

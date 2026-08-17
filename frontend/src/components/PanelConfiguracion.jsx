@@ -4,13 +4,12 @@ import { T } from "../tokens";
 import { agenteBus } from "./AgenteTona";
 
 const API = import.meta.env.VITE_API_URL;
-const TABS = ["perfil", "servicios", "sitios", "premium"];
+const TABS = ["perfil", "servicios", "sitios", "cuenta"];
 
 export default function PanelConfiguracion({ userId, onCerrar }) {
   const [config, setConfig] = useState(null);
   const [tab, setTab] = useState("perfil");
   const [guardando, setGuardando] = useState(false);
-  const [cargandoPago, setCargandoPago] = useState(false);
 
   const panelRef = useRef(null);
   const overlayRef = useRef(null);
@@ -59,23 +58,6 @@ export default function PanelConfiguracion({ userId, onCerrar }) {
     }
   }
 
-  async function iniciarPagoPrueba() {
-    setCargandoPago(true);
-    try {
-      const resp = await fetch(`${API}/pagos/crear-checkout`, { method: "POST", credentials: "include" });
-      if (!resp.ok) {
-        const err = await resp.json();
-        throw new Error(err.detail || "Error creando checkout");
-      }
-      const data = await resp.json();
-      window.location.href = data.url;
-    } catch (e) {
-      agenteBus.emit("flash", { mensaje: "No se pudo iniciar el pago: " + e.message, tipo: "error" });
-    } finally {
-      setCargandoPago(false);
-    }
-  }
-
   function cerrar() {
     anime.timeline({ easing: "easeInQuart" })
       .add({ targets: overlayRef.current, opacity: 0, duration: 200 })
@@ -117,9 +99,7 @@ export default function PanelConfiguracion({ userId, onCerrar }) {
           )}
           {tab === "servicios" && <TabServicios userId={userId} />}
           {tab === "sitios" && <TabSitios userId={userId} />}
-          {tab === "premium" && (
-            <TabPremium iniciarPagoPrueba={iniciarPagoPrueba} cargandoPago={cargandoPago} />
-          )}
+          {tab === "cuenta" && <TabCuenta userId={userId} />}
         </div>
       </div>
     </div>
@@ -610,16 +590,88 @@ function TabSitios({ userId }) {
   );
 }
 
-function TabPremium({ iniciarPagoPrueba, cargandoPago }) {
+function TabCuenta({ userId }) {
+  const [confirmando, setConfirmando] = useState(false);
+  const [textoConfirmacion, setTextoConfirmacion] = useState("");
+  const [eliminando, setEliminando] = useState(false);
+
+  async function eliminarCuenta() {
+    setEliminando(true);
+    try {
+      const resp = await fetch(`${API}/account`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.detail || "No se pudo eliminar la cuenta");
+      }
+      // Cuenta borrada y sesión cerrada del lado del servidor
+      window.location.href = "/";
+    } catch (e) {
+      agenteBus.emit("flash", { mensaje: "Error eliminando cuenta: " + e.message, tipo: "error" });
+      setEliminando(false);
+    }
+  }
+
+  const confirmacionValida = textoConfirmacion.trim().toUpperCase() === "ELIMINAR";
+
   return (
     <div>
-      <div style={s.labelChico}>SUSCRIPCIÓN</div>
-      <div style={{ fontSize: 11, color: "rgba(237,235,230,0.3)", marginBottom: 16, fontFamily: T.sans, lineHeight: 1.5 }}>
-        Modo de prueba — ningún cargo real se realiza aquí.
-      </div>
-      <button onClick={iniciarPagoPrueba} disabled={cargandoPago} style={s.btnGuardar(cargandoPago)}>
-        {cargandoPago ? "Redirigiendo..." : "🧪 Probar pago (test)"}
-      </button>
+      <div style={s.labelChico}>CUENTA</div>
+
+      {!confirmando && (
+        <div>
+          <div style={{ fontSize: 11, color: "rgba(237,235,230,0.3)", marginBottom: 16, fontFamily: T.sans, lineHeight: 1.5 }}>
+            Eliminar tu cuenta borra permanentemente tus tareas, horario, notas, conexiones (Notion, Classroom),
+            historial de chat y toda la demás información asociada a tu perfil en Tona. Esta acción no se puede deshacer.
+          </div>
+          <button onClick={() => setConfirmando(true)} style={s.btnDesconectar}>
+            Eliminar mi cuenta
+          </button>
+        </div>
+      )}
+
+      {confirmando && (
+        <div style={{
+          background: `${T.amaranto}08`, border: `1px solid ${T.amaranto}30`,
+          borderRadius: 10, padding: 16,
+        }}>
+          <div style={{ fontSize: 12.5, color: "rgba(237,235,230,0.75)", fontFamily: T.sans, marginBottom: 12, lineHeight: 1.5 }}>
+            Esta acción es irreversible. Se eliminarán todos tus datos de Tona de forma permanente.
+          </div>
+          <div style={{ fontSize: 10.5, color: "rgba(237,235,230,0.4)", fontFamily: T.sans, marginBottom: 8 }}>
+            Escribe <strong>ELIMINAR</strong> para confirmar:
+          </div>
+          <input
+            value={textoConfirmacion}
+            onChange={(e) => setTextoConfirmacion(e.target.value)}
+            placeholder="ELIMINAR"
+            style={{ ...inputStyle, marginBottom: 12 }}
+          />
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={() => { setConfirmando(false); setTextoConfirmacion(""); }}
+              style={s.btnSecundarioChico}
+              disabled={eliminando}
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={eliminarCuenta}
+              disabled={!confirmacionValida || eliminando}
+              style={{
+                flex: 1, background: `${T.amaranto}18`, border: `1px solid ${T.amaranto}55`,
+                borderRadius: 7, padding: "8px 0", color: T.amaranto, fontSize: 11.5,
+                fontFamily: T.sans, cursor: confirmacionValida && !eliminando ? "pointer" : "not-allowed",
+                opacity: confirmacionValida && !eliminando ? 1 : 0.4,
+              }}
+            >
+              {eliminando ? "Eliminando..." : "Sí, eliminar todo"}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

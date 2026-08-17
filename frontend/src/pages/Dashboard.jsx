@@ -206,72 +206,107 @@ export default function Dashboard() {
   const [chequeandoEstado, setChequeandoEstado] = useState(true);
   const [bloqueado, setBloqueado] = useState(false);
 
-useEffect(() => {
-  if (!userId || userId === "demo") return;
-  if (claimYaIntentado.current) return;
-  claimYaIntentado.current = true;
-
-    async function reclamarYVerificar() {
-      const claimPendiente = localStorage.getItem("tona_claim_pendiente");
-
-      if (claimPendiente) {
-        localStorage.removeItem("tona_claim_pendiente");
-        try {
-          await fetch(`${API}/pagos/reclamar`, {
-            method: "POST",
-            credentials: "include",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ claim_token: claimPendiente }),
-          });
-        } catch (e) {
-          console.error("Error reclamando suscripción:", e);
-        }
+  // ============================================================
+  // FUNCIÓN DE RECLAMO CON REINTENTO
+  // ============================================================
+  async function reclamarConReintento(claimToken, maxIntentos = 5, esperaMs = 2000) {
+    for (let i = 0; i < maxIntentos; i++) {
+      try {
+        const resp = await fetch(`${API}/pagos/reclamar`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ claim_token: claimToken }),
+        });
+        const data = await resp.json();
+        if (data.reclamado) return true;
+        
+        // Si el servidor responde con error pero no es un error fatal,
+        // esperamos y reintentamos
+        console.log(`🔄 Intento ${i + 1}/${maxIntentos} - reclamando suscripción...`);
+      } catch (e) {
+        console.error(`❌ Error reclamando suscripción (intento ${i + 1}/${maxIntentos}):`, e);
       }
+      
+      // Esperar antes del siguiente intento (excepto en el último)
+      if (i < maxIntentos - 1) {
+        await new Promise((r) => setTimeout(r, esperaMs));
+      }
+    }
+    return false;
+  }
 
+  async function reclamarYVerificar() {
+    const claimPendiente = localStorage.getItem("tona_claim_pendiente");
+
+    if (claimPendiente) {
+      console.log("🎫 Token de reclamo encontrado, intentando reclamar...");
+      const exito = await reclamarConReintento(claimPendiente);
+      if (exito) {
+        console.log("✅ Suscripción reclamada con éxito!");
+        localStorage.removeItem("tona_claim_pendiente");
+      } else {
+        console.warn("⚠️ No se pudo reclamar la suscripción tras múltiples intentos. El token se mantiene en localStorage para reintentar después.");
+        // Si no tuvo éxito tras los reintentos, se deja el token en localStorage
+        // para poder reintentarlo la próxima vez que el usuario entre al dashboard.
+      }
+    }
+
+    try {
+      const resp = await fetch(`${API}/pagos/estado`, { credentials: "include" });
+      const data = await resp.json();
+      setBloqueado(data.bloqueado);
+      console.log(`📊 Estado de suscripción: ${data.bloqueado ? 'bloqueado' : 'activo'}`);
+    } catch (e) {
+      console.error("Error verificando estado de suscripción:", e);
+    } finally {
+      setChequeandoEstado(false);
+    }
+  }
+
+  // ============================================================
+  // EJECUTAR RECLAMO AL MONTAR
+  // ============================================================
+  useEffect(() => {
+    if (!userId || userId === "demo") return;
+    if (claimYaIntentado.current) return;
+    claimYaIntentado.current = true;
+
+    reclamarYVerificar();
+  }, [userId]);
+
+  // ============================================================
+  // VERIFICACIÓN PERIÓDICA DE ESTADO
+  // ============================================================
+  useEffect(() => {
+    if (!userId || userId === "demo") return;
+
+    async function revisarEstado() {
       try {
         const resp = await fetch(`${API}/pagos/estado`, { credentials: "include" });
         const data = await resp.json();
         setBloqueado(data.bloqueado);
       } catch (e) {
-        console.error("Error verificando estado de suscripción:", e);
-      } finally {
-        setChequeandoEstado(false);
+        console.error("Error revisando estado periódico:", e);
       }
     }
 
-    reclamarYVerificar();
+    const intervalo = setInterval(revisarEstado, 60000);
+
+    function alVolverALaPestana() {
+      if (document.visibilityState === "visible") revisarEstado();
+    }
+    document.addEventListener("visibilitychange", alVolverALaPestana);
+
+    return () => {
+      clearInterval(intervalo);
+      document.removeEventListener("visibilitychange", alVolverALaPestana);
+    };
   }, [userId]);
 
-  useEffect(() => {
-  if (!userId || userId === "demo") return;
-
-  async function revisarEstado() {
-    try {
-      const resp = await fetch(`${API}/pagos/estado`, { credentials: "include" });
-      const data = await resp.json();
-      setBloqueado(data.bloqueado);
-    } catch (e) {
-      console.error("Error revisando estado periódico:", e);
-    }
-  }
-
-  const intervalo = setInterval(revisarEstado, 60000);
-
-  function alVolverALaPestana() {
-    if (document.visibilityState === "visible") revisarEstado();
-  }
-  document.addEventListener("visibilitychange", alVolverALaPestana);
-
-  return () => {
-    clearInterval(intervalo);
-    document.removeEventListener("visibilitychange", alVolverALaPestana);
-  };
-}, [userId]);
-
-  useEffect(() => {
-    return agenteBus.on("abrir_configuracion", () => setPanelConfig(true));
-  }, []);
-
+  // ============================================================
+  // SALUDO INICIAL
+  // ============================================================
   useEffect(() => {
     if (!userId || userId === "demo") return;
     fetch(`${API}/agent/saludo`, { credentials: "include" })

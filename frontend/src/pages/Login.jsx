@@ -164,6 +164,12 @@ export default function Login() {
   const [mensajeEstado, setMensajeEstado] = useState(null)
   const [verificando, setVerificando] = useState(false)
 
+  // Estados para el panel de términos
+  const [mostrarPanelTerminos, setMostrarPanelTerminos] = useState(false)
+  const [accionPendiente, setAccionPendiente] = useState(null) // 'login' | 'suscribir'
+  const [terminosAceptados, setTerminosAceptados] = useState(false)
+  const [aceptandoTerminos, setAceptandoTerminos] = useState(false)
+
   useEffect(() => {
     fetch(`${API}/auth/whoami`, { credentials: 'include' })
       .then(r => r.json())
@@ -251,6 +257,48 @@ export default function Login() {
 
   function handleTengoCodigo() {
     window.location.href = '/bienvenida'
+  }
+
+  // Abre el panel de términos según la acción
+  function abrirPanelTerminos(accion) {
+    setAccionPendiente(accion)
+    setTerminosAceptados(false)
+    setMostrarPanelTerminos(true)
+  }
+
+  // Ejecuta la acción pendiente después de aceptar términos
+  async function ejecutarAccionPendiente() {
+    if (!terminosAceptados) return
+    
+    setAceptandoTerminos(true)
+    
+    // ✅ Registrar aceptación en el backend (opcional, pero recomendado)
+    try {
+      await fetch(`${API}/auth/aceptar-terminos`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          version: '1.0',
+          fecha: new Date().toISOString(),
+        }),
+      })
+    } catch (e) {
+      console.error('Error registrando aceptación:', e)
+    }
+    
+    setMostrarPanelTerminos(false)
+    setAceptandoTerminos(false)
+    
+    // Ejecutar la acción pendiente
+    if (accionPendiente === 'login') {
+      setMostrarEmailForm(true)
+    } else if (accionPendiente === 'suscribir') {
+      await handleSuscribirse()
+    }
+    
+    setAccionPendiente(null)
+    setTerminosAceptados(false)
   }
 
   if (verificandoSesion) return null
@@ -345,7 +393,7 @@ export default function Login() {
 
             {!mostrarEmailForm ? (
               <button
-                onClick={() => setMostrarEmailForm(true)}
+                onClick={() => abrirPanelTerminos('login')}
                 disabled={cargandoAccion !== null}
                 style={{
                   width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -396,7 +444,7 @@ export default function Login() {
                       No encontramos una cuenta con ese correo.
                     </p>
                     <button 
-                      onClick={handleSuscribirse} 
+                      onClick={() => abrirPanelTerminos('suscribir')}
                       style={{ 
                         width: '100%', padding: '13px 0', borderRadius: 30, 
                         background: `${COPAL}12`, border: `1px solid ${COPAL}55`, 
@@ -423,7 +471,7 @@ export default function Login() {
                       Tu cuenta existe, pero no tienes una suscripción activa.
                     </p>
                     <button 
-                      onClick={handleSuscribirse} 
+                      onClick={() => abrirPanelTerminos('suscribir')}
                       style={{ 
                         width: '100%', padding: '13px 0', borderRadius: 30, 
                         background: `${COPAL}12`, border: `1px solid ${COPAL}55`, 
@@ -476,7 +524,7 @@ export default function Login() {
             )}
 
             <button
-              onClick={handleSuscribirse}
+              onClick={() => abrirPanelTerminos('suscribir')}
               disabled={cargandoAccion !== null}
               style={{
                 width: '100%', padding: '15px 0', borderRadius: 30, marginBottom: 12,
@@ -529,16 +577,275 @@ export default function Login() {
             >
               Tengo un código de invitación
             </button>
-
-            <div style={{
-              marginTop: 24, textAlign: 'center', fontSize: 10.5, lineHeight: 1.7,
-              color: 'rgba(237,235,230,0.25)', fontFamily: FONT, fontWeight: 300,
-            }}>
-              Al continuar, aceptas los Términos y el Aviso de Privacidad de TONA.
-            </div>
           </TarjetaLogin>
         </div>
       </div>
+
+      {/* PANEL DE ACEPTACIÓN DE TÉRMINOS Y CONDICIONES */}
+      {mostrarPanelTerminos && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 1000,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'rgba(0,0,0,0.75)',
+          backdropFilter: 'blur(10px)',
+          WebkitBackdropFilter: 'blur(10px)',
+          padding: '20px',
+        }}
+        onClick={(e) => {
+          if (e.target === e.currentTarget && !aceptandoTerminos) {
+            setMostrarPanelTerminos(false)
+            setAccionPendiente(null)
+            setTerminosAceptados(false)
+          }
+        }}
+        >
+          <div style={{
+            maxWidth: 580,
+            width: '100%',
+            maxHeight: '85vh',
+            background: 'linear-gradient(165deg, rgba(20,20,18,0.97), rgba(8,8,8,0.98))',
+            borderRadius: 28,
+            padding: '36px 40px',
+            border: `1px solid ${COPAL}22`,
+            boxShadow: '0 40px 100px rgba(0,0,0,0.9), 0 0 40px rgba(0,0,0,0.5)',
+            overflow: 'auto',
+            position: 'relative',
+          }}>
+            {/* TÍTULO */}
+            <h2 style={{
+              fontFamily: FONT,
+              fontSize: 22,
+              fontWeight: 500,
+              color: 'rgba(237,235,230,0.92)',
+              margin: '0 0 6px',
+              textAlign: 'center',
+              letterSpacing: '0.05em',
+            }}>
+              Términos y Condiciones
+            </h2>
+
+            <p style={{
+              textAlign: 'center',
+              fontSize: 13,
+              color: 'rgba(237,235,230,0.4)',
+              fontFamily: FONT,
+              marginBottom: 24,
+            }}>
+              Para continuar, necesitas leer y aceptar nuestros documentos legales.
+            </p>
+
+            {/* ENLACES A LOS DOCUMENTOS */}
+            <div style={{
+              display: 'flex',
+              gap: 14,
+              justifyContent: 'center',
+              marginBottom: 28,
+              flexWrap: 'wrap',
+            }}>
+              <a
+                href="/legal/terminos"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  color: JADE,
+                  fontFamily: FONT,
+                  fontSize: 13,
+                  textDecoration: 'none',
+                  padding: '8px 20px',
+                  border: `1px solid ${JADE}25`,
+                  borderRadius: 24,
+                  background: `${JADE}08`,
+                  transition: 'all 0.2s ease',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = `${JADE}15`
+                  e.currentTarget.style.borderColor = `${JADE}50`
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = `${JADE}08`
+                  e.currentTarget.style.borderColor = `${JADE}25`
+                }}
+              >
+                📄 Términos y Condiciones
+              </a>
+              <a
+                href="/legal/privacidad"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  color: JADE,
+                  fontFamily: FONT,
+                  fontSize: 13,
+                  textDecoration: 'none',
+                  padding: '8px 20px',
+                  border: `1px solid ${JADE}25`,
+                  borderRadius: 24,
+                  background: `${JADE}08`,
+                  transition: 'all 0.2s ease',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = `${JADE}15`
+                  e.currentTarget.style.borderColor = `${JADE}50`
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = `${JADE}08`
+                  e.currentTarget.style.borderColor = `${JADE}25`
+                }}
+              >
+                🔒 Aviso de Privacidad
+              </a>
+            </div>
+
+            {/* RESUMEN BREVE */}
+            <div style={{
+              background: 'rgba(237,235,230,0.03)',
+              borderRadius: 12,
+              padding: '14px 18px',
+              marginBottom: 24,
+              border: '1px solid rgba(237,235,230,0.06)',
+            }}>
+              <p style={{
+                fontSize: 12.5,
+                lineHeight: 1.7,
+                color: 'rgba(237,235,230,0.5)',
+                fontFamily: FONT,
+                margin: 0,
+              }}>
+                <strong style={{ color: 'rgba(237,235,230,0.7)' }}>Al aceptar, confirmas que:</strong>
+                <br />
+                • Eres mayor de 18 años.
+                <br />
+                • Has leído y entiendes los Términos y el Aviso de Privacidad.
+                <br />
+                • Aceptas el tratamiento de tus datos según lo descrito.
+                <br />
+                • Tona no es responsable del uso que hagas de la IA.
+              </p>
+            </div>
+
+            {/* CASILLA DE ACEPTACIÓN */}
+            <label style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 14,
+              marginBottom: 24,
+              cursor: 'pointer',
+              padding: '14px 18px',
+              borderRadius: 12,
+              background: terminosAceptados ? `${JADE}08` : 'transparent',
+              border: `1px solid ${terminosAceptados ? JADE : 'rgba(237,235,230,0.06)'}`,
+              transition: 'all 0.25s ease',
+            }}>
+              <input
+                type="checkbox"
+                checked={terminosAceptados}
+                onChange={(e) => setTerminosAceptados(e.target.checked)}
+                disabled={aceptandoTerminos}
+                style={{
+                  marginTop: 2,
+                  flexShrink: 0,
+                  accentColor: JADE,
+                  cursor: aceptandoTerminos ? 'default' : 'pointer',
+                  width: 18,
+                  height: 18,
+                }}
+              />
+              <span style={{
+                fontSize: 13.5,
+                lineHeight: 1.6,
+                color: terminosAceptados ? 'rgba(237,235,230,0.85)' : 'rgba(237,235,230,0.5)',
+                fontFamily: FONT,
+                transition: 'color 0.25s ease',
+              }}>
+                He leído y acepto los{' '}
+                <strong style={{ color: JADE }}>Términos y Condiciones</strong>
+                {' '}y el{' '}
+                <strong style={{ color: JADE }}>Aviso de Privacidad</strong>
+                {' '}de Tona.
+              </span>
+            </label>
+
+            {/* BOTONES DE ACCIÓN */}
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button
+                onClick={() => {
+                  setMostrarPanelTerminos(false)
+                  setAccionPendiente(null)
+                  setTerminosAceptados(false)
+                }}
+                disabled={aceptandoTerminos}
+                style={{
+                  flex: 1,
+                  padding: '14px 0',
+                  borderRadius: 30,
+                  background: 'transparent',
+                  border: '1px solid rgba(237,235,230,0.12)',
+                  color: 'rgba(237,235,230,0.4)',
+                  fontFamily: FONT,
+                  fontSize: 13,
+                  cursor: aceptandoTerminos ? 'default' : 'pointer',
+                  transition: 'all 0.2s ease',
+                }}
+                onMouseEnter={(e) => {
+                  if (!aceptandoTerminos) {
+                    e.currentTarget.style.background = 'rgba(237,235,230,0.05)'
+                    e.currentTarget.style.borderColor = 'rgba(237,235,230,0.25)'
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent'
+                  e.currentTarget.style.borderColor = 'rgba(237,235,230,0.12)'
+                }}
+              >
+                Cancelar
+              </button>
+
+              <button
+                onClick={ejecutarAccionPendiente}
+                disabled={!terminosAceptados || aceptandoTerminos}
+                style={{
+                  flex: 1.5,
+                  padding: '14px 0',
+                  borderRadius: 30,
+                  background: terminosAceptados ? JADE : 'rgba(237,235,230,0.06)',
+                  border: 'none',
+                  color: terminosAceptados ? 'var(--obsidiana)' : 'rgba(237,235,230,0.2)',
+                  fontFamily: FONT,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: (terminosAceptados && !aceptandoTerminos) ? 'pointer' : 'default',
+                  transition: 'all 0.25s ease',
+                  opacity: 1,
+                }}
+              >
+                {aceptandoTerminos ? 'Procesando...' : (
+                  accionPendiente === 'login' ? 'Continuar con inicio de sesión' : 'Continuar al pago'
+                )}
+              </button>
+            </div>
+
+            <p style={{
+              textAlign: 'center',
+              fontSize: 11,
+              color: 'rgba(237,235,230,0.15)',
+              fontFamily: FONT,
+              marginTop: 18,
+            }}>
+              Puedes revisar estos documentos en cualquier momento en el pie de página.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

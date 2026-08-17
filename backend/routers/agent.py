@@ -5,13 +5,16 @@ from pydantic import BaseModel
 from typing import Union
 import time, difflib
 from services.auth_utils import decodificar_token, verificar_identidad, obtener_user_id_de_cookie
-from services.gemini import enviar_mensaje, responder_sobre_sitios, extraer_valor_campo, responder_consulta_notion
+from services.gemini import enviar_mensaje, responder_sobre_sitios, extraer_valor_campo, responder_consulta_notion, detectar_idioma
 from services.db import obtener_usuario, guardar_historial, obtener_historial, obtener_tareas, guardar_tareas, obtener_archivo_de_tarea, obtener_cache, guardar_cache
 from services.db import calcular_nivel_uso, registrar_uso_tokens
 from config import settings
 from datetime import datetime, timedelta
 import httpx, io, base64, uuid, json
 import re
+
+# ✅ IMPORTAR _obtener_calendar desde tasks.py
+from routers.tasks import _obtener_calendar
 
 router = APIRouter()
 
@@ -42,7 +45,7 @@ def _detectar_spam(user_id: str, mensaje: str) -> bool:
 # ──────────────────────────────────────────────────────────────────────────────
 
 class MensajeRequest(BaseModel):
-    mensaje: str  # ✅ ELIMINADO: user_id
+    mensaje: str
 
 
 class MensajeResponse(BaseModel):
@@ -101,6 +104,7 @@ OVERRIDES_MODO_UI = {
     "ver_gmail": "completo",
     "buscar_correos_tema": "completo",
     "ver_archivos_drive": "completo",
+    "ver_calendario": "completo",
 }
 
 def calcular_modo_ui(accion: str, resultado: dict) -> str:
@@ -117,6 +121,19 @@ CAMPOS_REQUERIDOS = {
     "consultar_notion":  ["pagina", "consulta"],
     "crear_nota_real":   ["contenido"],
     "registrar_examen":  ["materia", "fecha"],
+    "nuevo_recordatorio": ["texto", "fecha", "hora"],
+}
+
+# 🔄 MAPEO DE ACCIONES EN INGLÉS A ESPAÑOL (para cuando Gemini traduce)
+MAPEO_ACCIONES = {
+    "send_email": "enviar_correo",
+    "create_task": "crear_tarea_real",
+    "create_event": "crear_evento_real",
+    "add_site": "agregar_sitio",
+    "consult_notion": "consultar_notion",
+    "create_note": "crear_nota_real",
+    "register_exam": "registrar_examen",
+    "new_reminder": "nuevo_recordatorio",
 }
 
 PREGUNTAS_CAMPO = {
@@ -434,7 +451,7 @@ def construir_contexto_ultimo_resultado(user_id: str) -> str:
     return "\n".join(lineas)
 
 
-def enriquecer_payload(accion: str, payload, user_id: str):
+async def enriquecer_payload(accion: str, payload, user_id: str):
     tareas = obtener_tareas(user_id)
 
     if accion == "ver_tareas":
@@ -480,7 +497,7 @@ def enriquecer_payload(accion: str, payload, user_id: str):
                 })
             items.sort(key=lambda x: (x.get("fecha") or "9999"))
 
-        return items  # ✅ Esto debe estar dentro del if, no afuera
+        return items
 
     if accion == "ver_horario":
         from services.db import obtener_horario
@@ -507,13 +524,41 @@ def enriquecer_payload(accion: str, payload, user_id: str):
     if accion == "ver_calificaciones":
         return CALS_MOCK
 
+    # ✅ CORREGIDO: ver_calendario ahora obtiene eventos reales
     if accion == "ver_calendario":
-        # ... código existente ...
-        return {
-            "mes": payload.get("mes", mes_actual) if isinstance(payload, dict) else mes_actual,
-            "año": payload.get("año", año_actual) if isinstance(payload, dict) else año_actual,
-            "eventos": eventos,
-        }
+        try:
+            from services.tiempo import hoy_mx
+            hoy = hoy_mx()
+            mes_actual = hoy.month
+            año_actual = hoy.year
+            
+            # Obtener eventos reales del calendario
+            eventos = await _obtener_calendar(user_id)
+            
+            if not eventos:
+                return {
+                    "mes": payload.get("mes", mes_actual) if isinstance(payload, dict) else mes_actual,
+                    "año": payload.get("año", año_actual) if isinstance(payload, dict) else año_actual,
+                    "eventos": [],
+                    "mensaje": "No tienes eventos en tu calendario para los próximos días."
+                }
+            
+            return {
+                "mes": payload.get("mes", mes_actual) if isinstance(payload, dict) else mes_actual,
+                "año": payload.get("año", año_actual) if isinstance(payload, dict) else año_actual,
+                "eventos": eventos,
+                "mensaje": f"Tienes {len(eventos)} eventos en tu calendario."
+            }
+        except Exception as e:
+            print(f"❌ Error en ver_calendario: {e}")
+            import traceback
+            traceback.print_exc()
+            return {
+                "mes": datetime.now().month,
+                "año": datetime.now().year,
+                "eventos": [],
+                "mensaje": "No pude obtener tu calendario. ¿Has autorizado el acceso a Google Calendar?"
+            }
 
     if accion == "crear_doc_con_titulo":
         return payload
@@ -720,7 +765,7 @@ async def obtener_archivos_drive_real(user_id: str, query: str = ""):
 async def chat(
     request_http: Request,
     request: MensajeRequest,
-    user_id: str = Depends(verificar_identidad)  # ✅ OBTENIDO DE LA COOKIE
+    user_id: str = Depends(verificar_identidad)
 ):
     """Endpoint principal de chat. El user_id se obtiene de la cookie."""
     
@@ -778,19 +823,24 @@ async def chat(
                 accion, payload, mensaje, flujo_activo = "flash", {"mensaje": "Cancelado.", "tipo": "info"}, "Listo, cancelé eso.", False
             else:
                 flujo["campos"][campo] = extraccion.get("valor", request.mensaje)
-                faltantes = [c for c in CAMPOS_REQUERIDOS[flujo["accion_objetivo"]] if not flujo["campos"].get(c)]
+                
+                # ✅ FIX: Mapear acción en inglés a español si es necesario
+                accion_original = flujo["accion_objetivo"]
+                accion_espanol = MAPEO_ACCIONES.get(accion_original, accion_original)
+                
+                faltantes = [c for c in CAMPOS_REQUERIDOS[accion_espanol] if not flujo["campos"].get(c)]
 
                 if faltantes:
                     siguiente = faltantes[0]
                     flujo["campo_pendiente"] = siguiente
                     guardar_flujo(user_id, flujo)
                     accion = "solicitar_dato"
-                    payload = {"campo": siguiente, "accion_objetivo": flujo["accion_objetivo"], "contexto": flujo["campos"]}
-                    mensaje = PREGUNTAS_CAMPO.get((flujo["accion_objetivo"], siguiente), f"¿Cuál es el {siguiente}?")
+                    payload = {"campo": siguiente, "accion_objetivo": accion_espanol, "contexto": flujo["campos"]}
+                    mensaje = PREGUNTAS_CAMPO.get((accion_espanol, siguiente), f"¿Cuál es el {siguiente}?")
                     flujo_activo = True
                 else:
                     limpiar_flujo(user_id)
-                    if flujo["accion_objetivo"] == "consultar_notion":
+                    if accion_espanol == "consultar_notion":
                         respuesta = await responder_consulta_notion(
                             user_id,
                             flujo["campos"].get("pagina", ""),
@@ -798,7 +848,7 @@ async def chat(
                         )
                         accion, payload, mensaje = "flash", {"mensaje": respuesta, "tipo": "info"}, respuesta
                     else:
-                        dato_creado = await ejecutar_accion_backend(flujo["accion_objetivo"], flujo["campos"], user_id)
+                        dato_creado = await ejecutar_accion_backend(accion_espanol, flujo["campos"], user_id)
                         if dato_creado:
                             accion, payload, mensaje = "flash", {"mensaje": "Listo, guardado.", "tipo": "exito"}, "Listo, guardado."
                         else:
@@ -834,8 +884,6 @@ async def chat(
                 accion_directa = resultado_sugerencia["accion"]
                 payload_directo = resultado_sugerencia["payload"]
                 mensaje_resp = resultado_sugerencia["mensaje"]
-
-            
 
             elif accion_directa == "entregar_tarea_real":   
                 from routers.tasks import entregar_tarea_real, EntregarTareaRequest
@@ -918,19 +966,44 @@ async def chat(
     historial_raw_completo = obtener_historial(user_id)
     historial_raw = historial_raw_completo[-20:] if nivel < 1 else historial_raw_completo[-8:]
 
+    # ──────────────────────────────────────────────────────────────────────────
+    # 🌐 DETECTAR IDIOMA DEL MENSAJE DEL USUARIO (SOLO el mensaje, no el contexto)
+    # ──────────────────────────────────────────────────────────────────────────
+    idioma_usuario = detectar_idioma(request.mensaje)
+    print(f"🌐 Idioma detectado del usuario: {idioma_usuario}")
+
     contexto_base = construir_contexto(user_id)
-    contexto_tareas = construir_contexto_tareas_eventos(user_id)  # nunca se recorta, es información crítica
+    contexto_tareas = construir_contexto_tareas_eventos(user_id)
     contexto_sitios = construir_contexto_sitios(user_id) if nivel == 0 else "SITIOS MONITOREADOS: (omitido temporalmente por uso alto este mes)"
     contexto_notion = construir_contexto_notion(user_id)
     contexto_entregas = construir_contexto_sugerencias_entrega(user_id) if nivel == 0 else ""
     contexto_resultado = construir_contexto_ultimo_resultado(user_id)
     contexto_examenes = construir_contexto_examenes(user_id)
-    
 
     mensaje_con_contexto = (
         f"{contexto_base}\n\n{contexto_tareas}\n\n{contexto_sitios}\n\n{contexto_notion}\n\n"
         f"{contexto_entregas}\n\n{contexto_examenes}\n\n{contexto_resultado}\n\nMensaje del usuario: {request.mensaje}"
     )
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # 🌐 FORZAR IDIOMA EN EL PROMPT
+    # ──────────────────────────────────────────────────────────────────────────
+    if idioma_usuario == "en":
+        mensaje_con_contexto = f"""
+[LANGUAGE INSTRUCTION - CRITICAL]
+The user wrote in ENGLISH. You MUST respond in ENGLISH. Do NOT respond in Spanish.
+Your entire response including JSON keys, values, and the "mensaje" field must be in English.
+Do not switch to Spanish at any point in the response.
+
+{mensaje_con_contexto}
+"""
+    else:
+        mensaje_con_contexto = f"""
+[INSTRUCCIÓN DE IDIOMA - CRÍTICA]
+El usuario escribió en ESPAÑOL. Debes responder en ESPAÑOL.
+
+{mensaje_con_contexto}
+"""
 
     resultado = await enviar_mensaje(historial_raw, mensaje_con_contexto, nivel=nivel)
     print(f"🎯 Gemini respondió: {resultado}")
@@ -1195,9 +1268,6 @@ async def chat(
         fuente_filtro = payload.get("fuente") if isinstance(payload, dict) else None
         contiene_palabra_tarea = "tarea" in request.mensaje.lower()
 
-        # Decisión determinística, no depende de que Gemini lo interprete bien:
-        # solo se combinan exámenes si el usuario NO dijo "tarea" explícitamente
-        # y no pidió una fuente específica.
         incluir_examenes = (not contiene_palabra_tarea) and not fuente_filtro
 
         tareas_todas = obtener_tareas(user_id)
@@ -1235,25 +1305,57 @@ async def chat(
 
         payload = items
 
-        # El mensaje hablado también se arma aquí, sin depender del texto libre de
-        # Gemini para esta acción puntual — es una lista de datos, no algo creativo.
-        if not pendientes and not examenes_incluidos:
-            if fuente_filtro:
-                mensaje = f"No tienes tareas pendientes de {fuente_filtro} en este momento."
+        # ✅ USAR EL MENSAJE DE GEMINI SI EL USUARIO HABLA INGLÉS
+        # Si el usuario habla inglés, mantener el mensaje que Gemini generó
+        if idioma_usuario != "en":
+            # Solo sobrescribir si está en español
+            if not pendientes and not examenes_incluidos:
+                if fuente_filtro:
+                    mensaje = f"No tienes tareas pendientes de {fuente_filtro} en este momento."
+                else:
+                    mensaje = "No tienes tareas pendientes en este momento." if not incluir_examenes else "No tienes pendientes por ahora."
             else:
-                mensaje = "No tienes tareas pendientes en este momento." if not incluir_examenes else "No tienes pendientes por ahora."
-        else:
-            partes = [t.get("titulo") for t in pendientes[:3]]
-            if incluir_examenes and examenes_incluidos:
-                partes += [f"tu examen de {e['materia']}" for e in examenes_incluidos[:2]]
-                total = len(pendientes) + len(examenes_incluidos)
-                mensaje = f"Tienes {total} pendiente(s): " + ", ".join(partes) + "."
-            else:
-                mensaje = f"Tienes {len(pendientes)} tarea(s) pendiente(s): " + ", ".join(partes) + "."
+                partes = [t.get("titulo") for t in pendientes[:3]]
+                if incluir_examenes and examenes_incluidos:
+                    partes += [f"tu examen de {e['materia']}" for e in examenes_incluidos[:2]]
+                    total = len(pendientes) + len(examenes_incluidos)
+                    mensaje = f"Tienes {total} pendiente(s): " + ", ".join(partes) + "."
+                else:
+                    mensaje = f"Tienes {len(pendientes)} tarea(s) pendiente(s): " + ", ".join(partes) + "."
+        # Si es inglés, mantener el mensaje de Gemini (no hacer nada)
+
         flujo_activo = False
 
+    # ✅ Manejar ver_calendario correctamente
+    elif accion == "ver_calendario":
+        try:
+            # Enriquecer payload con eventos reales
+            payload = await enriquecer_payload(accion, payload, user_id)
+            if isinstance(payload, dict) and payload.get("eventos") is not None:
+                eventos = payload.get("eventos", [])
+                if not mensaje:
+                    if eventos:
+                        mensaje = f"Tienes {len(eventos)} eventos en tu calendario."
+                    else:
+                        mensaje = "No tienes eventos en tu calendario para los próximos días."
+                flujo_activo = False
+            else:
+                # Si falló, mostrar mensaje de error
+                accion = "flash"
+                mensaje_error = payload.get("mensaje", "No pude obtener tu calendario")
+                payload = {"mensaje": mensaje_error, "tipo": "error"}
+                mensaje = mensaje_error
+        except Exception as e:
+            print(f"❌ Error en ver_calendario: {e}")
+            import traceback
+            traceback.print_exc()
+            accion = "flash"
+            payload = {"mensaje": "Error al obtener el calendario. ¿Has autorizado el acceso a Google Calendar?", "tipo": "error"}
+            mensaje = "Error al obtener el calendario."
+            flujo_activo = False
+
     else:
-        payload = enriquecer_payload(accion, payload, user_id)
+        payload = await enriquecer_payload(accion, payload, user_id)
         if accion == "ver_calificaciones":
             mensaje = "Aquí tienes un ejemplo de cómo se verán tus calificaciones — por ahora es una vista de muestra, la integración real llega pronto."
 
@@ -1422,22 +1524,53 @@ async def limpiar_historial(
 async def texto_a_voz(
     request: dict,
     http_request: Request,
-    user_id: str = Depends(verificar_identidad)  # ✅ Verifica sesión
+    user_id: str = Depends(verificar_identidad)
 ):
     texto = request.get("texto", "")
     if not texto:
         raise HTTPException(status_code=400, detail="Texto vacío")
     
+    # 🔍 DETECTAR IDIOMA DEL TEXTO
+    from services.gemini import detectar_idioma
+    idioma = detectar_idioma(texto)
+    print(f"🔊 TTS - Idioma detectado: {idioma} para texto: '{texto[:50]}...'")
+    
+    # Configurar voz según el idioma
+    if idioma == "en":
+        voice_config = {
+            "languageCode": "en-US",
+            "name": "en-US-Neural2-J",
+            "ssmlGender": "MALE"
+        }
+        speaking_rate = 0.95
+        pitch = 0.0
+    else:
+        voice_config = {
+            "languageCode": "es-US",
+            "name": "es-US-Neural2-C",
+            "ssmlGender": "MALE"
+        }
+        speaking_rate = 0.92
+        pitch = -1.5
+    
     url = f"https://texttospeech.googleapis.com/v1/text:synthesize?key={settings.GOOGLE_TTS_KEY}"
     payload = {
         "input": {"text": texto},
-        "voice": {"languageCode": "es-US", "name": "es-US-Neural2-C", "ssmlGender": "MALE"},
-        "audioConfig": {"audioEncoding": "MP3", "speakingRate": 0.92, "pitch": -1.5},
+        "voice": voice_config,
+        "audioConfig": {
+            "audioEncoding": "MP3",
+            "speakingRate": speaking_rate,
+            "pitch": pitch
+        },
     }
+    
     async with httpx.AsyncClient() as client:
         resp = await client.post(url, json=payload)
+    
     if resp.status_code != 200:
+        print(f"❌ Error TTS: {resp.status_code} - {resp.text}")
         raise HTTPException(status_code=500, detail=f"Error TTS: {resp.text}")
+    
     audio_bytes = base64.b64decode(resp.json().get("audioContent", ""))
     return StreamingResponse(
         io.BytesIO(audio_bytes),
@@ -1504,6 +1637,24 @@ async def obtener_saludo(
 
     guardar_config(user_id, {"ultimo_saludo_ts": ahora.isoformat()})
     return {"saludo": saludo, "es_nuevo": True, "tipo": tipo_saludo}
+
+
+@router.delete("/account")
+async def eliminar_cuenta(user_id: str = Depends(verificar_identidad)):
+    """
+    Elimina la cuenta del usuario y todos sus datos asociados.
+    Esta acción es irreversible.
+    """
+    from services.db import eliminar_todos_los_datos_usuario
+    from fastapi.responses import JSONResponse
+    
+    resultado = eliminar_todos_los_datos_usuario(user_id)
+
+    response = JSONResponse(content=resultado)
+    # ✅ Usa el mismo nombre que en logout
+    response.delete_cookie("tona_session", path="/")
+    return response
+
 
 @router.get("/actividad-semana")
 async def obtener_actividad_semana_endpoint(user_id: str = Depends(verificar_identidad)):

@@ -1,8 +1,6 @@
 import { useState } from "react";
 import { T } from "../../tokens";
 
-
-
 const API = import.meta.env.VITE_API_URL;
 
 export function PanelArchivosSala({ codigo, userId, archivos, onArchivoCompartido, onPreguntaTona }) {
@@ -17,7 +15,7 @@ export function PanelArchivosSala({ codigo, userId, archivos, onArchivoCompartid
     setCargando(true);
     setMostrarLista(true);
     try {
-      const resp = await fetch(`${API}/docs/lista/${userId}`, { credentials: "include" });
+      const resp = await fetch(`${API}/docs/lista`, { credentials: "include" })
       if (resp.ok) {
         const data = await resp.json();
         setDocsPropios(data.docs || []);
@@ -30,36 +28,35 @@ export function PanelArchivosSala({ codigo, userId, archivos, onArchivoCompartid
   }
 
   async function compartir(doc) {
-  if (compartiendoId) return;
-  setCompartiendoId(doc.id);
-  try {
-    const resp = await fetch(`${API}/colaborar/${codigo}/compartir`, {
-  method: "POST",
-  credentials: "include",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ user_id: userId, doc_id: doc.id, titulo: doc.titulo }),
-});
-    if (resp.ok) {
-      setMostrarLista(false);
-      // Ya no llamamos onArchivoCompartido aquí — el WebSocket lo agrega para todos, incluido quien comparte
+    if (compartiendoId) return;
+    setCompartiendoId(doc.id);
+    try {
+      const resp = await fetch(`${API}/colaborar/${codigo}/compartir`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ doc_id: doc.id, titulo: doc.titulo }),
+      });
+      if (resp.ok) {
+        setMostrarLista(false);
+      }
+    } catch (e) {
+      console.error("Error compartiendo:", e);
+    } finally {
+      setCompartiendoId(null);
     }
-  } catch (e) {
-    console.error("Error compartiendo:", e);
-  } finally {
-    setCompartiendoId(null);
   }
-}
 
   async function preguntarATona() {
     if (!pregunta.trim() || enviandoPregunta) return;
     setEnviandoPregunta(true);
     try {
       await fetch(`${API}/colaborar/${codigo}/preguntar`, {
-  method: "POST",
-  credentials: "include",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ user_id: userId, pregunta: pregunta.trim() }),
-});
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pregunta: pregunta.trim() }),
+      });
       onPreguntaTona?.();
       setPregunta("");
     } catch (e) {
@@ -139,21 +136,21 @@ export function PanelArchivosSala({ codigo, userId, archivos, onArchivoCompartid
               <div style={{ fontSize: 11, color: "rgba(237,235,230,0.3)", textAlign: "center" }}>No tienes documentos</div>
             )}
             {!cargando && docsPropios.map((doc) => (
-  <div
-    key={doc.id}
-    onClick={() => compartir(doc)}
-    style={{
-      padding: "7px 8px", fontSize: 12,
-      color: compartiendoId === doc.id ? "rgba(237,235,230,0.25)" : "rgba(237,235,230,0.65)",
-      cursor: compartiendoId ? "wait" : "pointer",
-      borderRadius: 5, pointerEvents: compartiendoId ? "none" : "auto",
-    }}
-    onMouseEnter={(e) => { if (!compartiendoId) e.currentTarget.style.background = `${T.copal}10`; }}
-    onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
-  >
-    {doc.titulo} {compartiendoId === doc.id && "· compartiendo..."}
-  </div>
-))}
+              <div
+                key={doc.id}
+                onClick={() => compartir(doc)}
+                style={{
+                  padding: "7px 8px", fontSize: 12,
+                  color: compartiendoId === doc.id ? "rgba(237,235,230,0.25)" : "rgba(237,235,230,0.65)",
+                  cursor: compartiendoId ? "wait" : "pointer",
+                  borderRadius: 5, pointerEvents: compartiendoId ? "none" : "auto",
+                }}
+                onMouseEnter={(e) => { if (!compartiendoId) e.currentTarget.style.background = `${T.copal}10`; }}
+                onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+              >
+                {doc.titulo} {compartiendoId === doc.id && "· compartiendo..."}
+              </div>
+            ))}
             <button
               onClick={() => setMostrarLista(false)}
               style={{

@@ -92,15 +92,24 @@ export default function Colaborar() {
       const resp = await fetch(`${API}/colaborar/ws-token`, { credentials: "include" });
       const data = await resp.json();
       token = data.token;
+      console.log("🔑 Token WS obtenido:", token);
     } catch (e) {
       console.error("Error obteniendo ws-token:", e);
       return;
     }
 
-    const ws = new WebSocket(
-      `/api/colaborar/ws/${codigo}/${userId}?token=${token}`
-    );
+    // ✅ CORREGIDO: URL completa con protocolo correcto
+    const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const wsHost = window.location.host;
+    const wsUrl = `${wsProtocol}//${wsHost}/api/colaborar/ws/${codigo}/${userId}?token=${token}`;
+    
+    console.log("🔗 Conectando WebSocket a:", wsUrl);
+    const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
+
+    ws.onopen = () => {
+      console.log("✅ WebSocket conectado");
+    };
 
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
@@ -126,7 +135,12 @@ export default function Colaborar() {
     };
 
     ws.onclose = () => {
+      console.log("❌ WebSocket cerrado");
       wsRef.current = null;
+    };
+
+    ws.onerror = (error) => {
+      console.error("⚠️ Error en WebSocket:", error);
     };
   }
 

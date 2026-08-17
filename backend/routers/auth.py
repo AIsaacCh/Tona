@@ -9,6 +9,7 @@ import secrets
 from datetime import datetime, timedelta
 from services.db import guardar_usuario, obtener_usuario_por_email, obtener_usuario, guardar_oauth_state, obtener_y_borrar_oauth_state
 from config import settings
+from pydantic import BaseModel
 
 router = APIRouter()
 
@@ -24,7 +25,7 @@ SCOPES = [
     "https://www.googleapis.com/auth/classroom.coursework.me",
     "https://www.googleapis.com/auth/classroom.coursework.me.readonly",
     "https://www.googleapis.com/auth/classroom.student-submissions.me.readonly",
-    "https://www.googleapis.com/auth/drive",
+    "https://www.googleapis.com/auth/drive.file",
     "https://www.googleapis.com/auth/documents",
     "https://www.googleapis.com/auth/gmail.send",
     "https://www.googleapis.com/auth/gmail.readonly",
@@ -111,13 +112,9 @@ async def google_callback(code: str, state: str):
             'refresh_token': credentials.refresh_token,
             'expires_at': expires_at,
             'tier': 'estudiante',
+            # ✅ REGISTRO DE ACEPTACIÓN DE TÉRMINOS
+            'terminos_aceptados': None,  # Se llena cuando el usuario acepta
         })
-
-    # Reclamar suscripción pendiente
-    try:
-        reclamar_suscripcion_pendiente(user_id, email)
-    except Exception as e:
-        print(f"⚠️ Error al reclamar suscripción pendiente: {e}")
 
     suscripcion = obtener_suscripcion(user_id)
     tiene_acceso = suscripcion and suscripcion.get("status") in ("active", "trialing")
@@ -131,7 +128,42 @@ async def google_callback(code: str, state: str):
     return establecer_cookie_sesion_response
 
 
-# ✅ ELIMINADO: user_id de la URL
+# ✅ ENDPOINT PARA REGISTRAR ACEPTACIÓN DE TÉRMINOS
+class AceptarTerminosRequest(BaseModel):
+    version: str
+    fecha: str
+
+
+@router.post("/aceptar-terminos")
+async def aceptar_terminos(
+    body: AceptarTerminosRequest,
+    request: Request,
+    user_id: str = Depends(verificar_identidad)
+):
+    """Registra la aceptación de términos y condiciones por parte del usuario."""
+    from services.db import guardar_usuario, obtener_usuario
+    
+    usuario = obtener_usuario(user_id)
+    if not usuario:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    
+    # Registrar la aceptación
+    usuario["terminos_aceptados"] = {
+        "version": body.version,
+        "fecha": body.fecha,
+        "ip": request.client.host if request.client else None,
+        "user_agent": request.headers.get("user-agent", ""),
+    }
+    
+    guardar_usuario(user_id, usuario)
+    
+    return {
+        "aceptado": True,
+        "version": body.version,
+        "fecha": body.fecha,
+    }
+
+
 @router.get("/me")
 async def get_me(user_id: str = Depends(verificar_identidad)):
     """Obtiene información del usuario autenticado."""
@@ -144,10 +176,10 @@ async def get_me(user_id: str = Depends(verificar_identidad)):
         "name": usuario.get("name"),
         "picture": usuario.get("picture"),
         "tier": usuario.get("tier", "estudiante"),
+        "terminos_aceptados": usuario.get("terminos_aceptados"),
     }
 
 
-# ✅ ELIMINADO: user_id de la URL
 @router.get("/check_scopes")
 async def check_scopes(user_id: str = Depends(verificar_identidad)):
     """Verifica qué scopes tiene el token del usuario."""
@@ -171,9 +203,7 @@ async def check_scopes(user_id: str = Depends(verificar_identidad)):
                 scopes = data.get("scope", "").split(" ")
 
                 has_drive = any(s in scopes for s in [
-                    "https://www.googleapis.com/auth/drive",
-                    "https://www.googleapis.com/auth/drive.file",
-                    "https://www.googleapis.com/auth/drive.readonly"
+                  "https://www.googleapis.com/auth/drive.file",
                 ])
 
                 has_docs = any(s in scopes for s in [
@@ -215,7 +245,6 @@ async def check_scopes(user_id: str = Depends(verificar_identidad)):
         }
 
 
-# ✅ ELIMINADO: user_id de la URL
 @router.get("/logout")
 async def logout(user_id: str = Depends(verificar_identidad)):
     usuario = obtener_usuario(user_id)
@@ -245,7 +274,6 @@ async def whoami(request: Request):
     }
 
 
-# ✅ ELIMINADO: user_id de la URL
 @router.post("/revocar")
 async def revocar_acceso(user_id: str = Depends(verificar_identidad)):
     """Revoca el acceso de Tona a la cuenta de Google del usuario."""

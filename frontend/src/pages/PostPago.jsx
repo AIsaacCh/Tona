@@ -32,6 +32,11 @@ export default function PostPago() {
         >
           Continuar con Google
         </button>
+        <p style={{ fontSize: 11, color: "rgba(237,235,230,0.3)", marginTop: 16 }}>
+  Al continuar, aceptas nuestros{" "}
+  <a href="/legal/terminos" target="_blank" style={{ color: T.jade }}>Términos</a> y{" "}
+  <a href="/legal/privacidad" target="_blank" style={{ color: T.jade }}>Aviso de Privacidad</a>.
+</p>
       </div>
     </div>
   )

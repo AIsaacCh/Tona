@@ -7,7 +7,7 @@ import Bienvenida from './pages/Bienvenida'
 import EsferaFlotante from './components/EsferaFlotante'
 import PostPago from './pages/PostPago'
 import SalaEstudio from './pages/SalaEstudio'
-
+import Legal from './pages/Legal'
 
 function App() {
   return (
@@ -21,6 +21,7 @@ function App() {
         <Route path="/bienvenida" element={<Bienvenida />} />
         <Route path="/post-pago" element={<PostPago />} />
         <Route path="/estudio/:sesionId" element={<SalaEstudio />} />
+        <Route path="/legal/:tipo" element={<Legal />} />
       </Routes>
     </BrowserRouter>
   )

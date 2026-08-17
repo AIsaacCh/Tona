@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import anime from "animejs";
 import { T } from "../tokens";
 import { agenteBus } from "./AgenteTona";
+import PickerDriveButton from "./PickerDriveButton";
 
 const API = import.meta.env.VITE_API_URL;
 
@@ -426,22 +427,27 @@ export default function PanelDocs({ userId, onCerrar }) {
         <span style={{ fontSize: 11, color: `${T.turquesa}88`, fontFamily: T.mono, letterSpacing: "1px" }}>
           {docs.length} DOCUMENTOS
         </span>
-        <button
-          onClick={() => setCreandoNuevo(true)}
-          style={{
-            background: `${T.jade}15`,
-            border: `1px solid ${T.jade}35`,
-            borderRadius: 8,
-            padding: "6px 14px",
-            color: T.jade,
-            fontSize: 11,
-            fontFamily: T.mono,
-            cursor: "pointer",
-            letterSpacing: "0.5px",
-          }}
-        >
-          + nuevo doc
-        </button>
+        
+        <div style={{ display: "flex", gap: 8 }}>
+          <PickerDriveButton onVinculado={() => cargarDocs()} />
+          <button
+            onClick={() => setCreandoNuevo(true)}
+            style={{
+              background: `${T.jade}15`,
+              border: `1px solid ${T.jade}35`,
+              borderRadius: 8,
+              padding: "6px 14px",
+              color: T.jade,
+              fontSize: 11,
+              fontFamily: T.mono,
+              cursor: "pointer",
+              letterSpacing: "0.5px",
+              whiteSpace: "nowrap",
+            }}
+          >
+            + nuevo doc
+          </button>
+        </div>
       </div>
 
       {creandoNuevo && (

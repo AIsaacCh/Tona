@@ -36,46 +36,36 @@ async def get_headers(user_id: str) -> dict:
 
 # ── Listar documentos ─────────────────────────────────────────────────────────
 
-
 @router.get("/lista")
 async def listar_docs(user_id: str = Depends(verificar_identidad)):
-    try:
-        headers = await get_headers(user_id)
-
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                "https://www.googleapis.com/drive/v3/files",
-                headers=headers,
-                params={
-                    "q":        "mimeType='application/vnd.google-apps.document' and trashed=false",
-                    "pageSize": 20,
-                    "orderBy":  "modifiedTime desc",
-                    "fields":   "files(id,name,modifiedTime,webViewLink)",
-                },
-            )
-
-        if resp.status_code != 200:
-            print(f"❌ Error listando docs: {resp.status_code} - {resp.text}")
-            return {"docs": []}
-
-        docs = []
-        for f in resp.json().get("files", []):
-            docs.append({
-                "id":         f["id"],
-                "titulo":     f.get("name", "Sin título"),
-                "modificado": f.get("modifiedTime", "")[:10],
-                "link":       f.get("webViewLink", ""),
-            })
-
-        return {"docs": docs}
-
-    except Exception as e:
-        print(f"Error listando docs: {e}")
+    from services.db import obtener_archivos_vinculados
+    vinculados = [
+        v for v in obtener_archivos_vinculados(user_id)
+        if v.get("mime_type") == "application/vnd.google-apps.document"
+    ]
+    if not vinculados:
         return {"docs": []}
+
+    headers = await get_headers(user_id)
+    docs = []
+    async with httpx.AsyncClient() as client:
+        for v in vinculados:
+            resp = await client.get(
+                f"https://www.googleapis.com/drive/v3/files/{v['drive_file_id']}",
+                headers=headers,
+                params={"fields": "id,name,modifiedTime,webViewLink"},
+            )
+            if resp.status_code == 200:
+                f = resp.json()
+                docs.append({
+                    "id": f["id"], "titulo": f.get("name", "Sin título"),
+                    "modificado": f.get("modifiedTime", "")[:10],
+                    "link": f.get("webViewLink", ""),
+                })
+    return {"docs": docs}
 
 
 # ── Buscar documento por nombre ──────────────────────────────────────────────
-
 
 @router.get("/buscar")
 async def buscar_doc_por_nombre(
@@ -155,6 +145,44 @@ async def leer_doc(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ── Leer contenido de un doc con user_id explícito (para usar desde otros routers) ──
+
+async def leer_doc_con_usuario(doc_id: str, user_id: str):
+    """
+    Versión de leer_doc que acepta user_id explícitamente.
+    Esta función está diseñada para ser llamada desde otros routers
+    (ej: colaborar.py) donde el user_id se obtiene de la cookie.
+    """
+    try:
+        headers = await get_headers(user_id)
+
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"https://docs.googleapis.com/v1/documents/{doc_id}",
+                headers=headers,
+            )
+
+        if resp.status_code != 200:
+            raise HTTPException(status_code=404, detail="Documento no encontrado")
+
+        doc = resp.json()
+        titulo = doc.get("title", "Sin título")
+        texto = _extraer_texto(doc)
+
+        return {
+            "doc_id":   doc_id,
+            "titulo":   titulo,
+            "contenido": texto,
+            "revision": doc.get("revisionId", ""),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error leyendo doc: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 def _extraer_texto(doc: dict) -> str:
     """Extrae texto plano de la estructura de Google Docs."""
     texto = []
@@ -173,7 +201,6 @@ def _extraer_texto(doc: dict) -> str:
 
 
 # ── Crear nuevo documento ─────────────────────────────────────────────────────
-
 
 @router.post("/crear")
 async def crear_doc(
@@ -203,6 +230,16 @@ async def crear_doc(
         doc_id = resp_crear.json().get("documentId")
         print(f"✅ Documento creado con ID: {doc_id}")
 
+        # 👇 VINCULAR ARCHIVO EN LA BASE DE DATOS
+        from services.db import vincular_archivo_drive
+        vincular_archivo_drive(
+            user_id, 
+            doc_id, 
+            body.titulo, 
+            "application/vnd.google-apps.document"
+        )
+        print(f"🔗 Archivo vinculado en DB: {doc_id}")
+
         if body.contenido and body.contenido.strip():
             print(f"📝 Insertando contenido en {doc_id}")
             await _insertar_texto(headers, doc_id, body.contenido)
@@ -224,7 +261,6 @@ async def crear_doc(
 
 
 # ── Actualizar contenido de un doc ────────────────────────────────────────────
-
 
 @router.post("/actualizar")
 async def actualizar_doc(
@@ -357,7 +393,6 @@ class CrearArchivoTareaRequest(BaseModel):
     curso_id: str
 
 
-
 @router.post("/crear_para_tarea")
 async def crear_doc_para_tarea(
     body: CrearArchivoTareaRequest,
@@ -391,7 +426,6 @@ async def crear_doc_para_tarea(
 
 
 # ── Exportar como .docx ───────────────────────────────────────────────────────
-
 
 @router.get("/exportar/{doc_id}")
 async def exportar_docx(
@@ -428,7 +462,6 @@ async def exportar_docx(
 
 
 # ── Sugerencias de contenido con IA ──────────────────────────────────────────
-
 
 @router.post("/sugerir")
 async def sugerir_contenido(
@@ -504,7 +537,6 @@ Usa español formal y académico. Máximo 300 palabras."""
 
 # ── Eliminar documento ─────────────────────────────────────────────────────────
 
-
 @router.delete("/eliminar/{doc_id}")
 async def eliminar_doc(
     doc_id: str,
@@ -543,7 +575,6 @@ async def eliminar_doc(
 
 # ── Eliminar documento permanentemente (opcional) ─────────────────────────────
 
-
 @router.delete("/eliminar/permanente/{doc_id}")
 async def eliminar_doc_permanente(
     doc_id: str,
@@ -581,7 +612,6 @@ async def eliminar_doc_permanente(
 
 
 # ── Restaurar documento de la papelera ────────────────────────────────────────
-
 
 @router.post("/restaurar/{doc_id}")
 async def restaurar_doc(

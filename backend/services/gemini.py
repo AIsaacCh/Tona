@@ -15,15 +15,31 @@ Eres un agente académico personal . Tu nombre lo define el usuario (viene en el
 El nombre del usuario también viene en el contexto como "Nombre preferido".
 
 
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🌐 IDIOMA DE RESPUESTA — REGLA ESTRICTÍSIMA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+RESPONDE SIEMPRE EN EL MISMO IDIOMA EN QUE EL USUARIO TE ESCRIBIÓ.
 
+- Si el usuario escribe en español → responde en español (mexicano natural).
+- Si el usuario escribe en inglés → responde en inglés (natural, no traducido literalmente).
+- Si el usuario escribe en otro idioma → responde en ese mismo idioma si lo hablas, o en inglés si no.
+
+NUNCA cambies de idioma en medio de una conversación. Si el usuario inició en español, toda la conversación sigue en español. Si inicia en inglés, toda la conversación sigue en inglés.
+
+**ESTA ES LA REGLA MÁS IMPORTANTE. EL IDIOMA DE LA RESPUESTA DEBE COINCIDIR CON EL IDIOMA DEL MENSAJE DEL USUARIO. NO RESPONDAS EN ESPAÑOL SI EL USUARIO ESCRIBIÓ EN INGLÉS.**
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 PERSONALIDAD Y TONO:
 - Sereno, ecuánime, pero con calidez natural
 - Cuando el usuario saluda o hace preguntas casuales, responde de forma fluida y conversacional
 - Usas el nombre del usuario cuando es natural hacerlo
 - Evitas respuestas robóticas o demasiado formales en conversación casual
 - Para datos académicos eres preciso y conciso
-- NUNCA dices "Examen" sin acento cuando debería tener: siempre "Examen", "también", "está", "qué", "cómo", etc.
-- Usas el español mexicano natural
+- NUNCA dices "Examen" sin acento cuando debería tener: siempre "Examen", "también", "está", "qué", "cómo", etc. (ESTA REGLA SOLO APLICA EN ESPAÑOL)
+- Usas el español mexicano natural (cuando respondes en español)
 
 ADAPTACIÓN AL TONO CONFIGURADO POR EL USUARIO:
 El contexto trae "Tono de interacción configurado". Ajusta tu forma de hablar según ese valor:
@@ -502,6 +518,161 @@ EJEMPLOS DE ELIMINACIÓN (CORRECTOS):
 _cache_name = None
 _cache_expira = None
 
+
+# gemini.py - reemplazar o modificar detectar_idioma
+
+# Cache para evitar llamar a Gemini repetidamente por el mismo texto
+_idioma_cache = {}
+
+def detectar_idioma(texto: str) -> str:
+    """
+    Detecta si el texto está en español o inglés usando método rápido.
+    """
+    if not texto or not texto.strip():
+        return "es"
+    
+    texto_lower = texto.lower()
+    
+    # Palabras clave en inglés
+    en_palabras = {
+        "the", "a", "an", "and", "or", "of", "in", "for", "to", "with", "on", "at",
+        "from", "by", "about", "without", "between", "through", "hello", "hi", "hey",
+        "thanks", "thank", "please", "goodbye", "how", "what", "where", "when", "why",
+        "who", "which", "are", "you", "your", "my", "me", "i", "am", "is", "was", "were",
+        "show", "tell", "give", "make", "create", "open", "close", "scheduler", "schedule",
+        "calendar", "task", "homework", "class", "school", "exam", "test", "quiz"
+    }
+    
+    # Palabras clave en español
+    es_palabras = {
+        "el", "la", "los", "las", "un", "una", "y", "o", "de", "en", "para", "por",
+        "como", "qué", "cómo", "pero", "sin", "sobre", "entre", "con", "porque",
+        "cuál", "cuando", "donde", "muy", "tan", "hola", "buenos", "buenas", "gracias",
+        "adiós", "ciérralo", "muéstrame", "dime", "tengo", "hacer", "ver", "horario",
+        "tareas", "calendario", "examen", "clase", "escuela"
+    }
+    
+    # Contar ocurrencias (con espacios alrededor para palabras exactas)
+    en_score = sum(1 for p in en_palabras if f" {p} " in f" {texto_lower} ")
+    es_score = sum(1 for p in es_palabras if f" {p} " in f" {texto_lower} ")
+    
+    # Para textos cortos
+    if len(texto) < 30:
+        if any(g in texto_lower for g in ["hi", "hey", "hello", "how are", "show me", "what is", "my", "your", "are you"]):
+            return "en"
+        if any(g in texto_lower for g in ["hola", "buenos", "buenas", "qué onda"]):
+            return "es"
+    
+    # Decisión final
+    if en_score > es_score:
+        return "en"
+    elif es_score > en_score:
+        return "es"
+    
+    # Si está empatado, verificar palabras inglesas comunes
+    if any(p in texto_lower for p in ["you", "your", "my", "me", "are", "am", "i ", "show", "schedule", "scheduler"]):
+        return "en"
+    
+    return "es"
+
+
+def detectar_idioma_manual(texto: str) -> str:
+    """Detección manual mejorada para casos donde Gemini no se puede usar."""
+    texto_lower = texto.lower()
+    
+    # Lista ampliada de palabras
+    en_palabras = {
+        "the", "a", "an", "and", "or", "of", "in", "for", "to", "with", "on", "at",
+        "from", "by", "about", "without", "between", "through", "hello", "hi", "hey",
+        "thanks", "thank", "please", "goodbye", "how", "what", "where", "when", "why",
+        "who", "which", "very", "are", "you", "your", "my", "me", "i", "am", "is",
+        "was", "were", "show", "tell", "give", "make", "create", "open", "close",
+        "scheduler", "schedule", "calendar", "task", "homework", "class", "school",
+        "university", "college", "exam", "test", "quiz", "assignment", "project",
+        "please", "thank", "thanks", "good", "morning", "afternoon", "evening"
+    }
+    
+    es_palabras = {
+        "el", "la", "los", "las", "un", "una", "unos", "unas", "y", "o", "de", "en",
+        "para", "por", "como", "qué", "cómo", "pero", "sin", "sobre", "entre", "con",
+        "porque", "cuál", "cuando", "donde", "muy", "tan", "tanto", "hola", "buenos",
+        "buenas", "gracias", "adiós", "ciérralo", "muéstrame", "dime", "tengo", "hacer",
+        "ver", "horario", "tareas", "calendario", "examen", "clase", "escuela"
+    }
+    
+    en_score = sum(1 for p in en_palabras if f" {p} " in f" {texto_lower} ")
+    es_score = sum(1 for p in es_palabras if f" {p} " in f" {texto_lower} ")
+    
+    # Si tiene caracteres típicos españoles
+    has_espanol_chars = any(c in texto_lower for c in "áéíóúñ¿¡")
+    
+    # Para textos cortos, buscar saludos específicos
+    if len(texto) < 30:
+        if any(g in texto_lower for g in ["hi", "hey", "hello", "how are", "good morning", "good afternoon"]):
+            return "en"
+        if any(g in texto_lower for g in ["hola", "buenos", "buenas", "qué onda"]):
+            return "es"
+    
+    # Decisión final
+    if en_score > es_score:
+        return "en"
+    elif es_score > en_score:
+        return "es"
+    elif has_espanol_chars and en_score == 0:
+        return "es"
+    elif any(p in texto_lower for p in ["you", "your", "my", "me", "are", "am", "i ", "show", "schedule"]):
+        return "en"
+    
+    return "es"
+
+
+# gemini.py - al inicio, después de cliente
+
+async def detectar_idioma_con_gemini(texto: str) -> str:
+    """
+    Usa Gemini para detectar el idioma del texto.
+    Retorna 'es' para español, 'en' para inglés, o el código de idioma detectado.
+    """
+    if not texto or not texto.strip():
+        return "es"
+    
+    prompt = f"""Analiza el siguiente texto y responde SOLO con el código de idioma ISO 639-1 de 2 letras (ej: 'es' para español, 'en' para inglés, 'fr' para francés, etc.).
+
+Si el texto tiene más de un idioma, elige el que predomina.
+
+TEXTO: "{texto}"
+
+Responde SOLO con el código de idioma de 2 letras, sin puntos, sin explicaciones, sin comillas, solo el código."""
+    
+    try:
+        # Usar flash-lite para esto porque es rápido y barato
+        respuesta = cliente.models.generate_content(
+            model="gemini-2.5-flash-lite",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                max_output_tokens=10,  # Muy poco, solo necesitamos 2 letras
+                temperature=0.0,  # Cero temperatura para consistencia
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
+            ),
+        )
+        
+        idioma = respuesta.text.strip().lower()
+        
+        # Validar que sea un código de 2 letras válido
+        if len(idioma) == 2 and idioma in ("es", "en", "fr", "de", "it", "pt", "ru", "ja", "zh", "ar", "hi", "ko"):
+            print(f"🧠 Gemini detectó idioma: {idioma} para '{texto[:30]}...'")
+            return idioma
+        
+        # Si no es válido, asumir español
+        print(f"⚠️ Gemini devolvió '{idioma}' no válido, asumiendo 'es'")
+        return "es"
+        
+    except Exception as e:
+        print(f"⚠️ Error en detectar_idioma_con_gemini: {e}, usando fallback")
+        # Fallback a la función manual existente
+        return detectar_idioma(texto)
+
+
 def _obtener_cache_sistema():
     """Crea (o reutiliza) el cache explícito del SYSTEM_PROMPT. Se recrea ~5 min antes de expirar."""
     global _cache_name, _cache_expira
@@ -527,8 +698,21 @@ def _obtener_cache_sistema():
         return None
 
 
+# En gemini.py - enviar_mensaje()
+
 async def enviar_mensaje(historial: list, mensaje: str, nivel: int = 0) -> dict:
     try:
+        # 🔍 El idioma ya fue detectado en agent.py, solo usamos el que nos pasan
+        # o detectamos del mensaje original si no viene en el prompt
+        idioma_usuario = detectar_idioma(mensaje[:200])  # Solo los primeros 200 chars
+        print(f"🌐 Idioma detectado por Gemini (fallback): {idioma_usuario}")
+        
+        # Buscar la instrucción de idioma en el mensaje
+        if "[LANGUAGE INSTRUCTION - CRITICAL]" in mensaje:
+            idioma_usuario = "en"
+        elif "[INSTRUCCIÓN DE IDIOMA - CRÍTICA]" in mensaje:
+            idioma_usuario = "es"
+        
         contenido = []
         for msg in historial:
             role = "user" if msg["role"] == "user" else "model"
@@ -542,12 +726,12 @@ async def enviar_mensaje(historial: list, mensaje: str, nivel: int = 0) -> dict:
             max_output_tokens=max_tokens,
             temperature=0.3,
             response_mime_type="application/json",
-            thinking_config=types.ThinkingConfig(thinking_budget=0),  # probar primero en 0
+            thinking_config=types.ThinkingConfig(thinking_budget=0),
         )
         if cache_name:
             config_kwargs["cached_content"] = cache_name
         else:
-            config_kwargs["system_instruction"] = [types.Part(text=SYSTEM_PROMPT)]  # respaldo si falló el cache
+            config_kwargs["system_instruction"] = [types.Part(text=SYSTEM_PROMPT)]
 
         respuesta = cliente.models.generate_content(
             model="gemini-2.5-flash",
@@ -565,6 +749,30 @@ async def enviar_mensaje(historial: list, mensaje: str, nivel: int = 0) -> dict:
 
         resultado = json.loads(texto)
 
+        # 🌐 TRADUCIR MENSAJE SI ES NECESARIO
+        if "mensaje" in resultado and idioma_usuario != "es":
+            resultado["mensaje"] = await traducir_si_necesario(resultado["mensaje"], idioma_usuario)
+
+        # 🌐 TRADUCIR PAYLOAD - MANEJANDO LISTAS Y DICT
+        if "payload" in resultado:
+            payload = resultado["payload"]
+            
+            if isinstance(payload, dict):
+                for key, value in list(payload.items()):
+                    if isinstance(value, str) and len(value) > 10:
+                        if idioma_usuario != "es":
+                            payload[key] = await traducir_si_necesario(value, idioma_usuario)
+            elif isinstance(payload, list):
+                for i, item in enumerate(payload):
+                    if isinstance(item, str) and len(item) > 10:
+                        if idioma_usuario != "es":
+                            payload[i] = await traducir_si_necesario(item, idioma_usuario)
+                    elif isinstance(item, dict):
+                        for key, value in list(item.items()):
+                            if isinstance(value, str) and len(value) > 10:
+                                if idioma_usuario != "es":
+                                    item[key] = await traducir_si_necesario(value, idioma_usuario)
+
         uso = getattr(respuesta, "usage_metadata", None)
         resultado["_uso"] = {
             "entrada": getattr(uso, "prompt_token_count", 0) or 0,
@@ -576,6 +784,8 @@ async def enviar_mensaje(historial: list, mensaje: str, nivel: int = 0) -> dict:
         texto_bruto = getattr(respuesta, "text", str(e))
         print(f"⚠️ JSONDecodeError: {e}")
         if texto_bruto and not texto_bruto.startswith("{"):
+            if idioma_usuario != "es":
+                texto_bruto = await traducir_si_necesario(texto_bruto[:200], idioma_usuario)
             return {"accion": "flash", "payload": {"mensaje": texto_bruto[:200], "tipo": "info"}, "mensaje": texto_bruto[:200]}
         return {"accion": "flash", "payload": {"mensaje": "Error al procesar la respuesta", "tipo": "error"}, "mensaje": "Hubo un error al procesar tu solicitud."}
     except Exception as e:
@@ -583,9 +793,19 @@ async def enviar_mensaje(historial: list, mensaje: str, nivel: int = 0) -> dict:
         return {"accion": "flash", "payload": {"mensaje": str(e), "tipo": "error"}, "mensaje": "Ocurrió un error inesperado."}
 
 
+    
 async def generar_respuesta_rapida(mensaje: str, contexto: str = "", nivel: int = 0) -> dict:
     try:
-        prompt = f"{contexto}\n\n{mensaje}" if contexto else mensaje
+        # 🔍 El idioma ya fue detectado en agent.py, solo usamos el que nos pasan
+        idioma_usuario = detectar_idioma(mensaje[:200])
+        print(f"🌐 Idioma detectado por Gemini (rápido): {idioma_usuario}")
+        
+        # Buscar la instrucción de idioma en el mensaje
+        if "[LANGUAGE INSTRUCTION - CRITICAL]" in mensaje:
+            idioma_usuario = "en"
+        elif "[INSTRUCCIÓN DE IDIOMA - CRÍTICA]" in mensaje:
+            idioma_usuario = "es"
+            
         cache_name = _obtener_cache_sistema()
         max_tokens = 2048 if nivel < 2 else 900
 
@@ -602,18 +822,45 @@ async def generar_respuesta_rapida(mensaje: str, contexto: str = "", nivel: int 
 
         respuesta = cliente.models.generate_content(
             model="gemini-2.5-flash",
-            contents=prompt,
+            contents=mensaje,
             config=types.GenerateContentConfig(**config_kwargs),
         )
         texto = respuesta.text.strip()
         if texto.startswith("```"):
             texto = texto.split("\n", 1)[1].rsplit("```", 1)[0]
-        return json.loads(texto)
+        
+        resultado = json.loads(texto)
+        
+        # 🌐 TRADUCIR MENSAJE SI ES NECESARIO
+        if "mensaje" in resultado and idioma_usuario != "es":
+            resultado["mensaje"] = await traducir_si_necesario(resultado["mensaje"], idioma_usuario)
+        
+        # 🌐 TRADUCIR PAYLOAD - MANEJANDO LISTAS Y DICT
+        if "payload" in resultado:
+            payload = resultado["payload"]
+            
+            if isinstance(payload, dict):
+                for key, value in list(payload.items()):
+                    if isinstance(value, str) and len(value) > 10:
+                        if idioma_usuario != "es":
+                            payload[key] = await traducir_si_necesario(value, idioma_usuario)
+            elif isinstance(payload, list):
+                for i, item in enumerate(payload):
+                    if isinstance(item, str) and len(item) > 10:
+                        if idioma_usuario != "es":
+                            payload[i] = await traducir_si_necesario(item, idioma_usuario)
+                    elif isinstance(item, dict):
+                        for key, value in list(item.items()):
+                            if isinstance(value, str) and len(value) > 10:
+                                if idioma_usuario != "es":
+                                    item[key] = await traducir_si_necesario(value, idioma_usuario)
+        
+        return resultado
     except Exception as e:
         print(f"❌ Error respuesta rápida: {e}")
         return {"accion": "flash", "payload": {"mensaje": str(e), "tipo": "error"}, "mensaje": "Error inesperado."}
-
-
+    
+    
 async def extraer_valor_campo(campo: str, mensaje_usuario: str, campos_previos: dict, accion_objetivo: str) -> dict:
     """
     Llamada AISLADA: su único trabajo es extraer/normalizar el valor de un campo.
@@ -621,7 +868,7 @@ async def extraer_valor_campo(campo: str, mensaje_usuario: str, campos_previos: 
     rompe cuando se usa el flujo general con todo el catálogo de acciones.
     """
     from services.tiempo import ahora_mx
-    hoy_str = ahora_mx().strftime("%A %d de %B de %Y")  # ej: "miércoles 13 de agosto de 2026"
+    hoy_str = ahora_mx().strftime("%A %d de %B de %Y")
 
     prompt = f"""Estás ayudando a completar el campo "{campo}" para la acción "{accion_objetivo}".
 Fecha y hora actual: {hoy_str}
@@ -666,24 +913,30 @@ async def responder_consulta_notion(user_id: str, nombre_pagina: str, consulta: 
     from services.db import obtener_paginas_ancladas, obtener_pagina_de_arbol
     import json as _json
 
+    # 🔍 DETECTAR IDIOMA DEL USUARIO
+    idioma_usuario = detectar_idioma(consulta)
+
     ancladas = obtener_paginas_ancladas(user_id)
     if not ancladas:
-        return "No tienes páginas de Notion ancladas todavía. Ve a la sección de Notion para enlazar alguna."
+        mensaje = "No tienes páginas de Notion ancladas todavía. Ve a la sección de Notion para enlazar alguna."
+        return await traducir_si_necesario(mensaje, idioma_usuario) if idioma_usuario != "es" else mensaje
 
     nombre_normalizado = (nombre_pagina or "").strip().lower()
     candidatas = [a for a in ancladas if nombre_normalizado and nombre_normalizado in a.get("titulo", "").lower()]
 
     if not candidatas:
         if len(ancladas) == 1:
-            candidatas = ancladas  # solo hay una anclada, asumimos que es esa
+            candidatas = ancladas
         else:
             titulos = ", ".join(a["titulo"] for a in ancladas)
-            return f"No encontré ninguna página anclada llamada '{nombre_pagina}'. Tus páginas ancladas son: {titulos}."
+            mensaje = f"No encontré ninguna página anclada llamada '{nombre_pagina}'. Tus páginas ancladas son: {titulos}."
+            return await traducir_si_necesario(mensaje, idioma_usuario) if idioma_usuario != "es" else mensaje
 
     pagina_anclada = candidatas[0]
     pagina_completa = obtener_pagina_de_arbol(user_id, pagina_anclada["page_id"])
     if not pagina_completa or not pagina_completa.get("contenido_resumen"):
-        return f"No tengo contenido guardado de '{pagina_anclada['titulo']}' todavía. Prueba sincronizar Notion de nuevo."
+        mensaje = f"No tengo contenido guardado de '{pagina_anclada['titulo']}' todavía. Prueba sincronizar Notion de nuevo."
+        return await traducir_si_necesario(mensaje, idioma_usuario) if idioma_usuario != "es" else mensaje
 
     try:
         bloques = _json.loads(pagina_completa["contenido_resumen"])
@@ -694,10 +947,11 @@ async def responder_consulta_notion(user_id: str, nombre_pagina: str, consulta: 
             for b in bloques if b.get("texto")
         )
     except Exception:
-        texto_pagina = pagina_completa["contenido_resumen"]  # contenido viejo, texto plano sin JSON
+        texto_pagina = pagina_completa["contenido_resumen"]
 
     if not texto_pagina.strip():
-        return f"La página '{pagina_anclada['titulo']}' no tiene contenido de texto que pueda leer."
+        mensaje = f"La página '{pagina_anclada['titulo']}' no tiene contenido de texto que pueda leer."
+        return await traducir_si_necesario(mensaje, idioma_usuario) if idioma_usuario != "es" else mensaje
 
     prompt = f"""Eres Tona, un agente académico. El usuario tiene una página de Notion llamada "{pagina_anclada['titulo']}" con este contenido:
 
@@ -720,13 +974,21 @@ Responde solo el texto de la respuesta, sin JSON, sin comillas envolventes."""
             ),
         )
         texto = respuesta.text.strip() if respuesta.text else ""
-        return texto or f"Revisé '{pagina_anclada['titulo']}' pero no obtuve una respuesta clara."
+        if not texto:
+            texto = f"Revisé '{pagina_anclada['titulo']}' pero no obtuve una respuesta clara."
+        
+        # 🌐 TRADUCIR SI ES NECESARIO
+        return await traducir_si_necesario(texto, idioma_usuario) if idioma_usuario != "es" else texto
     except Exception as e:
         print(f"❌ Error consultando Notion con Gemini: {e}")
         return "Tuve un problema leyendo esa página de Notion."
 
+
 async def responder_sobre_sitios(pregunta: str, resultados: list, contexto_conversacion: str = "", ultimo_tema: str = "") -> str:
     try:
+        # 🔍 DETECTAR IDIOMA DEL USUARIO
+        idioma_usuario = detectar_idioma(pregunta)
+        
         con_novedad = [r for r in resultados if r.get("cambio")]
         bloques_sitios = []
         for r in resultados:
@@ -780,8 +1042,7 @@ Responde solo el texto de la respuesta, sin JSON, sin comillas envolventes."""
             config=types.GenerateContentConfig(
                 max_output_tokens=2048,
                 temperature=0.4,
-                thinking_config=types.ThinkingConfig(thinking_budget=0),  # apaga el razonamiento interno para esta llamada de síntesis
-
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
             ),
         )
 
@@ -794,12 +1055,82 @@ Responde solo el texto de la respuesta, sin JSON, sin comillas envolventes."""
         if not texto or (finish_reason and str(finish_reason) not in ("STOP", "1", "FinishReason.STOP")):
             print(f"⚠️ Respuesta incompleta o bloqueada (finish_reason={finish_reason}), usando fallback")
             if resultados:
-                return f"Revisé tus sitios. Lo más reciente que tengo: {resultados[0]['resumen']}"
-            return "Tuve un problema revisando tus sitios en este momento."
+                texto = f"Revisé tus sitios. Lo más reciente que tengo: {resultados[0]['resumen']}"
+            else:
+                texto = "Tuve un problema revisando tus sitios en este momento."
 
-        return texto
+        # 🌐 TRADUCIR SI ES NECESARIO
+        return await traducir_si_necesario(texto, idioma_usuario) if idioma_usuario != "es" else texto
     except Exception as e:
         print(f"❌ Error en responder_sobre_sitios: {e}")
         if resultados:
-            return f"Revisé tus sitios. Lo más reciente que tengo: {resultados[0]['resumen']}"
-        return "Tuve un problema revisando tus sitios en este momento."
+            texto = f"Revisé tus sitios. Lo más reciente que tengo: {resultados[0]['resumen']}"
+        else:
+            texto = "Tuve un problema revisando tus sitios en este momento."
+        return await traducir_si_necesario(texto, idioma_usuario) if idioma_usuario != "es" else texto
+
+
+async def traducir_si_necesario(texto: str, idioma_usuario: str) -> str:
+    """
+    Traduce el texto al idioma del usuario si es necesario.
+    Si el usuario habla español, devuelve el texto original.
+    Si habla inglés u otro idioma, lo traduce.
+    """
+    if not texto or idioma_usuario == "es":
+        return texto
+    
+    prompt = f"""Traduce el siguiente texto al {idioma_usuario}, manteniendo el tono y estilo original.
+El texto puede contener fechas, nombres, o términos académicos — tradúcelos de forma natural.
+
+TEXTO:
+{texto}
+
+Responde SOLO con la traducción, sin explicaciones adicionales."""
+    
+    try:
+        respuesta = cliente.models.generate_content(
+            model="gemini-2.5-flash-lite",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                max_output_tokens=4096,
+                temperature=0.1,
+            ),
+        )
+        return respuesta.text.strip() if respuesta.text else texto
+    except Exception as e:
+        print(f"⚠️ Error traduciendo: {e}")
+        return texto
+
+
+async def traducir_para_documento(contenido: str, idioma: str) -> str:
+    """
+    Traduce contenido específicamente para documentos/correos.
+    Mantiene formato de markdown, fechas y números.
+    """
+    if not contenido or idioma == "es":
+        return contenido
+    
+    prompt = f"""Traduce el siguiente contenido al {idioma}. Es un documento académico, así que mantén:
+- Fechas en formato local
+- Números y cifras exactos
+- Títulos y subtítulos (markdown si los hay)
+- Tono formal pero claro
+
+CONTENIDO:
+{contenido}
+
+Responde SOLO con la traducción, sin explicaciones adicionales."""
+    
+    try:
+        respuesta = cliente.models.generate_content(
+            model="gemini-2.5-flash-lite",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                max_output_tokens=8192,
+                temperature=0.1,
+            ),
+        )
+        return respuesta.text.strip() if respuesta.text else contenido
+    except Exception as e:
+        print(f"⚠️ Error traduciendo documento: {e}")
+        return contenido

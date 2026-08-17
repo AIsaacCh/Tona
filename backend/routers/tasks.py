@@ -459,60 +459,69 @@ async def entregar_tarea_real(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ── Google Drive - Archivos generales ────────────────────────────────────────
-
+# ── Google Drive - Archivos vinculados ────────────────────────────────────────
 
 @router.get("/drive")
 async def obtener_drive(user_id: str = Depends(verificar_identidad)):
-    cached = obtener_cache(user_id, "drive")
-    if cached:
-        return cached
+    """
+    Obtiene los archivos de Drive que el usuario ha vinculado explícitamente
+    o que Tona ha creado (carpetas de clases, archivos subidos, etc.)
+    """
+    from services.db import obtener_archivos_vinculados
+    vinculados = obtener_archivos_vinculados(user_id)
+    
+    # Si no hay archivos vinculados, retornar lista vacía
+    if not vinculados:
+        return {"archivos": []}
+
+    # Extraer IDs de los archivos vinculados
+    ids = [v["drive_file_id"] for v in vinculados]
+    
+    # Mapeo de tipos MIME a nombres legibles
+    TIPO_MAP = {
+        "application/vnd.google-apps.document":     "doc",
+        "application/vnd.google-apps.spreadsheet":  "sheet",
+        "application/vnd.google-apps.presentation": "slides",
+        "application/pdf":                          "pdf",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+        "application/vnd.google-apps.folder":       "folder",
+    }
 
     try:
         headers = await get_google_headers(user_id)
-
+        archivos = []
+        
         async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                "https://www.googleapis.com/drive/v3/files",
-                headers=headers,
-                params={
-                    "pageSize":  15,
-                    "orderBy":   "modifiedTime desc",
-                    "fields":    "files(id,name,mimeType,modifiedTime,size,webViewLink)",
-                    "q":         "trashed=false",
-                },
-            )
-            if resp.status_code != 200:
-                return {"archivos": []}
-
-            TIPO_MAP = {
-                "application/vnd.google-apps.document":     "doc",
-                "application/vnd.google-apps.spreadsheet":  "sheet",
-                "application/vnd.google-apps.presentation": "slides",
-                "application/pdf":                          "pdf",
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
-            }
-
-            archivos = []
-            for f in resp.json().get("files", []):
-                tipo = TIPO_MAP.get(f.get("mimeType", ""), "archivo")
-                archivos.append({
-                    "id":           f["id"],
-                    "nombre":       f.get("name", "Sin nombre"),
-                    "tipo":         tipo,
-                    "modificado":   f.get("modifiedTime", "")[:10],
-                    "tamaño":       f.get("size", ""),
-                    "url":          f.get("webViewLink", ""),
-                })
-
-        resultado = {"archivos": archivos}
-        guardar_cache(user_id, "drive", resultado, ttl_minutos=15)
-        return resultado
-
+            # Consultar cada archivo individualmente por su ID
+            for fid in ids:
+                resp = await client.get(
+                    f"https://www.googleapis.com/drive/v3/files/{fid}",
+                    headers=headers,
+                    params={"fields": "id,name,mimeType,modifiedTime,size,webViewLink,parents"},
+                )
+                if resp.status_code == 200:
+                    f = resp.json()
+                    archivos.append({
+                        "id": f["id"],
+                        "nombre": f.get("name", "Sin nombre"),
+                        "tipo": TIPO_MAP.get(f.get("mimeType", ""), "archivo"),
+                        "modificado": f.get("modifiedTime", "")[:10],
+                        "tamaño": f.get("size", ""),
+                        "url": f.get("webViewLink", ""),
+                        "vinculado": True,  # Marcamos que está vinculado
+                    })
+                else:
+                    # Si el archivo ya no existe en Drive, podríamos desvincularlo
+                    print(f"⚠️ Archivo {fid} no encontrado en Drive o sin acceso")
+                    
+        # Ordenar por fecha de modificación (más reciente primero)
+        archivos.sort(key=lambda x: x["modificado"], reverse=True)
+        
+        return {"archivos": archivos}
+        
     except Exception as e:
-        print(f"Error Drive: {e}")
+        print(f"❌ Error obteniendo archivos vinculados de Drive: {e}")
         return {"archivos": []}
-
 
 # ── Sync Google (Classroom + Calendar) ───────────────────────────────────────
 
@@ -1212,7 +1221,29 @@ async def token_status(user_id: str = Depends(verificar_identidad)):
         "needs_renew": expired or not token_valid
     }
 
+class VincularArchivoRequest(BaseModel):
+    file_id: str
+    nombre: str
+    mime_type: Optional[str] = ""
 
+@router.post("/drive/vincular")
+async def vincular_archivo(
+    body: VincularArchivoRequest,
+    user_id: str = Depends(verificar_identidad)
+):
+    from services.db import vincular_archivo_drive
+    fila = vincular_archivo_drive(user_id, body.file_id, body.nombre, body.mime_type)
+    return {"vinculado": True, "archivo": fila}
+
+
+@router.delete("/drive/vincular/{file_id}")
+async def desvincular_archivo(
+    file_id: str,
+    user_id: str = Depends(verificar_identidad)
+):
+    from services.db import desvincular_archivo_drive
+    desvincular_archivo_drive(user_id, file_id)
+    return {"desvinculado": True}
 
 @router.post("/refresh_token")
 async def refresh_token_manual(user_id: str = Depends(verificar_identidad)):
@@ -1269,3 +1300,4 @@ async def obtener_tareas_usuario(user_id: str = Depends(verificar_identidad)):
         "total":    len(tareas),
         "urgentes": len([t for t in tareas if t.get("urgencia") == "alta"]),
     }
+
