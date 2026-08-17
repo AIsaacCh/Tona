@@ -123,6 +123,7 @@ CAMPOS_REQUERIDOS = {
     "enviar_correo":     ["para", "asunto", "cuerpo"],
     "consultar_notion":  ["pagina", "consulta"],
     "crear_nota_real":   ["contenido"],
+    "create_real_note":  ["contenido"],
     "registrar_examen":  ["materia", "fecha"],
     "nuevo_recordatorio": ["texto", "fecha", "hora"],
 }
@@ -135,6 +136,7 @@ MAPEO_ACCIONES = {
     "add_site": "agregar_sitio",
     "consult_notion": "consultar_notion",
     "create_note": "crear_nota_real",
+    "create_real_note": "crear_nota_real", 
     "register_exam": "registrar_examen",
     "new_reminder": "nuevo_recordatorio",
 }
