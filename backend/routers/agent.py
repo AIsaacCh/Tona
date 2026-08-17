@@ -16,7 +16,10 @@ import re
 # ✅ IMPORTAR _obtener_calendar desde tasks.py
 from routers.tasks import _obtener_calendar
 
+
+
 router = APIRouter()
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 🛡️ DETECCIÓN DE SPAM
