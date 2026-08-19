@@ -9,10 +9,10 @@ import Aves from "../components/Aves";
 import { T } from "../tokens";
 import { agenteBus, detectarCierre, enviarMensajeChat } from "../components/AgenteTona";
 import { useSearchParams } from "react-router-dom";
-import { FlashMensaje, ConfirmacionAccion, IndicadorPensando,TarjetaLinks } from "../components/agentes/Categoria1";
+import { FlashMensaje, ConfirmacionAccion, IndicadorPensando, TarjetaLinks } from "../components/agentes/Categoria1";
 import { FormNuevaTarea, FormNuevoRecordatorio, FormNuevaNota, TarjetaExamen, TarjetaArchivo, NotificacionUrgente } from "../components/agentes/Categoria3y4";
 import { ConfirmarCreacion } from "../components/agentes/ConfirmarCreacion";
-import { VistaListaTareas,VistaGmail,VistaCalendario, VistaHorario, VistaMaterias, VistaArchivosDrive } from "../components/agentes/Categoria2";
+import { VistaListaTareas, VistaGmail, VistaCalendario, VistaHorario, VistaMaterias, VistaArchivosDrive } from "../components/agentes/Categoria2";
 import OnboardingTona from "../components/OnboardingTona";
 import PanelConfiguracion from "../components/PanelConfiguracion";
 import PanelDocs from "../components/PanelDocs";
@@ -22,8 +22,6 @@ import { PanelColaborar } from "../components/PanelColaborar";
 import { PanelSalaEstudio } from "../components/PanelSalaEstudio";
 import { useOnboarding } from "../hooks/useOnboarding";
 import PanelCompleto from "../components/PanelCompleto";
-
-
 
 import {
   WidgetTareas, WidgetTareasSm,
@@ -109,23 +107,23 @@ function BloqueoSuscripcion({ userId }) {
   }
 
   async function handleCerrarSesion() {
-  try {
-    await fetch(`${API}/auth/revocar`, { method: "POST", credentials: "include" });
-  } catch (e) {
-  }
+    try {
+      await fetch(`${API}/auth/revocar`, { method: "POST", credentials: "include" });
+    } catch (e) {
+    }
 
-  try {
-    await fetch(`${API}/auth/logout`, {
-      method: "GET",
-      credentials: "include",
-      redirect: "manual",
-    });
-  } catch (e) {
-  }
+    try {
+      await fetch(`${API}/auth/logout`, {
+        method: "GET",
+        credentials: "include",
+        redirect: "manual",
+      });
+    } catch (e) {
+    }
 
-  localStorage.clear();
-  window.location.href = "/login";
-}
+    localStorage.clear();
+    window.location.href = "/login";
+  }
 
   return (
     <div style={{
@@ -161,16 +159,62 @@ function BloqueoSuscripcion({ userId }) {
 
 export default function Dashboard() {
   const [params] = useSearchParams();
-  const userId = params.get("user_id") || localStorage.getItem("tona_user_id") || "demo";
 
+  // ============================================================
+  // RESOLUCIÓN DE USUARIO - Versión actualizada
+  // ============================================================
+  const [userId, setUserId] = useState(() => {
+    return params.get("user_id") || localStorage.getItem("tona_user_id") || null;
+  });
+  const [resolviendoUsuario, setResolviendoUsuario] = useState(userId === null);
+
+  // Guardar token si viene en URL
   useEffect(() => {
     const token = params.get("token");
     if (token) localStorage.setItem("tona_token", token);
   }, [params]);
 
+  // Si no tenemos userId todavía (ej. incógnito recién después de un pago),
+  // preguntarle al backend si hay una sesión válida por cookie antes
+  // de asumir "demo".
+  useEffect(() => {
+    if (userId) return;
+
+    let cancelado = false;
+    fetch(`${API}/auth/whoami`, { credentials: "include" })
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelado) return;
+        if (data.autenticado && data.user_id) {
+          localStorage.setItem("tona_user_id", data.user_id);
+          setUserId(data.user_id);
+        } else {
+          setUserId("demo");
+        }
+      })
+      .catch(() => {
+        if (!cancelado) setUserId("demo");
+      })
+      .finally(() => {
+        if (!cancelado) setResolviendoUsuario(false);
+      });
+
+    return () => { cancelado = true; };
+  }, [userId]);
+
+  // ============================================================
+  // ONBOARDING - Solo se ejecuta cuando userId está resuelto
+  // ============================================================
   const { paso, actualizarPaso, cargando } = useOnboarding(userId);
+
+  // ============================================================
+  // PANEL CONFIG
+  // ============================================================
   const [panelConfig, setPanelConfig] = useState(false);
 
+  // ============================================================
+  // PROMO PENDIENTE
+  // ============================================================
   const promoYaIntentado = useRef(false);
 
   useEffect(() => {
@@ -202,13 +246,13 @@ export default function Dashboard() {
       });
   }, [userId]);
 
+  // ============================================================
+  // RECLAMO Y VERIFICACIÓN DE SUSCRIPCIÓN
+  // ============================================================
   const claimYaIntentado = useRef(false);
   const [chequeandoEstado, setChequeandoEstado] = useState(true);
   const [bloqueado, setBloqueado] = useState(false);
 
-  // ============================================================
-  // FUNCIÓN DE RECLAMO CON REINTENTO
-  // ============================================================
   async function reclamarConReintento(claimToken, maxIntentos = 5, esperaMs = 2000) {
     for (let i = 0; i < maxIntentos; i++) {
       try {
@@ -220,15 +264,10 @@ export default function Dashboard() {
         });
         const data = await resp.json();
         if (data.reclamado) return true;
-        
-        // Si el servidor responde con error pero no es un error fatal,
-        // esperamos y reintentamos
         console.log(`🔄 Intento ${i + 1}/${maxIntentos} - reclamando suscripción...`);
       } catch (e) {
         console.error(`❌ Error reclamando suscripción (intento ${i + 1}/${maxIntentos}):`, e);
       }
-      
-      // Esperar antes del siguiente intento (excepto en el último)
       if (i < maxIntentos - 1) {
         await new Promise((r) => setTimeout(r, esperaMs));
       }
@@ -246,9 +285,7 @@ export default function Dashboard() {
         console.log("✅ Suscripción reclamada con éxito!");
         localStorage.removeItem("tona_claim_pendiente");
       } else {
-        console.warn("⚠️ No se pudo reclamar la suscripción tras múltiples intentos. El token se mantiene en localStorage para reintentar después.");
-        // Si no tuvo éxito tras los reintentos, se deja el token en localStorage
-        // para poder reintentarlo la próxima vez que el usuario entre al dashboard.
+        console.warn("⚠️ No se pudo reclamar la suscripción tras múltiples intentos.");
       }
     }
 
@@ -264,20 +301,14 @@ export default function Dashboard() {
     }
   }
 
-  // ============================================================
-  // EJECUTAR RECLAMO AL MONTAR
-  // ============================================================
   useEffect(() => {
     if (!userId || userId === "demo") return;
     if (claimYaIntentado.current) return;
     claimYaIntentado.current = true;
-
     reclamarYVerificar();
   }, [userId]);
 
-  // ============================================================
-  // VERIFICACIÓN PERIÓDICA DE ESTADO
-  // ============================================================
+  // Verificación periódica de estado
   useEffect(() => {
     if (!userId || userId === "demo") return;
 
@@ -319,7 +350,10 @@ export default function Dashboard() {
       .catch((e) => console.error("Error obteniendo saludo:", e));
   }, [userId]);
 
-  if (cargando) return null;
+  // ============================================================
+  // RENDER - Mostrar loading mientras resolvemos usuario
+  // ============================================================
+  if (resolviendoUsuario || userId === null || cargando) return null;
 
   if (paso < 3) {
     return (
@@ -344,6 +378,9 @@ export default function Dashboard() {
   );
 }
 
+// ============================================================
+// DashboardPrincipal (sin cambios)
+// ============================================================
 function DashboardPrincipal({ userId, params, panelConfig, setPanelConfig, bloqueado, chequeandoEstado }) {
   const nombre = (params.get("name") || "Isaac").split(" ")[0];
   const tiempo = getTiempo();
@@ -524,7 +561,6 @@ function DashboardPrincipal({ userId, params, panelConfig, setPanelConfig, bloqu
     if (!texto.trim() || enviando) return;
 
     const tipoCierre = detectarCierre(texto);
-    
 
     if (tipoCierre === "total") {
       cerrarTodo();
@@ -559,11 +595,11 @@ function DashboardPrincipal({ userId, params, panelConfig, setPanelConfig, bloqu
 
   const navigate = useNavigate();
   async function iniciarColaboracion() {
-  try {
-    const resp = await fetch(`${API}/colaborar/mi-sesion`, {
-      credentials: "include",
-    });
-      
+    try {
+      const resp = await fetch(`${API}/colaborar/mi-sesion`, {
+        credentials: "include",
+      });
+
       const data = await resp.json();
 
       if (data.codigo) {
@@ -576,8 +612,6 @@ function DashboardPrincipal({ userId, params, panelConfig, setPanelConfig, bloqu
       setPanelColaborar(true);
     }
   }
-
-  
 
   function handleInput(e) {
     setInput(e.target.value);
@@ -597,7 +631,6 @@ function DashboardPrincipal({ userId, params, panelConfig, setPanelConfig, bloqu
   const anchoDerCompleto = modoUI === "completo" && panelesAbiertos ? 300 : 0;
   const offsetCompleto = (anchoIzqCompleto - anchoDerCompleto) / 2;
   const tamEsfera = modoUI === "completo" ? (panelesAbiertos ? 220 : 300) : 480;
-  
 
   return (
     <div style={s.root}>
@@ -687,7 +720,6 @@ function DashboardPrincipal({ userId, params, panelConfig, setPanelConfig, bloqu
           transition: "width 0.4s ease, height 0.4s ease",
         }}>
           <EsferaTona size={tamEsfera} />
-          
         </div>
       </div>
 

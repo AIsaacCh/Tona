@@ -12,8 +12,6 @@ from config import settings
 from datetime import datetime, timedelta
 import httpx, io, base64, uuid, json
 import re
-
-# ✅ IMPORTAR _obtener_calendar desde tasks.py
 from routers.tasks import _obtener_calendar
 
 
