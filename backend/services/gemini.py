@@ -2,7 +2,39 @@ from google import genai
 from google.genai import types
 from config import settings
 from datetime import datetime, timedelta
+import asyncio
+import random
 import json
+
+
+_semaforo_gemini = asyncio.Semaphore(8)  # ajusta según tu RPM real disponible
+
+
+async def _generar_con_reintento(modelo: str, contenido, config, max_reintentos: int = 2):
+    """
+    Envuelve generate_content con:
+    - Semáforo: limita cuántas llamadas simultáneas salen hacia Gemini,
+      para no ráfaguear toda la cuota del proyecto de golpe.
+    - Reintento con backoff si Google responde 429 (cuota momentáneamente agotada).
+    """
+    async with _semaforo_gemini:
+        for intento in range(max_reintentos + 1):
+            try:
+                return cliente.models.generate_content(
+                    model=modelo,
+                    contents=contenido,
+                    config=config,
+                )
+            except Exception as e:
+                es_429 = "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e)
+                if es_429 and intento < max_reintentos:
+                    espera = (2 ** intento) + random.uniform(0, 1)
+                    print(f"⏳ 429 de Gemini, reintentando en {espera:.1f}s (intento {intento + 1}/{max_reintentos})")
+                    await asyncio.sleep(espera)
+                    continue
+                raise
+
+
 
 cliente = genai.Client(
     vertexai=True,
@@ -733,10 +765,10 @@ async def enviar_mensaje(historial: list, mensaje: str, nivel: int = 0) -> dict:
         else:
             config_kwargs["system_instruction"] = [types.Part(text=SYSTEM_PROMPT)]
 
-        respuesta = cliente.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=contenido,
-            config=types.GenerateContentConfig(**config_kwargs),
+        respuesta = await _generar_con_reintento(
+            "gemini-2.5-flash",
+            contenido,
+            types.GenerateContentConfig(**config_kwargs),
         )
 
         texto = respuesta.text.strip()
@@ -748,30 +780,8 @@ async def enviar_mensaje(historial: list, mensaje: str, nivel: int = 0) -> dict:
             texto = texto.split("\n", 1)[1].rsplit("```", 1)[0]
 
         resultado = json.loads(texto)
-
-        # 🌐 TRADUCIR MENSAJE SI ES NECESARIO
-        if "mensaje" in resultado and idioma_usuario != "es":
-            resultado["mensaje"] = await traducir_si_necesario(resultado["mensaje"], idioma_usuario)
-
-        # 🌐 TRADUCIR PAYLOAD - MANEJANDO LISTAS Y DICT
-        if "payload" in resultado:
-            payload = resultado["payload"]
-            
-            if isinstance(payload, dict):
-                for key, value in list(payload.items()):
-                    if isinstance(value, str) and len(value) > 10:
-                        if idioma_usuario != "es":
-                            payload[key] = await traducir_si_necesario(value, idioma_usuario)
-            elif isinstance(payload, list):
-                for i, item in enumerate(payload):
-                    if isinstance(item, str) and len(item) > 10:
-                        if idioma_usuario != "es":
-                            payload[i] = await traducir_si_necesario(item, idioma_usuario)
-                    elif isinstance(item, dict):
-                        for key, value in list(item.items()):
-                            if isinstance(value, str) and len(value) > 10:
-                                if idioma_usuario != "es":
-                                    item[key] = await traducir_si_necesario(value, idioma_usuario)
+        # 🌐 TRADUCIR TODO EN UNA SOLA LLAMADA (en vez de una por campo)
+        resultado = await traducir_resultado_si_necesario(resultado, idioma_usuario)
 
         uso = getattr(respuesta, "usage_metadata", None)
         resultado["_uso"] = {
@@ -789,8 +799,12 @@ async def enviar_mensaje(historial: list, mensaje: str, nivel: int = 0) -> dict:
             return {"accion": "flash", "payload": {"mensaje": texto_bruto[:200], "tipo": "info"}, "mensaje": texto_bruto[:200]}
         return {"accion": "flash", "payload": {"mensaje": "Error al procesar la respuesta", "tipo": "error"}, "mensaje": "Hubo un error al procesar tu solicitud."}
     except Exception as e:
+        es_429 = "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e)
         print(f"❌ Error: {e}")
-        return {"accion": "flash", "payload": {"mensaje": str(e), "tipo": "error"}, "mensaje": "Ocurrió un error inesperado."}
+        if es_429:
+            mensaje_amigable = "Estoy recibiendo muchas solicitudes en este momento. Dame unos segundos e intenta de nuevo, por favor."
+            return {"accion": "flash", "payload": {"mensaje": mensaje_amigable, "tipo": "error"}, "mensaje": mensaje_amigable}
+        return {"accion": "flash", "payload": {"mensaje": "Ocurrió un error inesperado.", "tipo": "error"}, "mensaje": "Ocurrió un error inesperado."}
 
 
     
@@ -820,10 +834,10 @@ async def generar_respuesta_rapida(mensaje: str, contexto: str = "", nivel: int 
         else:
             config_kwargs["system_instruction"] = [types.Part(text=SYSTEM_PROMPT)]
 
-        respuesta = cliente.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=mensaje,
-            config=types.GenerateContentConfig(**config_kwargs),
+        respuesta = await _generar_con_reintento(
+            "gemini-2.5-flash",
+            mensaje,
+            types.GenerateContentConfig(**config_kwargs),
         )
         texto = respuesta.text.strip()
         if texto.startswith("```"):
@@ -831,34 +845,17 @@ async def generar_respuesta_rapida(mensaje: str, contexto: str = "", nivel: int 
         
         resultado = json.loads(texto)
         
-        # 🌐 TRADUCIR MENSAJE SI ES NECESARIO
-        if "mensaje" in resultado and idioma_usuario != "es":
-            resultado["mensaje"] = await traducir_si_necesario(resultado["mensaje"], idioma_usuario)
-        
-        # 🌐 TRADUCIR PAYLOAD - MANEJANDO LISTAS Y DICT
-        if "payload" in resultado:
-            payload = resultado["payload"]
-            
-            if isinstance(payload, dict):
-                for key, value in list(payload.items()):
-                    if isinstance(value, str) and len(value) > 10:
-                        if idioma_usuario != "es":
-                            payload[key] = await traducir_si_necesario(value, idioma_usuario)
-            elif isinstance(payload, list):
-                for i, item in enumerate(payload):
-                    if isinstance(item, str) and len(item) > 10:
-                        if idioma_usuario != "es":
-                            payload[i] = await traducir_si_necesario(item, idioma_usuario)
-                    elif isinstance(item, dict):
-                        for key, value in list(item.items()):
-                            if isinstance(value, str) and len(value) > 10:
-                                if idioma_usuario != "es":
-                                    item[key] = await traducir_si_necesario(value, idioma_usuario)
+        # 🌐 TRADUCIR MENSAJE SI ES NECESARIO        # 🌐 TRADUCIR TODO EN UNA SOLA LLAMADA (en vez de una por campo)
+        resultado = await traducir_resultado_si_necesario(resultado, idioma_usuario)
         
         return resultado
     except Exception as e:
+        es_429 = "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e)
         print(f"❌ Error respuesta rápida: {e}")
-        return {"accion": "flash", "payload": {"mensaje": str(e), "tipo": "error"}, "mensaje": "Error inesperado."}
+        if es_429:
+            mensaje_amigable = "Estoy recibiendo muchas solicitudes en este momento. Dame unos segundos e intenta de nuevo, por favor."
+            return {"accion": "flash", "payload": {"mensaje": mensaje_amigable, "tipo": "error"}, "mensaje": mensaje_amigable}
+        return {"accion": "flash", "payload": {"mensaje": "Error inesperado.", "tipo": "error"}, "mensaje": "Error inesperado."}
     
     
 async def extraer_valor_campo(campo: str, mensaje_usuario: str, campos_previos: dict, accion_objetivo: str) -> dict:
@@ -1100,6 +1097,82 @@ Responde SOLO con la traducción, sin explicaciones adicionales."""
     except Exception as e:
         print(f"⚠️ Error traduciendo: {e}")
         return texto
+
+async def traducir_resultado_si_necesario(resultado: dict, idioma_usuario: str) -> dict:
+    """
+    Traduce TODOS los campos de texto de una respuesta (mensaje + payload) en
+    UNA SOLA llamada a Gemini, en vez de una llamada separada por cada campo.
+    Reduce el consumo de cuota cuando el payload trae varios textos largos
+    (ej. listas de tareas, correos, resúmenes de sitios).
+    """
+    if idioma_usuario == "es":
+        return resultado
+
+    campos_a_traducir = {}
+
+    if resultado.get("mensaje"):
+        campos_a_traducir["mensaje"] = resultado["mensaje"]
+
+    payload = resultado.get("payload")
+    if isinstance(payload, dict):
+        for key, value in payload.items():
+            if isinstance(value, str) and len(value) > 10:
+                campos_a_traducir[f"payload.{key}"] = value
+    elif isinstance(payload, list):
+        for i, item in enumerate(payload):
+            if isinstance(item, str) and len(item) > 10:
+                campos_a_traducir[f"payload[{i}]"] = item
+            elif isinstance(item, dict):
+                for key, value in item.items():
+                    if isinstance(value, str) and len(value) > 10:
+                        campos_a_traducir[f"payload[{i}].{key}"] = value
+
+    if not campos_a_traducir:
+        return resultado
+
+    prompt = f"""Traduce cada valor de este JSON al {idioma_usuario}, manteniendo tono, fechas y nombres propios.
+No cambies las claves. Responde SOLO el JSON traducido, mismo formato exacto:
+
+{json.dumps(campos_a_traducir, ensure_ascii=False)}"""
+
+    try:
+        respuesta = await _generar_con_reintento(
+            "gemini-2.5-flash-lite",
+            prompt,
+            types.GenerateContentConfig(
+                max_output_tokens=2048,
+                temperature=0.1,
+                response_mime_type="application/json",
+            ),
+        )
+        texto = respuesta.text.strip()
+        if texto.startswith("```"):
+            texto = texto.split("\n", 1)[1].rsplit("```", 1)[0]
+        traducciones = json.loads(texto)
+    except Exception as e:
+        print(f"⚠️ Error traduciendo en lote: {e}")
+        return resultado
+
+    if "mensaje" in traducciones:
+        resultado["mensaje"] = traducciones["mensaje"]
+
+    if isinstance(payload, dict):
+        for key in list(payload.keys()):
+            clave_lote = f"payload.{key}"
+            if clave_lote in traducciones:
+                payload[key] = traducciones[clave_lote]
+    elif isinstance(payload, list):
+        for i, item in enumerate(payload):
+            clave_lote = f"payload[{i}]"
+            if clave_lote in traducciones:
+                payload[i] = traducciones[clave_lote]
+            elif isinstance(item, dict):
+                for key in list(item.keys()):
+                    clave_anidada = f"payload[{i}].{key}"
+                    if clave_anidada in traducciones:
+                        item[key] = traducciones[clave_anidada]
+
+    return resultado
 
 
 async def traducir_para_documento(contenido: str, idioma: str) -> str:

@@ -132,7 +132,7 @@ async def revisar_posibles_entregas():
                     continue
 
                 # SEGUNDO: Buscar en Drive si no tiene archivo vinculado
-                resultado = await buscar_entrega_en_drive(user_id, curso_id, t.get("titulo", ""), _=user_id)
+                resultado = await buscar_entrega_en_drive(curso_id=curso_id, titulo=t.get("titulo", ""), user_id=user_id)
                 candidatos = resultado.get("candidatos", [])
                 mejor = candidatos[0] if candidatos else None
 

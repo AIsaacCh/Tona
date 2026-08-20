@@ -586,7 +586,7 @@ async def ejecutar_accion_backend(accion: str, payload: dict, user_id: str):
                 prioridad=payload.get("prioridad", "media").lower(),
                 resumen=payload.get("resumen", payload.get("titulo", "")),
             )
-            resultado = await crear_tarea_manual(user_id, body)
+            resultado = await crear_tarea_manual(body=body, user_id=user_id)
             return resultado.get("tarea", {})
         except Exception as e:
             print(f"❌ Error en crear_tarea_real: {e}")
@@ -634,7 +634,7 @@ async def ejecutar_accion_backend(accion: str, payload: dict, user_id: str):
             import httpx as _httpx
             from routers.docs import crear_doc_para_tarea, CrearArchivoTareaRequest
             body = CrearArchivoTareaRequest(tarea_id=tarea["id"], titulo_tarea=tarea["titulo"], curso_id=tarea["curso_id"])
-            resultado = await crear_doc_para_tarea(user_id, body, _=user_id)
+            resultado = await crear_doc_para_tarea(body=body, user_id=user_id)
             return resultado
         except Exception as e:
             print(f"❌ Error en crear_archivo_para_tarea: {e}")
@@ -661,7 +661,7 @@ async def ejecutar_accion_backend(accion: str, payload: dict, user_id: str):
                 descripcion=payload.get("descripcion", payload.get("titulo", "")),
                 duracion_min=payload.get("duracion_min", 60),
             )
-            resultado = await crear_evento_calendar(user_id, body)
+            resultado = await crear_evento_calendar(body=body, user_id=user_id)
             return resultado.get("evento", {})
         except Exception as e:
             print(f"❌ Error en crear_evento_real: {e}")
@@ -674,7 +674,7 @@ async def ejecutar_accion_backend(accion: str, payload: dict, user_id: str):
                 asunto=payload.get("asunto", "Sin asunto"),
                 cuerpo=payload.get("cuerpo", ""),
             )
-            resultado = await enviar_correo(user_id, body)
+            resultado = await enviar_correo(body=body, user_id=user_id)
             return resultado 
         except Exception as e:
             print(f"❌ Error en enviar_correo: {e}")
@@ -892,7 +892,7 @@ async def chat(
                 from routers.tasks import entregar_tarea_real, EntregarTareaRequest
                 try:
                     body_entrega = EntregarTareaRequest(**payload_directo)
-                    resultado_entrega = await entregar_tarea_real(user_id, body_entrega, _=user_id)
+                    resultado_entrega = await entregar_tarea_real(body=body_entrega, user_id=user_id)
                     accion_directa = "flash"
                     payload_directo = {"mensaje": "Tarea entregada en Classroom.", "tipo": "exito"}
                     mensaje_resp = "Listo, entregué la tarea en Classroom."
@@ -1109,7 +1109,7 @@ El usuario escribió en ESPAÑOL. Debes responder en ESPAÑOL.
         if nombre:
             try:
                 from routers.docs import buscar_doc_por_nombre
-                data = await buscar_doc_por_nombre(user_id, nombre)
+                data = await buscar_doc_por_nombre(nombre=nombre, user_id=user_id)
                 docs = data.get("docs", [])
                 if docs:
                     doc = docs[0]
@@ -1133,12 +1133,12 @@ El usuario escribió en ESPAÑOL. Debes responder en ESPAÑOL.
         if nombre:
             try:
                 from routers.docs import buscar_doc_por_nombre, eliminar_doc as eliminar_doc_fn
-                data = await buscar_doc_por_nombre(user_id, nombre)
+                data = await buscar_doc_por_nombre(nombre=nombre, user_id=user_id)
                 docs = data.get("docs", [])
                 if docs:
                     doc = docs[0]
                     try:
-                        await eliminar_doc_fn(user_id, doc["id"])
+                        await eliminar_doc_fn(doc_id=doc["id"], user_id=user_id)
                         accion = "flash"
                         payload = {"mensaje": f"Documento '{doc['titulo']}' eliminado.", "tipo": "exito"}
                         mensaje = f"He eliminado el documento '{doc['titulo']}'."
@@ -1164,7 +1164,7 @@ El usuario escribió en ESPAÑOL. Debes responder en ESPAÑOL.
         if doc_id:
             try:
                 from routers.docs import eliminar_doc as eliminar_doc_fn
-                await eliminar_doc_fn(user_id, doc_id)
+                await eliminar_doc_fn(doc_id=doc_id, user_id=user_id)
                 accion = "flash"
                 payload = {"mensaje": f"Documento '{titulo}' eliminado.", "tipo": "exito"}
                 mensaje = f"He eliminado el documento '{titulo}'."
@@ -1209,7 +1209,7 @@ El usuario escribió en ESPAÑOL. Debes responder en ESPAÑOL.
     elif accion == "ver_gmail":
         try:
             from routers.tasks import obtener_gmail
-            data = await obtener_gmail(user_id)
+            data = await obtener_gmail(user_id=user_id)
             correos = data.get("correos", [])
             payload = correos
             guardar_cache(user_id, "ultimo_resultado", {"tipo": "correos", "items": correos}, ttl_minutos=10)
