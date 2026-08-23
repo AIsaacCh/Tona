@@ -216,12 +216,53 @@ async def _buscar_carpeta_existente(headers: dict, nombre: str, parent_id: str) 
     return None
 
 
+# ✅ NUEVA FUNCIÓN HELPER: Crear carpetas automáticamente para clases nuevas
+async def _asegurar_carpetas_clases_nuevas(user_id: str, tareas_classroom: list):
+    """
+    Revisa las tareas recién sincronizadas de Classroom y crea la carpeta de
+    Drive para cualquier curso que todavía no tenga una vinculada. Así no
+    depende de que el usuario pase por el onboarding otra vez.
+    """
+    cursos_en_tareas = {
+        (t.get("curso_id"), t.get("curso"))
+        for t in tareas_classroom
+        if t.get("curso_id")
+    }
+    if not cursos_en_tareas:
+        return
+
+    try:
+        headers = await get_google_headers(user_id)
+        config = obtener_config(user_id)
+        root_id = config.get("drive_root_folder_id")
+
+        if not root_id:
+            tona_id = await _crear_carpeta_drive(headers, "Tona · Clases")
+            root_id = await _crear_carpeta_drive(headers, "materias", parent_id=tona_id)
+            guardar_config(user_id, {"drive_root_folder_id": root_id})
+
+        for curso_id, nombre_curso in cursos_en_tareas:
+            if obtener_carpeta_clase(user_id, curso_id):
+                continue  # ya tiene carpeta, no hacer nada
+
+            nombre = nombre_curso or "Clase sin nombre"
+            folder_id = await _buscar_carpeta_existente(headers, nombre, root_id)
+            if not folder_id:
+                folder_id = await _crear_carpeta_drive(headers, nombre, parent_id=root_id)
+
+            guardar_carpeta_clase(user_id, curso_id, nombre, folder_id)
+            print(f"📁 Carpeta creada automáticamente para clase nueva: {nombre}")
+    except Exception as e:
+        print(f"⚠️ Error asegurando carpetas de clases nuevas para {user_id}: {e}")
+
 
 @router.post("/drive/estructura")
 async def crear_estructura_clases(
     body: EstructuraClasesRequest,
     user_id: str = Depends(verificar_identidad)
 ):
+
+    
     """
     Crea (si no existe) classroom/clases/<nombre_clase> en Drive para cada
     curso aceptado, y guarda el mapeo curso_id -> drive_folder_id.
@@ -531,7 +572,11 @@ async def sincronizar_todo(user_id: str = Depends(verificar_identidad)):
     tareas_classroom = await _obtener_classroom(user_id)
     eventos_calendar = await _obtener_calendar(user_id)
 
+    # ✅ NUEVO: detectar clases nuevas sin carpeta de Drive y crearlas
+    await _asegurar_carpetas_clases_nuevas(user_id, tareas_classroom)
+
     existentes = obtener_tareas(user_id)
+    # resto igual
     manuales   = [t for t in existentes if t.get("fuente") == "manual"]
 
     # Preservar completado local — Classroom/Calendar no saben que el usuario
@@ -666,6 +711,7 @@ async def _obtener_classroom(user_id: str) -> list:
                         "urgencia": calcular_urgencia(fecha_limite),
                         "fuente": "classroom",
                         "completada": False,
+                        "link_classroom": tarea.get("alternateLink"),
                     })
 
         return tareas
@@ -1300,4 +1346,3 @@ async def obtener_tareas_usuario(user_id: str = Depends(verificar_identidad)):
         "total":    len(tareas),
         "urgentes": len([t for t in tareas if t.get("urgencia") == "alta"]),
     }
-

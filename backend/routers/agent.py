@@ -20,6 +20,16 @@ router = APIRouter()
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# 🔧 FUNCIÓN DE NORMALIZACIÓN REUTILIZABLE
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _normalizar_titulo(s: str) -> str:
+    """Normaliza un título quitando puntuación y espacios extras para comparación."""
+    s = (s or "").strip().lower()
+    return re.sub(r'[^\w\s]', '', s)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # 🛡️ DETECCIÓN DE SPAM
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -84,14 +94,23 @@ def es_cancelacion(mensaje: str) -> bool:
     m = mensaje.strip().lower()
     return any(c in m for c in CANCELACIONES)
 
-PREGUNTAS_LISTADO_NOTION = {
+# ✅ FIX: Detectar preguntas de listado en ambos idiomas
+PREGUNTAS_LISTADO_NOTION_ES = {
     "cuáles", "cuales", "qué páginas", "que paginas", "cuál tengo",
     "cual tengo", "qué tengo", "que tengo", "no sé", "no se",
 }
 
+PREGUNTAS_LISTADO_NOTION_EN = {
+    "which pages", "what pages", "which ones", "what do i have",
+    "what i have", "i don't know", "i dont know", "list pages",
+    "show pages", "notion pages",
+}
+
 def es_pregunta_listado_notion(mensaje: str) -> bool:
     m = mensaje.strip().lower()
-    return any(p in m for p in PREGUNTAS_LISTADO_NOTION)
+    # Verificar en ambos idiomas
+    return any(p in m for p in PREGUNTAS_LISTADO_NOTION_ES) or \
+           any(p in m for p in PREGUNTAS_LISTADO_NOTION_EN)
 
 # Overrides que fuerzan un modo sin importar lo que diga Gemini
 OVERRIDES_MODO_UI = {
@@ -124,6 +143,8 @@ CAMPOS_REQUERIDOS = {
     "create_real_note":  ["contenido"],
     "registrar_examen":  ["materia", "fecha"],
     "nuevo_recordatorio": ["texto", "fecha", "hora"],
+    "crear_doc":            ["titulo"],   
+    "crear_doc_con_titulo": ["titulo"],   
 }
 
 # 🔄 MAPEO DE ACCIONES EN INGLÉS A ESPAÑOL (para cuando Gemini traduce)
@@ -137,6 +158,8 @@ MAPEO_ACCIONES = {
     "create_real_note": "crear_nota_real", 
     "register_exam": "registrar_examen",
     "new_reminder": "nuevo_recordatorio",
+    "create_doc": "crear_doc",
+    "create_doc_with_title": "crear_doc_con_titulo",
 }
 
 PREGUNTAS_CAMPO = {
@@ -157,6 +180,8 @@ PREGUNTAS_CAMPO = {
     ("crear_nota_real", "contenido"): "¿Qué quieres que anote?",
     ("registrar_examen", "materia"): "¿De qué materia es el examen?",
     ("registrar_examen", "fecha"): "¿Qué día es el examen?",
+    ("crear_doc", "titulo"): "¿Cómo quieres que se llame el documento?",
+    ("crear_doc_con_titulo", "titulo"): "¿Cómo quieres que se llame el documento?"
 }
 
 def obtener_flujo(user_id: str) -> dict | None:
@@ -611,12 +636,27 @@ async def ejecutar_accion_backend(accion: str, payload: dict, user_id: str):
     if accion == "crear_archivo_para_tarea":
         try:
             tareas = obtener_tareas(user_id)
-            titulo_buscado = payload.get("titulo_tarea", "").strip().lower()
-            candidatas = [t for t in tareas if t.get("titulo", "").strip().lower() == titulo_buscado and t.get("fuente") == "classroom"]
+            titulo_buscado = _normalizar_titulo(payload.get("titulo_tarea", ""))
+
+            # ✅ FIX: Normalización para comparación exacta
+            candidatas = [
+                t for t in tareas 
+                if _normalizar_titulo(t.get("titulo", "")) == titulo_buscado 
+                and t.get("fuente") == "classroom"
+            ]
+            
+            # ✅ FIX: Contención en ambas direcciones si no hay match exacto
             if not candidatas:
-                candidatas = [t for t in tareas if titulo_buscado in t.get("titulo", "").strip().lower() and t.get("fuente") == "classroom"]
+                candidatas = [
+                    t for t in tareas
+                    if t.get("fuente") == "classroom"
+                    and not t.get("completada")
+                    and (titulo_buscado in _normalizar_titulo(t.get("titulo", ""))
+                         or _normalizar_titulo(t.get("titulo", "")) in titulo_buscado)
+                ]
+            
+            # Respaldo: si lo que mandó Gemini coincide con la MATERIA
             if not candidatas:
-                # Respaldo: si lo que mandó Gemini coincide con la MATERIA
                 candidatas = [
                     t for t in tareas
                     if t.get("fuente") == "classroom"
@@ -624,8 +664,10 @@ async def ejecutar_accion_backend(accion: str, payload: dict, user_id: str):
                     and (t.get("curso") or "").strip().lower() == titulo_buscado
                     and not obtener_archivo_de_tarea(user_id, t.get("id"))
                 ]
+            
             if not candidatas:
                 return None
+                
             tarea = candidatas[-1] if len(candidatas) > 1 else candidatas[0]
             if len(candidatas) > 1:
                 candidatas.sort(key=lambda t: t.get("fecha_limite") or "9999")
@@ -695,7 +737,6 @@ async def ejecutar_accion_backend(accion: str, payload: dict, user_id: str):
 
     if accion == "completar_tarea_real":
         try:
-            from services.db import obtener_tareas, guardar_tareas
             tareas = obtener_tareas(user_id)
             tarea_id = payload.get("tarea_id")
             encontrada = False
@@ -722,7 +763,7 @@ async def ejecutar_accion_backend(accion: str, payload: dict, user_id: str):
 
     if accion == "eliminar_tarea_real":
         try:
-            from services.db import obtener_tareas, guardar_tareas
+            
             tareas = obtener_tareas(user_id)
             tarea_id = payload.get("tarea_id")
             tarea = next((t for t in tareas if t.get("id") == tarea_id), None)
@@ -831,32 +872,45 @@ async def chat(
                 accion_original = flujo["accion_objetivo"]
                 accion_espanol = MAPEO_ACCIONES.get(accion_original, accion_original)
                 
-                faltantes = [c for c in CAMPOS_REQUERIDOS[accion_espanol] if not flujo["campos"].get(c)]
-
-                if faltantes:
-                    siguiente = faltantes[0]
-                    flujo["campo_pendiente"] = siguiente
-                    guardar_flujo(user_id, flujo)
-                    accion = "solicitar_dato"
-                    payload = {"campo": siguiente, "accion_objetivo": accion_espanol, "contexto": flujo["campos"]}
-                    mensaje = PREGUNTAS_CAMPO.get((accion_espanol, siguiente), f"¿Cuál es el {siguiente}?")
-                    flujo_activo = True
-                else:
+                # ✅ VALIDACIÓN: Verificar que la acción exista en CAMPOS_REQUERIDOS
+                campos_requeridos_accion = CAMPOS_REQUERIDOS.get(accion_espanol)
+                
+                if campos_requeridos_accion is None:
+                    print(f"⚠️ accion_objetivo desconocida en flujo: '{accion_espanol}' (original: '{accion_original}')")
                     limpiar_flujo(user_id)
-                    if accion_espanol == "consultar_notion":
-                        respuesta = await responder_consulta_notion(
-                            user_id,
-                            flujo["campos"].get("pagina", ""),
-                            flujo["campos"].get("consulta", ""),
-                        )
-                        accion, payload, mensaje = "flash", {"mensaje": respuesta, "tipo": "info"}, respuesta
+                    accion, payload, mensaje, flujo_activo = (
+                        "flash",
+                        {"mensaje": "No pude completar esa acción, intenta describirla de nuevo.", "tipo": "error"},
+                        "No pude completar esa acción, ¿puedes intentarlo de nuevo?",
+                        False,
+                    )
+                else:
+                    faltantes = [c for c in campos_requeridos_accion if not flujo["campos"].get(c)]
+
+                    if faltantes:
+                        siguiente = faltantes[0]
+                        flujo["campo_pendiente"] = siguiente
+                        guardar_flujo(user_id, flujo)
+                        accion = "solicitar_dato"
+                        payload = {"campo": siguiente, "accion_objetivo": accion_espanol, "contexto": flujo["campos"]}
+                        mensaje = PREGUNTAS_CAMPO.get((accion_espanol, siguiente), f"¿Cuál es el {siguiente}?")
+                        flujo_activo = True
                     else:
-                        dato_creado = await ejecutar_accion_backend(accion_espanol, flujo["campos"], user_id)
-                        if dato_creado:
-                            accion, payload, mensaje = "flash", {"mensaje": "Listo, guardado.", "tipo": "exito"}, "Listo, guardado."
+                        limpiar_flujo(user_id)
+                        if accion_espanol == "consultar_notion":
+                            respuesta = await responder_consulta_notion(
+                                user_id,
+                                flujo["campos"].get("pagina", ""),
+                                flujo["campos"].get("consulta", ""),
+                            )
+                            accion, payload, mensaje = "flash", {"mensaje": respuesta, "tipo": "info"}, respuesta
                         else:
-                            accion, payload, mensaje = "flash", {"mensaje": "No se pudo guardar.", "tipo": "error"}, "No se pudo guardar."
-                    flujo_activo = False
+                            dato_creado = await ejecutar_accion_backend(accion_espanol, flujo["campos"], user_id)
+                            if dato_creado:
+                                accion, payload, mensaje = "flash", {"mensaje": "Listo, guardado.", "tipo": "exito"}, "Listo, guardado."
+                            else:
+                                accion, payload, mensaje = "flash", {"mensaje": "No se pudo guardar.", "tipo": "error"}, "No se pudo guardar."
+                        flujo_activo = False
 
         historial_actualizado = obtener_historial(user_id) + [
             {"role": "user",  "content": request.mensaje},
@@ -888,19 +942,21 @@ async def chat(
                 payload_directo = resultado_sugerencia["payload"]
                 mensaje_resp = resultado_sugerencia["mensaje"]
 
-            elif accion_directa == "entregar_tarea_real":   
-                from routers.tasks import entregar_tarea_real, EntregarTareaRequest
-                try:
-                    body_entrega = EntregarTareaRequest(**payload_directo)
-                    resultado_entrega = await entregar_tarea_real(body=body_entrega, user_id=user_id)
+            # ✅ FIX: Cambiar entregar_tarea_real para devolver link en vez de intentar la entrega automática
+            elif accion_directa in ("entregar_tarea_real", "confirmar_entrega_real"):
+                tarea_id = payload_directo.get("tarea_id")
+                tareas = obtener_tareas(user_id)
+                tarea = next((t for t in tareas if t.get("id") == tarea_id), None)
+                link = tarea.get("link_classroom") if tarea else None
+
+                if link:
+                    accion_directa = "abrir_link_externo"
+                    payload_directo = {"url": link}
+                    mensaje_resp = "Tu archivo ya está listo en tu Drive. Ábrelo desde ahí en la tarea y dale entregar — un par de clics."
+                else:
                     accion_directa = "flash"
-                    payload_directo = {"mensaje": "Tarea entregada en Classroom.", "tipo": "exito"}
-                    mensaje_resp = "Listo, entregué la tarea en Classroom."
-                except Exception as e:
-                    print(f"❌ Error entregando tarea real: {e}")
-                    accion_directa = "flash"
-                    payload_directo = {"mensaje": "No se pudo entregar la tarea.", "tipo": "error"}
-                    mensaje_resp = "No pude entregar la tarea, intenta de nuevo."
+                    payload_directo = {"mensaje": "No tengo el link directo a esa tarea todavía.", "tipo": "info"}
+                    mensaje_resp = payload_directo["mensaje"]
 
             elif accion_directa == "crear_archivo_para_tarea":
                 dato = await ejecutar_accion_backend(accion_directa, payload_directo, user_id)
@@ -1033,15 +1089,68 @@ El usuario escribió en ESPAÑOL. Debes responder en ESPAÑOL.
     # ──────────────────────────────────────────────────────────────────────────
     # ⚙️ EJECUTAR ACCIONES DEL BACKEND
     # ──────────────────────────────────────────────────────────────────────────
-    if accion == "crear_archivo_para_tarea":
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # 🛡️ GUARDIA DE SEGURIDAD: entregar tarea es irreversible, SIEMPRE debe pasar
+    # por confirmación explícita del usuario, sin importar cómo Gemini formatee
+    # la respuesta (a veces la envía envuelta en 'confirmar', a veces "pelada").
+    # ──────────────────────────────────────────────────────────────────────────
+    if accion in ("confirmar_entrega_real", "entregar_tarea_real") and isinstance(payload, dict) and not payload.get("onSi"):
+        print("🔍 GUARDIA DE SEGURIDAD: Gemini se saltó la confirmación, reconstruyendo...")
+        contexto_bruto = payload
+        tarea_id = contexto_bruto.get("tarea_id")
+
+        tareas = obtener_tareas(user_id)
+        tarea = next((t for t in tareas if t.get("id") == tarea_id), None)
+
+        if not tarea:
+            accion = "flash"
+            payload = {"mensaje": "No encontré esa tarea para entregarla.", "tipo": "error"}
+            mensaje = "No encontré esa tarea para entregarla."
+        elif not tarea.get("link_classroom"):
+            accion = "flash"
+            payload = {"mensaje": f"No tengo el link directo de \"{tarea.get('titulo')}\" todavía. Prueba sincronizar de nuevo.", "tipo": "info"}
+            mensaje = payload["mensaje"]
+        else:
+            accion = "confirmar"
+            payload = {
+                "pregunta": f"Tu archivo de \"{tarea.get('titulo')}\" ya está listo en tu Drive. ¿Quieres que te abra la tarea en Classroom para entregarla?",
+                "onSi": "confirmar_entrega_real",
+                "onNo": None,
+                "labelSi": "Sí, ábrela",
+                "labelNo": "Aún no",
+                "contexto": {"tarea_id": tarea_id},
+            }
+            mensaje = payload["pregunta"]
+            print(f"✅ GUARDIA: confirmación reconstruida para: {tarea.get('titulo')}")
+        flujo_activo = False
+
+    elif accion == "crear_archivo_para_tarea":
         dato_creado = await ejecutar_accion_backend(accion, payload, user_id)
         if dato_creado and dato_creado.get("doc_id"):
             from services.db import eliminar_sugerencias_de_tarea
             titulo_tarea_creada = payload.get("titulo_tarea", "") if isinstance(payload, dict) else ""
             tareas_usuario = obtener_tareas(user_id)
-            tarea_match = next((t for t in tareas_usuario if t.get("titulo", "").strip().lower() == titulo_tarea_creada.strip().lower()), None)
+            
+            # ✅ FIX: Normalizar para comparación
+            tarea_match = next(
+                (t for t in tareas_usuario 
+                 if _normalizar_titulo(t.get("titulo", "")) == _normalizar_titulo(titulo_tarea_creada)),
+                None
+            )
+            
+            # ✅ FIX: Si no hay match exacto, probar con contención en ambas direcciones
+            if not tarea_match and titulo_tarea_creada:
+                tarea_match = next(
+                    (t for t in tareas_usuario
+                     if _normalizar_titulo(titulo_tarea_creada) in _normalizar_titulo(t.get("titulo", ""))
+                     or _normalizar_titulo(t.get("titulo", "")) in _normalizar_titulo(titulo_tarea_creada)),
+                    None
+                )
+            
             if tarea_match:
                 eliminar_sugerencias_de_tarea(user_id, tarea_match["id"])
+                
             accion = "abrir_doc_especifico"
             payload = {"doc_id": dato_creado["doc_id"], "titulo": dato_creado.get("titulo", "Documento")}
             mensaje = mensaje or "Listo, creé el archivo. Abriéndolo..."
@@ -1061,26 +1170,83 @@ El usuario escribió en ESPAÑOL. Debes responder en ESPAÑOL.
         flujo_activo = False
 
     elif accion == "abrir_archivo_tarea":
-        from services.db import obtener_archivo_de_tarea
-        titulo_buscado = payload.get("titulo_tarea", "").strip().lower() if isinstance(payload, dict) else ""
+        # 🔍 LOG para depuración
+        titulo_recibido = payload.get("titulo_tarea") if isinstance(payload, dict) else None
+        print(f"🔍 abrir_archivo_tarea | titulo_tarea recibido: '{titulo_recibido}'")
+        
+        titulo_buscado = _normalizar_titulo(titulo_recibido or "")
         tareas = obtener_tareas(user_id)
 
-        candidatas = [t for t in tareas if t.get("titulo", "").strip().lower() == titulo_buscado]
-        if not candidatas:
-            candidatas = [t for t in tareas if titulo_buscado in t.get("titulo", "").strip().lower()]
-
         archivo = None
-        if candidatas:
-            archivo = obtener_archivo_de_tarea(user_id, candidatas[0]["id"])
+        tarea_encontrada = None
+
+        # 1) Si viene un título, intentar match específico primero
+        if titulo_buscado:
+            candidatas = [t for t in tareas if _normalizar_titulo(t.get("titulo", "")) == titulo_buscado]
+            if not candidatas:
+                candidatas = [
+                    t for t in tareas
+                    if titulo_buscado in _normalizar_titulo(t.get("titulo", ""))
+                    or _normalizar_titulo(t.get("titulo", "")) in titulo_buscado
+                ]
+            if candidatas:
+                tarea_encontrada = candidatas[0]
+                archivo = obtener_archivo_de_tarea(user_id, tarea_encontrada["id"])
+                print(f"🔍 abrir_archivo_tarea | match específico encontrado: '{tarea_encontrada.get('titulo')}'")
+
+        # 2) Si no se encontró nada arriba (título vacío O título que no matcheó ninguna tarea),
+        #    caer al fallback: buscar entre tareas pendientes cuáles tienen archivo vinculado
+        if archivo is None:
+            print("🔍 abrir_archivo_tarea | fallback: buscando entre tareas con archivo vinculado")
+            con_archivo = [
+                (t, obtener_archivo_de_tarea(user_id, t.get("id")))
+                for t in tareas if not t.get("completada")
+            ]
+            con_archivo = [(t, a) for t, a in con_archivo if a is not None]
+
+            if len(con_archivo) == 1:
+                tarea_encontrada, archivo = con_archivo[0]
+                print(f"🔍 abrir_archivo_tarea | fallback: encontrada única tarea con archivo: '{tarea_encontrada.get('titulo')}'")
+            elif len(con_archivo) > 1:
+                print(f"🔍 abrir_archivo_tarea | fallback: múltiples tareas con archivo ({len(con_archivo)})")
+                accion = "flash"
+                payload = {"mensaje": "Tienes varios archivos vinculados, ¿de qué tarea quieres abrirlo?", "tipo": "info"}
+                mensaje = "Tienes varios archivos vinculados, ¿de qué tarea quieres abrirlo?"
+            else:
+                print("🔍 abrir_archivo_tarea | fallback: ninguna tarea con archivo vinculado")
 
         if archivo:
             accion = "abrir_doc_especifico"
             payload = {"doc_id": archivo["archivo_id"], "titulo": archivo.get("archivo_nombre") or "Documento"}
-            mensaje = f"Abriendo el archivo de \"{candidatas[0]['titulo']}\"..."
-        else:
+            mensaje = f"Abriendo el archivo de \"{tarea_encontrada['titulo']}\"..."
+            print(f"✅ abrir_archivo_tarea | abriendo: {archivo.get('archivo_nombre')}")
+        elif accion == "abrir_archivo_tarea":
             accion = "flash"
             payload = {"mensaje": "No encontré un archivo vinculado a esa tarea.", "tipo": "error"}
             mensaje = "No encontré un archivo vinculado a esa tarea."
+            print("❌ abrir_archivo_tarea | no se encontró archivo")
+        
+        flujo_activo = False
+
+    # ✅ FIX: Interceptor de confirmar simplificado
+    elif accion == "confirmar" and isinstance(payload, dict) and payload.get("onSi") in ("confirmar_entrega_real", "entregar_tarea_real"):
+        contexto = payload.get("contexto", {}) or {}
+        tarea_id = contexto.get("tarea_id")
+
+        tareas = obtener_tareas(user_id)
+        tarea = next((t for t in tareas if t.get("id") == tarea_id), None)
+
+        if not tarea:
+            accion = "flash"
+            payload = {"mensaje": "No encontré esa tarea para entregarla.", "tipo": "error"}
+            mensaje = "No encontré esa tarea para entregarla."
+        elif not tarea.get("link_classroom"):
+            accion = "flash"
+            payload = {"mensaje": f"No tengo el link directo de \"{tarea.get('titulo')}\" todavía.", "tipo": "info"}
+            mensaje = payload["mensaje"]
+        else:
+            payload["contexto"] = {"tarea_id": tarea_id}
+            mensaje = mensaje or payload.get("pregunta", "¿Deseas entregar esta tarea?")
         flujo_activo = False
 
     elif accion == "crear_doc_con_titulo":
@@ -1269,8 +1435,11 @@ El usuario escribió en ESPAÑOL. Debes responder en ESPAÑOL.
     elif accion == "ver_tareas":
         from services.tiempo import hoy_mx
         fuente_filtro = payload.get("fuente") if isinstance(payload, dict) else None
-        contiene_palabra_tarea = "tarea" in request.mensaje.lower()
-
+        
+        
+        PALABRAS_TAREA = {"tarea", "tareas", "task", "tasks", "homework", "assignment", "pendientes"}
+        contiene_palabra_tarea = any(p in request.mensaje.lower() for p in PALABRAS_TAREA)
+        
         incluir_examenes = (not contiene_palabra_tarea) and not fuente_filtro
 
         tareas_todas = obtener_tareas(user_id)

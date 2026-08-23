@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from config import settings
 from services.auth_utils import verificar_identidad
 import httpx
+import asyncio  # ✅ Añadir import asyncio
 
 router = APIRouter()
 
@@ -516,7 +517,9 @@ Usa español formal y académico. Máximo 300 palabras."""
             location=settings.GOOGLE_CLOUD_LOCATION,
         )
 
-        respuesta = cliente.models.generate_content(
+        # ✅ FIX: Ejecutar llamada síncrona en hilo separado para no bloquear el event loop
+        respuesta = await asyncio.to_thread(
+            cliente.models.generate_content,
             model="gemini-2.5-flash",
             contents=prompt,
             config=types.GenerateContentConfig(

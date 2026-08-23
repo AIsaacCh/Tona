@@ -6,17 +6,18 @@ export default defineConfig({
   optimizeDeps: {
     include: ['animejs']
   },
+  build: {
+    sourcemap: true
+  },
   server: {
     port: 5173,
     proxy: {
-      // ✅ Todas las peticiones API van al backend
       '/api': {
         target: 'http://localhost:8000',
         changeOrigin: true,
         secure: false,
-        ws:true,
+        ws: true,
       },
-      // ✅ WebSockets también van al backend
       '/ws': {
         target: 'ws://localhost:8000',
         ws: true,

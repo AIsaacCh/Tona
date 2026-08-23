@@ -21,6 +21,7 @@ from services.db import (
     guardar_mensaje_colaborativo,
     obtener_mensajes_colaborativos,
 )
+import asyncio  # ✅ Añadir import asyncio
 
 router = APIRouter()
 
@@ -315,7 +316,9 @@ Responde de forma breve y útil, en español, enfocándote en ayudar con la estr
         location=settings.GOOGLE_CLOUD_LOCATION,
     )
 
-    respuesta = cliente.models.generate_content(
+    # ✅ FIX: Ejecutar llamada síncrona en hilo separado para no bloquear el event loop
+    respuesta = await asyncio.to_thread(
+        cliente.models.generate_content,
         model="gemini-2.5-flash",
         contents=prompt,
         config=types.GenerateContentConfig(max_output_tokens=1024, temperature=0.4),

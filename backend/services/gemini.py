@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 import asyncio
 import random
 import json
+import asyncio
 
 
 _semaforo_gemini = asyncio.Semaphore(8)  # ajusta según tu RPM real disponible
@@ -20,11 +21,13 @@ async def _generar_con_reintento(modelo: str, contenido, config, max_reintentos:
     async with _semaforo_gemini:
         for intento in range(max_reintentos + 1):
             try:
-                return cliente.models.generate_content(
+                respuesta=await asyncio.to_thread(
+                    cliente.models.generate_content,
                     model=modelo,
                     contents=contenido,
                     config=config,
                 )
+                return respuesta
             except Exception as e:
                 es_429 = "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e)
                 if es_429 and intento < max_reintentos:

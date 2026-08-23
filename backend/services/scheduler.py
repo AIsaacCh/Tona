@@ -14,6 +14,7 @@ from routers.tasks import buscar_entrega_en_drive
 from services.tiempo import hoy_mx
 import json
 import re
+import asyncio
 
 scheduler = AsyncIOScheduler()
 
@@ -343,14 +344,15 @@ Si tras revisar el texto genuinamente NO hay contenido informativo claro (solo m
 texto repetido de navegación), responde EXACTAMENTE: "SIN_CONTENIDO_CLARO"
 No inventes información que no esté literalmente en el texto. No agregues explicaciones, solo la lista."""
 
-        respuesta = cliente.models.generate_content(
+        # ✅ FIX: Ejecutar llamada síncrona en hilo separado para no bloquear el event loop
+        respuesta = await asyncio.to_thread(
+            cliente.models.generate_content,
             model="gemini-2.5-flash",
             contents=prompt,
             config=types.GenerateContentConfig(
                 max_output_tokens=1500,
                 temperature=0.2,
                 thinking_config=types.ThinkingConfig(thinking_budget=0),
-
             ),
         )
         texto_resumen = respuesta.text.strip() if respuesta.text else ""

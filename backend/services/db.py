@@ -187,6 +187,7 @@ def guardar_tareas(user_id: str, tareas: list):
                 "curso_id": t.get("curso_id"),
                 "sin_fecha_limite": t.get("sin_fecha_limite", False),
                 "fecha_publicacion": t.get("fecha_publicacion") or None,
+                "link_classroom": t.get("link_classroom"),
             })
         supabase.table("tasks").insert(filas).execute()
     except Exception as e:

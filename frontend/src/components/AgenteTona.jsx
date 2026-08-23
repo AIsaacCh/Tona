@@ -95,6 +95,13 @@ agenteBus.on("abrir_archivo_entrega", (contexto) => {
   if (contexto?.archivo_link) {
     window.open(contexto.archivo_link, "_blank");
   }
+
+});
+
+agenteBus.on("abrir_link_externo", (payload) => {
+  if (payload?.url) {
+    window.open(payload.url, "_blank");
+  }
 });
 
 agenteBus.on("ejecutar_creacion", async ({ accion, payload }) => {
