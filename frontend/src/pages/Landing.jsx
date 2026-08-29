@@ -14,6 +14,34 @@ const COPAL = 'var(--copal, #d4a24c)'
 const FONT = "'Poppins', system-ui, sans-serif"
 
 // ─────────────────────────────────────────────────────────────────────────
+// FOOTER
+// ─────────────────────────────────────────────────────────────────────────
+function Footer() {
+  return (
+    <footer style={{
+      width: '100%', padding: '40px 24px 32px',
+      borderTop: '1px solid rgba(237,235,230,0.08)',
+      display: 'flex', flexWrap: 'wrap', gap: '20px',
+      alignItems: 'center', justifyContent: 'space-between',
+      fontFamily: FONT, fontSize: '12px', color: 'rgba(237, 235, 230, 0.99)',
+    }}>
+      <span>© {new Date().getFullYear()} Tona · Angel Isaac Cortes Hernandez</span>
+      <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+        <a href="/legal/terminos" style={{ color: 'rgb(254, 254, 253)', textDecoration: 'none' }}>
+          Términos y Condiciones
+        </a>
+        <a href="/legal/privacidad" style={{ color: 'rgba(255, 255, 255, 0.99)', textDecoration: 'none' }}>
+          Aviso de Privacidad
+        </a>
+        <a href="mailto:corteshernandezangelisaac@gmail.com." style={{ color: 'rgba(237, 235, 230, 0.99)', textDecoration: 'none' }}>
+          Contacto
+        </a>
+      </div>
+    </footer>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // Hook: revela una sección con inclinación 3D suave al entrar en vista
 // ─────────────────────────────────────────────────────────────────────────
 function useRevelado(delay = 0) {
@@ -296,49 +324,48 @@ export default function Landing() {
   const navigate = useNavigate()
   const irALogin = () => navigate('/login')
 
-  // Función para iniciar suscripción desde el landing
+  
   async function iniciarSuscripcionDesdeLanding() {
-  try {
-    const respWhoami = await fetch(`${import.meta.env.VITE_API_URL}/auth/whoami`, { credentials: 'include' })
-    const dataWhoami = await respWhoami.json()
+    try {
+      const respWhoami = await fetch(`${import.meta.env.VITE_API_URL}/auth/whoami`, { credentials: 'include' })
+      const dataWhoami = await respWhoami.json()
 
-    if (dataWhoami.autenticado) {
-      // Ya tiene cuenta: revisa si ya tiene acceso activo antes de dejarlo pagar de nuevo
-      const respEstado = await fetch(`${import.meta.env.VITE_API_URL}/pagos/estado/${dataWhoami.user_id}`, { credentials: 'include' })
-      const dataEstado = await respEstado.json()
+      if (dataWhoami.autenticado) {
+        
+        const respEstado = await fetch(`${import.meta.env.VITE_API_URL}/pagos/estado`, { credentials: 'include' })
+        const dataEstado = await respEstado.json()
 
-      if (dataEstado.activo) {
-        // Ya está pagando o en trial — lo mandamos directo al Dashboard, nada de Stripe
-        window.location.href = `/dashboard?user_id=${dataWhoami.user_id}&name=${encodeURIComponent(dataWhoami.name || '')}`
+        if (dataEstado.activo) {
+          window.location.href = `/dashboard?user_id=${dataWhoami.user_id}&name=${encodeURIComponent(dataWhoami.name || '')}`
+          return
+        }
+
+        
+        const respCheckout = await fetch(`${import.meta.env.VITE_API_URL}/pagos/crear-checkout`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        })
+        const dataCheckout = await respCheckout.json()
+        if (dataCheckout.url) window.location.href = dataCheckout.url
         return
       }
 
-      // Tiene cuenta pero sin suscripción activa (canceló, o nunca pagó): checkout normal con su user_id
-      const respCheckout = await fetch(`${import.meta.env.VITE_API_URL}/pagos/crear-checkout/${dataWhoami.user_id}`, {
+      // No tiene cuenta todavía: flujo de invitado normal
+      const claimToken = crypto.randomUUID()
+      localStorage.setItem('tona_claim_pendiente', claimToken)
+      const resp = await fetch(`${import.meta.env.VITE_API_URL}/pagos/crear-checkout-invitado`, {
         method: 'POST',
-        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ claim_token: claimToken }),
       })
-      const dataCheckout = await respCheckout.json()
-      if (dataCheckout.url) window.location.href = dataCheckout.url
-      return
+      const data = await resp.json()
+      if (data.url) window.location.href = data.url
+    } catch (e) {
+      console.error('Error iniciando suscripción desde landing:', e)
     }
-
-    // No tiene cuenta todavía: flujo de invitado normal
-    const claimToken = crypto.randomUUID()
-    localStorage.setItem('tona_claim_pendiente', claimToken)
-    const resp = await fetch(`${import.meta.env.VITE_API_URL}/pagos/crear-checkout-invitado`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ claim_token: claimToken }),
-    })
-    const data = await resp.json()
-    if (data.url) window.location.href = data.url
-  } catch (e) {
-    console.error('Error iniciando suscripción desde landing:', e)
   }
-}
 
   return (
     <div className="tona-app" style={{ minHeight: '100vh', width: '100%', overflowY: 'auto', overflowX: 'hidden', position: 'relative' }}>
@@ -354,8 +381,9 @@ export default function Landing() {
         ))}
       </section>
 
-      {/* ✅ Cambio: ahora usa iniciarSuscripcionDesdeLanding en lugar de irALogin */}
       <SeccionPrecio onEntrar={iniciarSuscripcionDesdeLanding} />
+      
+      <Footer />
     </div>
   )
 }

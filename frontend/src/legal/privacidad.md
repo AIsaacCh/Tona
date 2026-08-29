@@ -1,7 +1,7 @@
 # Aviso de Privacidad Integral — Tona
 
-**Última actualización:** 17 de agosto de 2026
-**Versión:** 1.1
+**Última actualización:** 26 de agosto de 2026
+**Versión:** 1.3
 
 ---
 
@@ -9,7 +9,7 @@
 
 **Tona** (el "Servicio", la "Plataforma") es operado por **Angel Isaac Cortes Hernandez**, persona física, con domicilio de contacto en el **Estado de México**, México.
 
-Correo de contacto para privacidad y ejercicio de derechos ARCO: **tagentstudyapp@gmail.com**
+Correo de contacto para privacidad y ejercicio de derechos ARCO: **corteshernandezangelisaac@gmail.com**
 
 ---
 
@@ -131,7 +131,8 @@ Tona incluye una función de **sesiones colaborativas** en la que puedes crear o
 
 - **Mientras tu cuenta esté activa:** conservamos tus datos académicos, notas, archivos vinculados e historial para que el Servicio funcione con continuidad.
 - **Si cierras sesión sin cancelar tu suscripción:** tus datos de trabajo (tareas, notas, archivos vinculados) se conservan sin límite de tiempo mientras la cuenta exista, para que puedas retomar tu actividad al volver.
-- **Si eliminas tu cuenta:** todos tus datos personales, tokens de acceso, historial y contenido almacenado en Tona se eliminan de forma permanente e irreversible. Para solicitar la eliminación de tu cuenta, escribe a `tagentstudyapp@gmail.com`; procesaremos tu solicitud en un plazo máximo de 5 días hábiles.
+- **Cerrar sesión no es lo mismo que eliminar tu cuenta ni que revocar el acceso a Google.** Cerrar sesión solo termina tu sesión activa en la aplicación; tus datos y permisos de Google permanecen intactos hasta que tú decidas revocarlos o eliminar tu cuenta.
+- **Si eliminas tu cuenta:** todos tus datos personales, tokens de acceso, historial y contenido almacenado en Tona se eliminan de forma permanente e irreversible. Puedes hacerlo de inmediato desde la sección "Cuenta" en la configuración de Tona (autoservicio, sin espera), o enviando una solicitud a `corteshernandezangelisaac@gmail.com`, que atenderemos en un plazo máximo de 5 días hábiles.
 - **Si revocas el acceso OAuth de Google** (sin eliminar tu cuenta): se eliminan tus tokens de acceso y refresco de inmediato, y las integraciones dejan de funcionar hasta que vuelvas a autorizarlas. Los datos ya sincronizados previamente (tareas, notas creadas manualmente) no se eliminan automáticamente por esta acción — solo se elimina el acceso a las fuentes externas.
 - Los **documentos vinculados** que hayas seleccionado mediante el Picker permanecen en tu Google Drive; Tona solo conserva su identificador y título para mostrarlos en el panel. Si eliminas tu cuenta, estas referencias se eliminan de la base de datos de Tona, pero los documentos originales permanecen en tu Drive.
 - El contenido de Gmail al que Tona accede mediante `gmail.readonly` no se almacena de forma permanente en la base de datos de Tona más allá de lo necesario para la sesión de conversación en la que fue consultado, salvo que tú mismo decidas guardarlo (por ejemplo, convirtiéndolo en una nota).
@@ -140,7 +141,7 @@ Tona incluye una función de **sesiones colaborativas** en la que puedes crear o
 
 ## 9. Tus derechos ARCO
 
-Tienes derecho, en todo momento y sin costo, a **A**cceder, **R**ectificar, **C**ancelar u **O**ponerte al tratamiento de tus datos personales, así como a revocar tu consentimiento. Para ejercerlos, escribe a `tagentstudyapp@gmail.com` indicando tu solicitud; daremos respuesta conforme a los plazos establecidos por la Ley Federal de Protección de Datos Personales en Posesión de los Particulares (LFPDPPP).
+Tienes derecho, en todo momento y sin costo, a **A**cceder, **R**ectificar, **C**ancelar u **O**ponerte al tratamiento de tus datos personales, así como a revocar tu consentimiento. Para ejercerlos, escribe a `corteshernandezangelisaac@gmail.com` indicando tu solicitud; daremos respuesta conforme a los plazos establecidos por la Ley Federal de Protección de Datos Personales en Posesión de los Particulares (LFPDPPP).
 
 ---
 
@@ -168,4 +169,4 @@ Cualquier modificación a este Aviso de Privacidad será publicada en esta misma
 
 ## 13. Contacto
 
-Para dudas sobre este Aviso o el tratamiento de tus datos: **tagentstudyapp@gmail.com**
+Para dudas sobre este Aviso o el tratamiento de tus datos: **corteshernandezangelisaac@gmail.com**

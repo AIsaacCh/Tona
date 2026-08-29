@@ -6,6 +6,15 @@ import { ChatSala } from "../components/colaborar/ChatSala";
 import { PanelArchivosSala } from "../components/colaborar/PanelArchivosSala";
 
 const API = import.meta.env.VITE_API_URL;
+const COMANDO_TONA = /^\s*(\/tona|@tona)[:\s]+([\s\S]+)/i;
+
+function IconoHamburguesa({ color }) {
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+      <path d="M3 5h14M3 10h14M3 15h14" stroke={color} strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
 
 export default function Colaborar() {
   const { codigo } = useParams();
@@ -19,8 +28,10 @@ export default function Colaborar() {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
   const [esCreador, setEsCreador] = useState(false);
+  const [menuAbierto, setMenuAbierto] = useState(false);
 
   const wsRef = useRef(null);
+  const preguntasPendientesRef = useRef(new Set());
 
   useEffect(() => {
     if (!userId) {
@@ -98,11 +109,10 @@ export default function Colaborar() {
       return;
     }
 
-    // ✅ CORREGIDO: URL completa con protocolo correcto
     const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsHost = window.location.host;
     const wsUrl = `${wsProtocol}//${wsHost}/api/colaborar/ws/${codigo}/${userId}?token=${token}`;
-    
+
     console.log("🔗 Conectando WebSocket a:", wsUrl);
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
@@ -118,11 +128,17 @@ export default function Colaborar() {
       if (data.tipo === "chat") {
         setMensajes((prev) => [...prev, { nombre: data.nombre, texto: data.texto }]);
       } else if (data.tipo === "tona_respuesta") {
-        setMensajes((prev) => [
-          ...prev,
-          { nombre: "tú", texto: data.pregunta, tipo: "usuario_pregunta" },
-          { tipo: "tona", texto: data.respuesta },
-        ]);
+        const yaLaMostreYo = preguntasPendientesRef.current.has(data.pregunta);
+        if (yaLaMostreYo) {
+          preguntasPendientesRef.current.delete(data.pregunta);
+          setMensajes((prev) => [...prev, { tipo: "tona", texto: data.respuesta }]);
+        } else {
+          setMensajes((prev) => [
+            ...prev,
+            { nombre: data.nombre_pregunta || "alguien", texto: data.pregunta },
+            { tipo: "tona", texto: data.respuesta },
+          ]);
+        }
         reproducirVoz(data.respuesta);
       } else if (data.tipo === "participante_unido" || data.tipo === "participante_salio") {
         setParticipantes(data.participantes || []);
@@ -144,11 +160,37 @@ export default function Colaborar() {
     };
   }
 
+  async function preguntarTona(pregunta) {
+    // ✅ Eco inmediato: se muestra al instante, del lado del que la escribió
+    preguntasPendientesRef.current.add(pregunta);
+    setMensajes((prev) => [...prev, { nombre: nombreUsuario, texto: pregunta }]);
+
+    try {
+      await fetch(`${API}/colaborar/${codigo}/preguntar`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pregunta }),
+      });
+      // la respuesta de Tona llega vía el broadcast "tona_respuesta";
+      // como ya mostramos la pregunta, ahí solo se agrega la respuesta
+    } catch (e) {
+      console.error("Error preguntando a Tona:", e);
+      preguntasPendientesRef.current.delete(pregunta);
+    }
+  }
+
   const enviarMensajeChat = useCallback((texto) => {
+    const match = texto.match(COMANDO_TONA);
+    if (match) {
+      const pregunta = match[2].trim();
+      if (pregunta) preguntarTona(pregunta);
+      return;
+    }
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ tipo: "chat", texto }));
     }
-  }, []);
+  }, [codigo, nombreUsuario]);
 
   async function cerrarSesion() {
     if (!window.confirm("¿Cerrar la sesión para todos los participantes?")) return;
@@ -219,30 +261,19 @@ export default function Colaborar() {
   return (
     <div style={styles.root}>
       <div style={styles.header}>
+        <button
+          onClick={() => setMenuAbierto(true)}
+          style={styles.botonMenu}
+          title="Abrir menú"
+        >
+          <IconoHamburguesa color={T.turquesa} />
+        </button>
         <span style={{ fontFamily: T.serif, fontSize: 22, color: T.turquesa, letterSpacing: 2 }}>
           TONA · COLABORAR
         </span>
       </div>
 
       <div style={styles.grid}>
-        <div style={styles.columnaIzquierda}>
-          <PanelParticipantes
-            codigo={codigo}
-            participantes={participantes}
-            userId={userId}
-            onCerrarSesion={cerrarSesion}
-            onSalir={salirDeSala}
-            esCreador={esCreador}
-          />
-          <PanelArchivosSala
-            codigo={codigo}
-            userId={userId}
-            archivos={archivos}
-            onArchivoCompartido={(archivo) => setArchivos((prev) => [...prev, archivo])}
-            onPreguntaTona={() => {}}
-          />
-        </div>
-
         <div style={styles.columnaChat}>
           <ChatSala
             mensajes={mensajes}
@@ -251,6 +282,47 @@ export default function Colaborar() {
           />
         </div>
       </div>
+
+      {menuAbierto && (
+        <div
+          style={styles.overlay}
+          onClick={() => setMenuAbierto(false)}
+        >
+          <div
+            style={styles.drawer}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={styles.drawerHeader}>
+              <span style={{ fontSize: 9, color: `${T.turquesa}88`, letterSpacing: "1.5px", fontFamily: T.mono }}>
+                MENÚ DE LA SALA
+              </span>
+              <button
+                onClick={() => setMenuAbierto(false)}
+                style={{ background: "transparent", border: "none", color: `${T.turquesa}66`, fontSize: 16, cursor: "pointer" }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 16, overflow: "auto", padding: "0 4px" }}>
+              <PanelParticipantes
+                codigo={codigo}
+                participantes={participantes}
+                userId={userId}
+                onCerrarSesion={cerrarSesion}
+                onSalir={salirDeSala}
+                esCreador={esCreador}
+              />
+              <PanelArchivosSala
+                codigo={codigo}
+                userId={userId}
+                archivos={archivos}
+                onArchivoCompartido={(archivo) => setArchivos((prev) => [...prev, archivo])}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -264,18 +336,38 @@ const styles = {
   },
   header: {
     marginBottom: 20, flexShrink: 0,
+    display: "flex", alignItems: "center", gap: 14,
+  },
+  botonMenu: {
+    background: `${T.turquesa}10`, border: `1px solid ${T.turquesa}30`,
+    borderRadius: 8, width: 36, height: 36,
+    display: "flex", alignItems: "center", justifyContent: "center",
+    cursor: "pointer", flexShrink: 0,
   },
   grid: {
-    flex: 1, display: "grid",
-    gridTemplateColumns: "320px 1fr",
-    gap: 20, minHeight: 0,
-  },
-  columnaIzquierda: {
-    display: "flex", flexDirection: "column", gap: 16,
-    overflow: "auto",
+    flex: 1, display: "flex", minHeight: 0,
   },
   columnaChat: {
-    minHeight: 0,
+    flex: 1, minHeight: 0,
+  },
+  overlay: {
+    position: "fixed", inset: 0, zIndex: 900,
+    background: "rgba(0,0,0,0.55)",
+    backdropFilter: "blur(2px)",
+    display: "flex",
+  },
+  drawer: {
+    width: "min(360px, 88vw)", height: "100vh",
+    background: "#0a0c0e",
+    borderRight: `1px solid ${T.turquesa}22`,
+    boxShadow: "8px 0 40px rgba(0,0,0,0.5)",
+    padding: "20px 18px",
+    display: "flex", flexDirection: "column", gap: 16,
+    overflow: "hidden",
+  },
+  drawerHeader: {
+    display: "flex", justifyContent: "space-between", alignItems: "center",
+    flexShrink: 0,
   },
   centrado: {
     width: "100vw", height: "100vh",

@@ -1,7 +1,7 @@
 # Términos y Condiciones de Uso — Tona
 
-**Última actualización:** 17 de agosto de 2026
-**Versión:** 1.1
+**Última actualización:** 26 de agosto de 2026
+**Versión:** 1.3
 
 ---
 
@@ -39,6 +39,7 @@ El Servicio se ofrece "tal cual" y puede modificarse, ampliarse o discontinuarse
 - El acceso a Tona se realiza mediante inicio de sesión con tu cuenta de Google. No existe un sistema de usuario/contraseña independiente.
 - Eres responsable de mantener la seguridad de tu cuenta de Google, ya que es la puerta de entrada a Tona.
 - Debes notificarnos de inmediato ante cualquier uso no autorizado de tu cuenta que detectes.
+- Cerrar sesión en Tona finaliza únicamente tu sesión dentro de la aplicación; **no revoca** los permisos de Google que le otorgaste. Para revocar el acceso de Tona a tu cuenta de Google, hazlo desde la configuración de seguridad de tu cuenta de Google (myaccount.google.com/permissions) o desde el apartado correspondiente dentro de Tona.
 
 ---
 
@@ -99,7 +100,7 @@ Tona permite crear salas de trabajo compartido con hasta 3 participantes mediant
 - Tona se ofrece mediante un plan de **suscripción mensual**, con un periodo de prueba gratuito de **3 días** para nuevos usuarios.
 - Podemos, a nuestra discreción, otorgar periodos de prueba extendidos (hasta 30 días) a usuarios seleccionados como parte de promociones.
 - Los pagos se procesan a través de **Stripe**. Al suscribirte, autorizas el cobro recurrente conforme al plan vigente hasta que canceles.
-- Puedes cancelar tu suscripción en cualquier momento desde el portal de facturación (Stripe). La cancelación surte efecto al final del periodo ya pagado; no se realizan cargos adicionales después de cancelar.
+- Puedes cancelar tu suscripción en cualquier momento desde el portal de facturación (Stripe), accesible desde la sección "Cuenta" dentro de Tona. La cancelación surte efecto al final del periodo ya pagado; no se realizan cargos adicionales después de cancelar.
 - **Política de reembolsos:** no se ofrecen reembolsos por periodos parciales ya utilizados, salvo que la ley aplicable disponga lo contrario.
 - Nos reservamos el derecho de modificar el precio del Servicio, notificándote con anticipación razonable antes de que el cambio te afecte.
 
@@ -138,9 +139,12 @@ El incumplimiento de esta sección puede resultar en la suspensión o terminaci�
 
 ## 11. Terminación de cuenta
 
-- Puedes eliminar tu cuenta en cualquier momento enviando una solicitud a `tagentstudyapp@gmail.com`. Procesaremos tu solicitud en un plazo máximo de 5 días hábiles.
-- Podemos suspender o terminar tu acceso si incumples estos Términos, sin perjuicio de otras acciones legales que correspondan.
-- Al terminar tu cuenta, tus datos se eliminan conforme a lo descrito en el Aviso de Privacidad.
+Puedes eliminar tu cuenta de dos formas:
+
+- **De forma inmediata y autoservicio**, desde la sección "Cuenta" en la configuración de Tona, confirmando la acción explícitamente escribiendo la palabra de confirmación solicitada. Esta eliminación es **instantánea e irreversible**: borra de inmediato tus tareas, notas, horario, conexiones (Notion, Classroom), historial de chat y demás datos asociados a tu perfil.
+- Alternativamente, enviando una solicitud a `corteshernandezangelisaac@gmail.com`, que atenderemos en un plazo máximo de 5 días hábiles — por ejemplo, si no tienes acceso a la app pero necesitas ejercer este derecho.
+
+Podemos suspender o terminar tu acceso si incumples estos Términos, sin perjuicio de otras acciones legales que correspondan. Al terminar tu cuenta por cualquiera de estas vías, tus datos se eliminan conforme a lo descrito en el Aviso de Privacidad.
 
 ---
 
@@ -168,4 +172,4 @@ Estos Términos se rigen por las leyes de los **Estados Unidos Mexicanos**. Para
 
 ## 15. Contacto
 
-Para dudas sobre estos Términos: **tagentstudyapp@gmail.com**
+Para dudas sobre estos Términos: **corteshernandezangelisaac@gmail.com**

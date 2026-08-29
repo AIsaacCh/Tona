@@ -22,6 +22,7 @@ import { PanelColaborar } from "../components/PanelColaborar";
 import { PanelSalaEstudio } from "../components/PanelSalaEstudio";
 import { useOnboarding } from "../hooks/useOnboarding";
 import PanelCompleto from "../components/PanelCompleto";
+import GateTerminos from "../components/GateTerminos";
 
 import {
   WidgetTareas, WidgetTareasSm,
@@ -108,11 +109,6 @@ function BloqueoSuscripcion({ userId }) {
 
   async function handleCerrarSesion() {
     try {
-      await fetch(`${API}/auth/revocar`, { method: "POST", credentials: "include" });
-    } catch (e) {
-    }
-
-    try {
       await fetch(`${API}/auth/logout`, {
         method: "GET",
         credentials: "include",
@@ -121,8 +117,13 @@ function BloqueoSuscripcion({ userId }) {
     } catch (e) {
     }
 
+    const terminosFlag = localStorage.getItem("tona_terminos_version_aceptada");
     localStorage.clear();
-    window.location.href = "/login";
+    if (terminosFlag) {
+      localStorage.setItem("tona_terminos_version_aceptada", terminosFlag);
+    }
+
+    window.location.href = "/";
   }
 
   return (
@@ -160,23 +161,21 @@ function BloqueoSuscripcion({ userId }) {
 export default function Dashboard() {
   const [params] = useSearchParams();
 
-  // ============================================================
-  // RESOLUCIÓN DE USUARIO - Versión actualizada
-  // ============================================================
+
   const [userId, setUserId] = useState(() => {
     return params.get("user_id") || localStorage.getItem("tona_user_id") || null;
   });
   const [resolviendoUsuario, setResolviendoUsuario] = useState(userId === null);
 
-  // Guardar token si viene en URL
+  const [terminosListos, setTerminosListos] = useState(false);
+
+  
   useEffect(() => {
     const token = params.get("token");
     if (token) localStorage.setItem("tona_token", token);
   }, [params]);
 
-  // Si no tenemos userId todavía (ej. incógnito recién después de un pago),
-  // preguntarle al backend si hay una sesión válida por cookie antes
-  // de asumir "demo".
+
   useEffect(() => {
     if (userId) return;
 
@@ -354,6 +353,13 @@ export default function Dashboard() {
   // RENDER - Mostrar loading mientras resolvemos usuario
   // ============================================================
   if (resolviendoUsuario || userId === null || cargando) return null;
+
+  // ============================================================
+  // GATE DE TÉRMINOS - Solo para usuarios no demo
+  // ============================================================
+  if (userId !== "demo" && !terminosListos) {
+    return <GateTerminos onListo={() => setTerminosListos(true)} />;
+  }
 
   if (paso < 3) {
     return (

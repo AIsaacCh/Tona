@@ -31,6 +31,8 @@ SCOPES = [
     "https://www.googleapis.com/auth/gmail.readonly",
 ]
 
+TERMINOS_VERSION_ACTUAL = "1.3"
+
 def crear_flow():
     return Flow.from_client_config(
         {
@@ -128,7 +130,7 @@ async def google_callback(code: str, state: str):
     return establecer_cookie_sesion_response
 
 
-# ✅ ENDPOINT PARA REGISTRAR ACEPTACIÓN DE TÉRMINOS
+
 class AceptarTerminosRequest(BaseModel):
     version: str
     fecha: str
@@ -142,24 +144,28 @@ async def aceptar_terminos(
 ):
     """Registra la aceptación de términos y condiciones por parte del usuario."""
     from services.db import guardar_usuario, obtener_usuario
-    
+
     usuario = obtener_usuario(user_id)
     if not usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    
-    # Registrar la aceptación
+
+    historial = usuario.get("terminos_historial") or []
+    if usuario.get("terminos_aceptados"):
+        historial.append(usuario["terminos_aceptados"])
+
     usuario["terminos_aceptados"] = {
-        "version": body.version,
+        "version": TERMINOS_VERSION_ACTUAL,
         "fecha": body.fecha,
         "ip": request.client.host if request.client else None,
         "user_agent": request.headers.get("user-agent", ""),
     }
-    
+    usuario["terminos_historial"] = historial[-10:]  # conserva un historial acotado
+
     guardar_usuario(user_id, usuario)
-    
+
     return {
         "aceptado": True,
-        "version": body.version,
+        "version": TERMINOS_VERSION_ACTUAL,
         "fecha": body.fecha,
     }
 
@@ -170,6 +176,8 @@ async def get_me(user_id: str = Depends(verificar_identidad)):
     usuario = obtener_usuario(user_id)
     if not usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    terminos = usuario.get("terminos_aceptados")
+    terminos_ok = bool(terminos) and terminos.get("version") == TERMINOS_VERSION_ACTUAL
     return {
         "id": user_id,
         "email": usuario.get("email"),
@@ -177,7 +185,13 @@ async def get_me(user_id: str = Depends(verificar_identidad)):
         "picture": usuario.get("picture"),
         "tier": usuario.get("tier", "estudiante"),
         "terminos_aceptados": usuario.get("terminos_aceptados"),
+        "terminos_ok": terminos_ok,
+        "terminos_version_actual": TERMINOS_VERSION_ACTUAL,
     }
+
+@router.get("/terminos-version")
+async def terminos_version():
+    return {"version": TERMINOS_VERSION_ACTUAL}
 
 
 @router.get("/check_scopes")
@@ -250,7 +264,7 @@ async def logout(user_id: str = Depends(verificar_identidad)):
     usuario = obtener_usuario(user_id)
     if usuario:
         guardar_usuario(user_id, {**usuario, 'access_token': None})
-    response = RedirectResponse(f"{settings.FRONTEND_URL}/login")
+    response = RedirectResponse(f"{settings.FRONTEND_URL}/")
     response.delete_cookie("tona_session", path="/")
     return response
 

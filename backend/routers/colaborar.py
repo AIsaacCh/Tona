@@ -21,7 +21,7 @@ from services.db import (
     guardar_mensaje_colaborativo,
     obtener_mensajes_colaborativos,
 )
-import asyncio  # ✅ Añadir import asyncio
+import asyncio
 
 router = APIRouter()
 
@@ -288,17 +288,20 @@ async def preguntar_tona(codigo: str, body: PreguntarTonaRequest, request: Reque
     user_id = _obtener_user_id_o_403(request)
     _verificar_sala_y_participante(codigo, user_id)
 
+    # Obtener el usuario y su nombre
+    usuario = obtener_usuario(user_id)
+    nombre_usuario = usuario.get("name", "Alguien").split()[0] if usuario else "Alguien"
+
     from routers.docs import leer_doc_con_usuario
     from google import genai
     from google.genai import types
 
     archivos = obtener_archivos_compartidos(codigo)
     contexto_docs = ""
-    for a in archivos[:3]:
+    for a in archivos[:6]:
         try:
-            # ✅ CORREGIDO: usa la función que acepta user_id explícito
             data = await leer_doc_con_usuario(a["doc_id"], user_id)
-            contexto_docs += f"\n\n--- Documento: {a['titulo']} ---\n{data.get('contenido', '')[:2000]}"
+            contexto_docs += f"\n\n--- Documento: {a['titulo']} ---\n{data.get('contenido', '')[:3500]}"
         except Exception as e:
             print(f"⚠️ No se pudo leer {a['titulo']} para {user_id}: {e}")
 
@@ -306,7 +309,7 @@ async def preguntar_tona(codigo: str, body: PreguntarTonaRequest, request: Reque
 
 Documentos compartidos en esta sesión:{contexto_docs or ' (ninguno compartido aún)'}
 
-Pregunta del usuario: {body.pregunta}
+Pregunta de {nombre_usuario}: {body.pregunta}
 
 Responde de forma breve y útil, en español, enfocándote en ayudar con la estructura, contenido o dudas sobre los documentos."""
 
@@ -316,7 +319,6 @@ Responde de forma breve y útil, en español, enfocándote en ayudar con la estr
         location=settings.GOOGLE_CLOUD_LOCATION,
     )
 
-    # ✅ FIX: Ejecutar llamada síncrona en hilo separado para no bloquear el event loop
     respuesta = await asyncio.to_thread(
         cliente.models.generate_content,
         model="gemini-2.5-flash",
@@ -332,6 +334,7 @@ Responde de forma breve y útil, en español, enfocándote en ayudar con la estr
         "tipo": "tona_respuesta",
         "pregunta": body.pregunta,
         "respuesta": texto_respuesta,
+        "nombre_pregunta": nombre_usuario,   # 👈 quién preguntó
     })
 
     return {"respuesta": texto_respuesta}

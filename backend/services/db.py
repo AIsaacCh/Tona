@@ -55,9 +55,10 @@ def guardar_usuario(user_id: str, datos: Dict):
         payload.setdefault("onboarding_completado", False)
 
     columnas_validas = {
-        "id", "email", "name", "picture", "tier", "access_token", "refresh_token",
-        "expires_at", "timezone", "onboarding_completado", "nombre_preferido",
-        "nombre_agente", "created_at", "updated_at"
+    "id", "email", "name", "picture", "tier", "access_token", "refresh_token",
+    "expires_at", "timezone", "onboarding_completado", "nombre_preferido",
+    "nombre_agente", "created_at", "updated_at",
+    "terminos_aceptados", "terminos_historial",
     }
     payload = {k: v for k, v in payload.items() if k in columnas_validas}
 

@@ -3,12 +3,10 @@ import { T } from "../../tokens";
 
 const API = import.meta.env.VITE_API_URL;
 
-export function PanelArchivosSala({ codigo, userId, archivos, onArchivoCompartido, onPreguntaTona }) {
+export function PanelArchivosSala({ codigo, userId, archivos, onArchivoCompartido }) {
   const [docsPropios, setDocsPropios] = useState([]);
   const [mostrarLista, setMostrarLista] = useState(false);
   const [cargando, setCargando] = useState(false);
-  const [pregunta, setPregunta] = useState("");
-  const [enviandoPregunta, setEnviandoPregunta] = useState(false);
   const [compartiendoId, setCompartiendoId] = useState(null);
 
   async function cargarMisDocs() {
@@ -44,25 +42,6 @@ export function PanelArchivosSala({ codigo, userId, archivos, onArchivoCompartid
       console.error("Error compartiendo:", e);
     } finally {
       setCompartiendoId(null);
-    }
-  }
-
-  async function preguntarATona() {
-    if (!pregunta.trim() || enviandoPregunta) return;
-    setEnviandoPregunta(true);
-    try {
-      await fetch(`${API}/colaborar/${codigo}/preguntar`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pregunta: pregunta.trim() }),
-      });
-      onPreguntaTona?.();
-      setPregunta("");
-    } catch (e) {
-      console.error("Error preguntando a Tona:", e);
-    } finally {
-      setEnviandoPregunta(false);
     }
   }
 
@@ -163,40 +142,6 @@ export function PanelArchivosSala({ codigo, userId, archivos, onArchivoCompartid
             </button>
           </div>
         )}
-      </div>
-
-      <div style={{ borderTop: `1px solid ${T.copal}12`, paddingTop: 14 }}>
-        <div style={{ fontSize: 9, color: `${T.copal}88`, letterSpacing: "1.5px", marginBottom: 8, fontFamily: T.mono }}>
-          PREGUNTAR A TONA
-        </div>
-        <textarea
-          value={pregunta}
-          onChange={(e) => setPregunta(e.target.value)}
-          placeholder="Pregunta sobre estructura, contenido, ideas..."
-          rows={2}
-          style={{
-            width: "100%", background: "rgba(237,235,230,0.04)",
-            border: "1px solid rgba(237,235,230,0.1)", borderRadius: 8,
-            padding: "8px 10px", color: "rgba(237,235,230,0.8)",
-            fontSize: 12, fontFamily: T.sans, outline: "none",
-            resize: "none", boxSizing: "border-box", marginBottom: 8,
-          }}
-        />
-        <button
-          onClick={preguntarATona}
-          disabled={!pregunta.trim() || enviandoPregunta}
-          style={{
-            width: "100%",
-            background: pregunta.trim() ? `${T.copal}18` : "transparent",
-            border: `1px solid ${T.copal}${pregunta.trim() ? "40" : "15"}`,
-            borderRadius: 8, padding: "8px 0",
-            color: pregunta.trim() ? T.copal : "rgba(237,235,230,0.2)",
-            fontSize: 11, fontFamily: T.mono,
-            cursor: pregunta.trim() ? "pointer" : "default",
-          }}
-        >
-          {enviandoPregunta ? "pensando..." : "preguntar"}
-        </button>
       </div>
     </div>
   );

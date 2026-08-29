@@ -595,6 +595,55 @@ function TabCuenta({ userId }) {
   const [textoConfirmacion, setTextoConfirmacion] = useState("");
   const [eliminando, setEliminando] = useState(false);
 
+  const [suscripcion, setSuscripcion] = useState(null);
+  const [cargandoSus, setCargandoSus] = useState(true);
+  const [abriendoPortal, setAbriendoPortal] = useState(false);
+
+  useEffect(() => {
+    fetch(`${API}/pagos/estado`, { credentials: "include" })
+      .then((r) => r.json())
+      .then((data) => setSuscripcion(data))
+      .catch(() => setSuscripcion(null))
+      .finally(() => setCargandoSus(false));
+  }, []);
+
+  async function abrirPortalFacturacion() {
+    setAbriendoPortal(true);
+    try {
+      const resp = await fetch(`${API}/pagos/portal`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = await resp.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        agenteBus.emit("flash", { mensaje: "No se pudo abrir el portal de facturación", tipo: "error" });
+        setAbriendoPortal(false);
+      }
+    } catch (e) {
+      agenteBus.emit("flash", { mensaje: "Error abriendo el portal de facturación", tipo: "error" });
+      setAbriendoPortal(false);
+    }
+  }
+
+  async function cerrarSesion() {
+    try {
+      await fetch(`${API}/auth/logout`, {
+        method: "GET",
+        credentials: "include",
+        redirect: "manual",
+      });
+    } catch (e) {}
+
+    const terminosFlag = localStorage.getItem("tona_terminos_version_aceptada");
+    localStorage.clear();
+    if (terminosFlag) {
+      localStorage.setItem("tona_terminos_version_aceptada", terminosFlag);
+    }
+
+    window.location.href = "/";
+}
   async function eliminarCuenta() {
     setEliminando(true);
     try {
@@ -606,7 +655,6 @@ function TabCuenta({ userId }) {
         const err = await resp.json().catch(() => ({}));
         throw new Error(err.detail || "No se pudo eliminar la cuenta");
       }
-      // Cuenta borrada y sesión cerrada del lado del servidor
       window.location.href = "/";
     } catch (e) {
       agenteBus.emit("flash", { mensaje: "Error eliminando cuenta: " + e.message, tipo: "error" });
@@ -614,11 +662,84 @@ function TabCuenta({ userId }) {
     }
   }
 
+  const ESTADO_LABELS = {
+    active: { texto: "Activa", color: T.jade },
+    trialing: { texto: "En periodo de prueba", color: T.turquesa },
+    past_due: { texto: "Pago pendiente", color: T.amaranto },
+    canceled: { texto: "Cancelada", color: "rgba(237,235,230,0.4)" },
+    none: { texto: "Sin suscripción", color: "rgba(237,235,230,0.4)" },
+  };
+
+  function formatearFecha(iso) {
+    if (!iso) return null;
+    try {
+      return new Date(iso).toLocaleDateString("es-MX", { day: "numeric", month: "long", year: "numeric" });
+    } catch {
+      return null;
+    }
+  }
+
   const confirmacionValida = textoConfirmacion.trim().toUpperCase() === "ELIMINAR";
+  const estadoInfo = ESTADO_LABELS[suscripcion?.status] || ESTADO_LABELS.none;
 
   return (
     <div>
-      <div style={s.labelChico}>CUENTA</div>
+      <div style={s.labelChico}>SUSCRIPCIÓN</div>
+
+      {cargandoSus && <div style={s.textoMuted}>Cargando estado de tu suscripción...</div>}
+
+      {!cargandoSus && suscripcion && (
+        <div style={{
+          background: "rgba(237,235,230,0.03)", border: `1px solid ${T.copal}15`,
+          borderRadius: 10, padding: 16, marginBottom: 20,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: estadoInfo.color }} />
+            <span style={{ fontSize: 13, color: "rgba(237,235,230,0.8)", fontFamily: T.sans }}>
+              {estadoInfo.texto}
+            </span>
+            {suscripcion.tier === "lifetime" && (
+              <span style={{ fontSize: 10, color: T.copal, fontFamily: T.mono }}>· acceso vitalicio</span>
+            )}
+          </div>
+
+          {suscripcion.trial_ends_at && suscripcion.status === "trialing" && (
+            <div style={{ fontSize: 11.5, color: "rgba(237,235,230,0.4)", fontFamily: T.sans, marginBottom: 4 }}>
+              Tu prueba termina el {formatearFecha(suscripcion.trial_ends_at)}.
+            </div>
+          )}
+          {suscripcion.current_period_end && suscripcion.status === "active" && (
+            <div style={{ fontSize: 11.5, color: "rgba(237,235,230,0.4)", fontFamily: T.sans, marginBottom: 4 }}>
+              Se renueva el {formatearFecha(suscripcion.current_period_end)}.
+            </div>
+          )}
+
+          {suscripcion.tier !== "lifetime" && suscripcion.status !== "none" && (
+            <button
+              onClick={abrirPortalFacturacion}
+              disabled={abriendoPortal}
+              style={{ ...s.btnSecundarioChico, width: "100%", textAlign: "center", marginTop: 10, padding: "9px 0" }}
+            >
+              {abriendoPortal ? "Abriendo..." : "Gestionar suscripción y facturas"}
+            </button>
+          )}
+
+          {suscripcion.status === "none" && (
+            <div style={{ fontSize: 11, color: "rgba(237,235,230,0.35)", fontFamily: T.sans, marginTop: 4 }}>
+              No tienes una suscripción activa.
+            </div>
+          )}
+        </div>
+      )}
+
+      <button
+        onClick={cerrarSesion}
+        style={{ ...s.btnSecundarioChico, width: "100%", textAlign: "center", marginBottom: 24, padding: "10px 0" }}
+      >
+        Cerrar sesión
+      </button>
+
+      <div style={s.labelChico}>ZONA DE RIESGO</div>
 
       {!confirmando && (
         <div>
@@ -675,7 +796,6 @@ function TabCuenta({ userId }) {
     </div>
   );
 }
-
 function Campo({ label, value, onChange, placeholder }) {
   return (
     <div style={{ marginBottom: 18 }}>

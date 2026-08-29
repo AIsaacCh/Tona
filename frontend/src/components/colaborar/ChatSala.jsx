@@ -94,16 +94,16 @@ export function ChatSala({ mensajes, onEnviar, nombreUsuario }) {
         borderTop: `1px solid ${T.jade}12`,
       }}>
         <input
-          value={texto}
-          onChange={(e) => setTexto(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Escribe un mensaje..."
-          style={{
-            flex: 1, background: "rgba(237,235,230,0.04)",
-            border: "1px solid rgba(237,235,230,0.1)", borderRadius: 8,
-            padding: "8px 12px", color: "rgba(237,235,230,0.8)",
-            fontSize: 12, fontFamily: T.sans, outline: "none",
-          }}
+        value={texto}
+        onChange={(e) => setTexto(e.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder="Escribe un mensaje, o usa /tona tu pregunta..."
+        style={{
+          flex: 1, background: "rgba(237,235,230,0.04)",
+          border: "1px solid rgba(237,235,230,0.1)", borderRadius: 8,
+          padding: "8px 12px", color: "rgba(237,235,230,0.8)",
+          fontSize: 12, fontFamily: T.sans, outline: "none",
+        }}
         />
         <button
           onClick={enviar}

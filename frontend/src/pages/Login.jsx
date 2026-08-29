@@ -272,7 +272,6 @@ export default function Login() {
     
     setAceptandoTerminos(true)
     
-    // ✅ Registrar aceptación en el backend (opcional, pero recomendado)
     try {
       await fetch(`${API}/auth/aceptar-terminos`, {
         method: 'POST',
@@ -290,7 +289,6 @@ export default function Login() {
     setMostrarPanelTerminos(false)
     setAceptandoTerminos(false)
     
-    // Ejecutar la acción pendiente
     if (accionPendiente === 'login') {
       setMostrarEmailForm(true)
     } else if (accionPendiente === 'suscribir') {
@@ -393,7 +391,7 @@ export default function Login() {
 
             {!mostrarEmailForm ? (
               <button
-                onClick={() => abrirPanelTerminos('login')}
+                onClick={() => setMostrarEmailForm(true)}
                 disabled={cargandoAccion !== null}
                 style={{
                   width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
