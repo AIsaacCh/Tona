@@ -150,6 +150,34 @@ const FEATURES = [
 ]
 
 // ─────────────────────────────────────────────────────────────────────────
+// DESCRIPCIÓN APP - sección estática
+// ─────────────────────────────────────────────────────────────────────────
+function DescripcionApp() {
+  return (
+    <section style={{
+      maxWidth: '720px', margin: '0 auto', padding: '24px 24px 0',
+      textAlign: 'center', position: 'relative', zIndex: 2,
+    }}>
+      <h1 style={{
+        fontFamily: FONT, fontSize: '15px', fontWeight: 600,
+        letterSpacing: '0.05em', color: 'rgba(237,235,230,0.9)', marginBottom: '10px',
+      }}>
+        Tona
+      </h1>
+      <p style={{
+        fontFamily: FONT, fontSize: '14px', lineHeight: 1.7,
+        color: 'rgba(237,235,230,0.55)', fontWeight: 300,
+      }}>
+        Tona es un asistente académico basado en inteligencia artificial para estudiantes
+        universitarios. Organiza tus tareas de Google Classroom, tu calendario, tus documentos
+        y tu correo de Gmail en un solo lugar, y puedes hablarle por texto o por voz para
+        resolver tus pendientes académicos.
+      </p>
+    </section>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // BANNER — vista pequeña de la esfera, flotando suavemente
 // ─────────────────────────────────────────────────────────────────────────
 function BannerEsfera() {
@@ -371,6 +399,7 @@ export default function Landing() {
     <div className="tona-app" style={{ minHeight: '100vh', width: '100%', overflowY: 'auto', overflowX: 'hidden', position: 'relative' }}>
       <FondoProfundidad />
       <NavBar onEntrar={irALogin} />
+      <DescripcionApp />
       <LaptopHero />
       <BannerEsfera />
 
