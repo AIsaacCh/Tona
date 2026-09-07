@@ -350,6 +350,9 @@ function PanelPersonalizacion({ userId, esPrimeraVez, onCompletado }) {
       return;
     }
 
+     if (pasoActual.campo === "sitios" && sitioUrl.trim() && sitioAlias.trim()) {
+      agregarSitio();
+    }
     const val = valor.trim() || pasoActual.default || "";
     if (!val && !pasoActual.opcional && pasoActual.tipo !== "opciones") return;
 

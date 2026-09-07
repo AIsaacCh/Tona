@@ -17,7 +17,7 @@ router = APIRouter()
 
 # ── Portal de facturación ────────────────────────────────────────────────────
 
-# ✅ ELIMINADO: user_id de la URL
+
 @router.post("/portal")
 async def abrir_portal(user_id: str = Depends(verificar_identidad)):
     try:

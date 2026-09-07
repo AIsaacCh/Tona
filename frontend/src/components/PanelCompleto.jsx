@@ -29,7 +29,7 @@ const VISUAL_NAV = {
 // prioridad real, es puramente decorativo.
 const PUNTOS_ESTADO = [T.jade, `${T.copal}`, T.jade, `${T.copal}`];
 
-export default function PanelCompleto({ activo, userId, panelesAbiertos, setPanelesAbiertos, onSalirPanel }) {
+export default function PanelCompleto({ activo, userId, nombre, panelesAbiertos, setPanelesAbiertos, onSalirPanel }) {
   const sidebarRef = useRef(null);
   const rightRef = useRef(null);
   const [navActivo, setNavActivo] = useState("inicio");
@@ -202,18 +202,11 @@ export default function PanelCompleto({ activo, userId, panelesAbiertos, setPane
             {new Date().toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long" })}
           </div>
           <div style={{ fontSize: 20, color: "rgba(237,235,230,0.9)", fontFamily: T.serif }}>
-            Hola, Isaac.
+            Hola, {nombre}.
           </div>
         </div>
 
-        <div style={{
-          flex: 1, maxWidth: 380, margin: "0 24px",
-          background: "rgba(237,235,230,0.03)", border: "1px solid rgba(237,235,230,0.08)",
-          borderRadius: 20, padding: "9px 16px",
-          fontSize: 12, color: "rgba(237,235,230,0.3)", fontFamily: T.sans,
-        }}>
-          Buscar en tus cursos, notas, archivos...
-        </div>
+        
 
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <div style={{ fontSize: 11, color: "rgba(237,235,230,0.4)", fontFamily: T.sans, whiteSpace: "nowrap" }}>

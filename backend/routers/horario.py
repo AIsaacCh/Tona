@@ -5,10 +5,22 @@ from typing import Optional, List
 from services.db import obtener_horario, guardar_horario_completo, agregar_clase_horario, eliminar_clase_horario
 from config import settings
 import base64
+import unicodedata
 import json
 
 router = APIRouter()
 
+# -------------------- Normalización de días --------------------
+DIAS_VALIDOS = {"lunes", "martes", "miercoles", "jueves", "viernes", "sabado"}
+
+def _normalizar_dia(valor: str) -> str:
+    """Quita acentos y normaliza a una de las claves válidas de DIAS_VALIDOS."""
+    if not valor:
+        return valor
+    sin_acentos = unicodedata.normalize("NFKD", valor.strip().lower())
+    sin_acentos = "".join(c for c in sin_acentos if not unicodedata.combining(c))
+    return sin_acentos if sin_acentos in DIAS_VALIDOS else valor.strip().lower()
+# --------------------------------------------------------------
 
 class ClaseManual(BaseModel):
     materia: str
@@ -18,18 +30,13 @@ class ClaseManual(BaseModel):
     aula: Optional[str] = None
     profesor: Optional[str] = None
 
-
 class HorarioCompleto(BaseModel):
     clases: List[ClaseManual]
 
-
-# ✅ CORREGIDO - sin {user_id}
 @router.get("/")
 async def listar_horario(user_id: str = Depends(verificar_identidad)):
     return {"horario": obtener_horario(user_id)}
 
-
-# ✅ NUEVO ENDPOINT - GET /horario (sin slash)
 @router.get("")
 async def obtener_horario_endpoint(user_id: str = Depends(verificar_identidad)):
     from services.db import obtener_horario
@@ -37,7 +44,8 @@ async def obtener_horario_endpoint(user_id: str = Depends(verificar_identidad)):
     dias_orden = {"lunes": 0, "martes": 1, "miercoles": 2, "jueves": 3, "viernes": 4, "sabado": 5}
     agrupado = {}
     for c in clases:
-        dia = (c.get("dia") or "").lower()
+        dia_raw = (c.get("dia") or "").lower()
+        dia = _normalizar_dia(dia_raw)  # <-- normalización aplicada aquí
         agrupado.setdefault(dia, []).append({
             "materia": c.get("materia"),
             "hora_inicio": c.get("hora_inicio"),
@@ -51,18 +59,17 @@ async def obtener_horario_endpoint(user_id: str = Depends(verificar_identidad)):
         for dia in sorted(agrupado.keys(), key=lambda d: dias_orden.get(d, 99))
     ]
 
-
-# ✅ CORREGIDO - sin {user_id}
 @router.post("/manual")
 async def agregar_clase(
     body: ClaseManual,
     user_id: str = Depends(verificar_identidad)
 ):
-    clase = agregar_clase_horario(user_id, body.model_dump())
+    # Normalizar día antes de guardar
+    clase_data = body.model_dump()
+    clase_data["dia"] = _normalizar_dia(clase_data["dia"])
+    clase = agregar_clase_horario(user_id, clase_data)
     return {"agregada": True, "clase": clase}
 
-
-# ✅ CORREGIDO - sin {user_id}
 @router.delete("/{clase_id}")
 async def eliminar_clase(
     clase_id: str,
@@ -71,8 +78,6 @@ async def eliminar_clase(
     eliminar_clase_horario(user_id, clase_id)
     return {"eliminada": True}
 
-
-# ✅ CORREGIDO - sin {user_id}
 @router.post("/analizar")
 async def analizar_horario_archivo(
     file: UploadFile = File(...),
@@ -143,14 +148,18 @@ Reglas:
                 detail="No se pudo interpretar el horario. Intenta con una imagen más clara o mejor iluminada."
             )
 
-        return {"clases_propuestas": resultado.get("clases", [])}
+        # Normalizar días de las clases propuestas
+        clases_propuestas = resultado.get("clases", [])
+        for clase in clases_propuestas:
+            if "dia" in clase:
+                clase["dia"] = _normalizar_dia(clase["dia"])
+
+        return {"clases_propuestas": clases_propuestas}
 
     except Exception as e:
         print(f"❌ Error analizando horario: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
-# ✅ CORREGIDO - sin {user_id}
 @router.post("/confirmar")
 async def confirmar_horario(
     body: HorarioCompleto,
@@ -162,15 +171,20 @@ async def confirmar_horario(
     reemplazar=True → reemplaza todo el horario existente
     reemplazar=False → solo agrega estas clases nuevas
     """
+    # Normalizar días de todas las clases
+    clases_normalizadas = []
+    for c in body.clases:
+        clase_data = c.model_dump()
+        clase_data["dia"] = _normalizar_dia(clase_data["dia"])
+        clases_normalizadas.append(clase_data)
+
     if reemplazar:
-        guardar_horario_completo(user_id, [c.model_dump() for c in body.clases])
+        guardar_horario_completo(user_id, clases_normalizadas)
     else:
-        for c in body.clases:
-            agregar_clase_horario(user_id, c.model_dump())
-    return {"guardado": True, "total": len(body.clases)}
+        for c in clases_normalizadas:
+            agregar_clase_horario(user_id, c)
+    return {"guardado": True, "total": len(clases_normalizadas)}
 
-
-# ✅ NUEVO - endpoint para corregir clases con IA
 @router.post("/corregir_clase")
 async def corregir_clase(
     body: dict,
@@ -212,6 +226,9 @@ Responde SOLO este JSON, nada más, con la clase ya corregida:
         if texto.startswith("```"):
             texto = texto.split("\n", 1)[1].rsplit("```", 1)[0]
         clase_corregida = json.loads(texto)
+        # Normalizar el día de la clase corregida
+        if "dia" in clase_corregida:
+            clase_corregida["dia"] = _normalizar_dia(clase_corregida["dia"])
         return {"clase": clase_corregida}
     except Exception as e:
         print(f"❌ Error corrigiendo clase: {e}")

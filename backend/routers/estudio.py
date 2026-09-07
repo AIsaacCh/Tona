@@ -1,8 +1,8 @@
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional
-from services.auth_utils import verificar_identidad
 from services.deteccion_tema import detectar_tema, info_lab
+from services.auth_utils import verificar_identidad
 from services.db import (
     crear_sesion_estudio, obtener_sesion_estudio, listar_sesiones_estudio,
     guardar_mensaje_estudio, obtener_mensajes_estudio, cerrar_sesion_estudio,
@@ -16,7 +16,7 @@ class CrearSesionRequest(BaseModel):
     titulo: str | None = None
 
 
-# ✅ CORREGIDO - sin {user_id}
+
 @router.post("/crear")
 async def crear_sesion(
     body: CrearSesionRequest,
@@ -26,13 +26,13 @@ async def crear_sesion(
     return {"creada": True, "sesion": sesion}
 
 
-# ✅ CORREGIDO - sin {user_id}
+
 @router.get("/")
 async def listar_sesiones(user_id: str = Depends(verificar_identidad)):
     return {"sesiones": listar_sesiones_estudio(user_id)}
 
 
-# ✅ CORREGIDO - sin {user_id}
+
 @router.get("/{sesion_id}")
 async def obtener_sesion(
     sesion_id: str,
@@ -49,7 +49,7 @@ class MensajeRequest(BaseModel):
     texto: str
 
 
-# ✅ CORREGIDO - sin {user_id}
+
 @router.post("/{sesion_id}/mensaje")
 async def enviar_mensaje(
     sesion_id: str,
@@ -81,7 +81,7 @@ async def enviar_mensaje(
     return {"respuesta": fila_respuesta}
 
 
-# ✅ CORREGIDO - sin {user_id}
+
 @router.post("/{sesion_id}/cerrar")
 async def cerrar_sesion(
     sesion_id: str,

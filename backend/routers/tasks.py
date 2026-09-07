@@ -572,15 +572,14 @@ async def sincronizar_todo(user_id: str = Depends(verificar_identidad)):
     tareas_classroom = await _obtener_classroom(user_id)
     eventos_calendar = await _obtener_calendar(user_id)
 
-    # ✅ NUEVO: detectar clases nuevas sin carpeta de Drive y crearlas
+    
     await _asegurar_carpetas_clases_nuevas(user_id, tareas_classroom)
 
     existentes = obtener_tareas(user_id)
-    # resto igual
     manuales   = [t for t in existentes if t.get("fuente") == "manual"]
 
-    # Preservar completado local — Classroom/Calendar no saben que el usuario
-    # ya marcó algo como hecho desde Tona, así que no dejamos que el sync lo resetee.
+    
+    
     ids_completadas = {t["id"] for t in existentes if t.get("completada")}
     for t in tareas_classroom:
         if t["id"] in ids_completadas:
@@ -673,7 +672,7 @@ async def _obtener_classroom(user_id: str) -> list:
                             pass
 
                     if fecha_limite:
-                        # ✅ Filtrar tareas vencidas hace más de 30 días para no ensuciar el contexto
+                        
                         try:
                             fecha_t = datetime.strptime(fecha_limite, "%Y-%m-%d").date()
                             if fecha_t < limite_pasado:
@@ -681,8 +680,8 @@ async def _obtener_classroom(user_id: str) -> list:
                         except:
                             pass
                     else:
-                        # ⚠️ Sin fecha de entrega: solo se muestra si se publicó hace 30 días o menos.
-                        # Si es más vieja o no sabemos cuándo se publicó, se considera obsoleta.
+                        
+                        
                         if fecha_publicacion:
                             try:
                                 fecha_pub_dt = datetime.strptime(fecha_publicacion, "%Y-%m-%d").date()
@@ -1346,3 +1345,5 @@ async def obtener_tareas_usuario(user_id: str = Depends(verificar_identidad)):
         "total":    len(tareas),
         "urgentes": len([t for t in tareas if t.get("urgencia") == "alta"]),
     }
+
+

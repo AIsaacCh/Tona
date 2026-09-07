@@ -670,8 +670,6 @@ function DashboardPrincipal({ userId, params, panelConfig, setPanelConfig, bloqu
 
       {modoUI === "compacto" && (
         <div style={s.infoTR}>
-          <span style={s.urgentDot} />
-          <span style={s.urgentText}>2 urgentes</span>
           <button
             style={s.editBtn}
             onClick={() => setModoUI("completo")}
@@ -976,13 +974,14 @@ function DashboardPrincipal({ userId, params, panelConfig, setPanelConfig, bloqu
         </>
       )}
 
-      <PanelCompleto
-        activo={modoUI === "completo"}
-        userId={userId}
-        panelesAbiertos={panelesAbiertos}
-        setPanelesAbiertos={setPanelesAbiertos}
-        onSalirPanel={() => setModoUI("compacto")}
-      />
+<PanelCompleto
+  activo={modoUI === "completo"}
+  userId={userId}
+  nombre={nombre}
+  panelesAbiertos={panelesAbiertos}
+  setPanelesAbiertos={setPanelesAbiertos}
+  onSalirPanel={() => setModoUI("compacto")}
+/>
 
       {panelConfig && (
         <PanelConfiguracion

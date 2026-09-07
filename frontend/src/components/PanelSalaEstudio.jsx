@@ -28,7 +28,7 @@ export function PanelSalaEstudio({ userId, onCerrar }) {
   async function cargarSesiones() {
     setCargando(true);
     try {
-      const resp = await fetch(`${API}/estudio`, { credentials: "include" });
+      const resp = await fetch(`${API}/estudio/`, { credentials: "include" });
       const data = await resp.json();
       setSesiones(data.sesiones || []);
     } catch (e) {
