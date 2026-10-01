@@ -147,7 +147,7 @@ CAMPOS_REQUERIDOS = {
     "crear_doc_con_titulo": ["titulo"],   
 }
 
-# 🔄 MAPEO DE ACCIONES EN INGLÉS A ESPAÑOL (para cuando Gemini traduce)
+#  MAPEO DE ACCIONES EN INGLÉS A ESPAÑOL (para cuando Gemini traduce)
 MAPEO_ACCIONES = {
     "send_email": "enviar_correo",
     "create_task": "crear_tarea_real",

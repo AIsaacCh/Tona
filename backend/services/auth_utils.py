@@ -48,7 +48,7 @@ def obtener_user_id_de_cookie(request: Request) -> str:
     return decodificar_token(token)
 
 
-# ✅ NUEVA: Dependency que devuelve el user_id de la cookie
+
 async def verificar_identidad(request: Request) -> str:
     """
     Dependency de FastAPI: valida la cookie y devuelve el user_id.
@@ -56,7 +56,3 @@ async def verificar_identidad(request: Request) -> str:
     """
     return obtener_user_id_de_cookie(request)
 
-
-# ⚠️ OBSOLETO: Ya no se usa, pero lo mantengo por compatibilidad
-# def verificar_identidad(user_id: str, request: Request) -> str:
-#     ...

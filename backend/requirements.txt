@@ -61,3 +61,4 @@ pyjwt
 beautifulsoup4
 stripe
 motion
+mcp<2

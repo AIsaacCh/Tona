@@ -226,10 +226,10 @@ Responde SOLO este JSON, nada más, con la clase ya corregida:
         if texto.startswith("```"):
             texto = texto.split("\n", 1)[1].rsplit("```", 1)[0]
         clase_corregida = json.loads(texto)
-        # Normalizar el día de la clase corregida
+        
         if "dia" in clase_corregida:
             clase_corregida["dia"] = _normalizar_dia(clase_corregida["dia"])
         return {"clase": clase_corregida}
-    except Exception as e:
+    except Exception as e: 
         print(f"❌ Error corrigiendo clase: {e}")
         raise HTTPException(status_code=500, detail="No se pudo interpretar la corrección")

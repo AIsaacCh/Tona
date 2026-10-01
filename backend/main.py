@@ -14,7 +14,8 @@ import contextlib
 async def lifespan(app: FastAPI):
     init_db()
     iniciar_scheduler()
-    yield
+    async with mcp.session_manager.run():
+        yield
     detener_scheduler()
 
 
@@ -44,6 +45,12 @@ app.include_router(pagos.router, prefix="/api/pagos", tags=["pagos"])
 app.include_router(laboratorio.router, prefix="/api/laboratorio", tags=["laboratorio"])
 app.include_router(estudio.router, prefix="/api/estudio", tags=["estudio"])
 app.include_router(notion.router, prefix="/api/notion", tags=["notion"])
+from mcp_alexa.instance import mcp
+from mcp_alexa.auth import router as mcp_alexa_router
+from mcp_alexa import tools  
+
+app.include_router(mcp_alexa_router)
+app.mount("/mcp", mcp.streamable_http_app())
 
 
 
