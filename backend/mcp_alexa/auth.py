@@ -167,6 +167,3 @@ async def verificar_token_alexa(request: Request) -> str:
     """Wrapper para usarse como Depends() en endpoints FastAPI normales."""
     return await verificar_token_desde_headers(request.headers)
 
-@router.get("/mcp/debug-callback")
-async def debug_callback(request: Request):
-    return dict(request.query_params)
