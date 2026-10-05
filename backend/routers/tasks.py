@@ -43,7 +43,8 @@ class SitioMonitoreo(BaseModel):
     frecuencia: Optional[str] = "semanal"
 
 class EstructuraClasesRequest(BaseModel):
-    cursos: list  # [{"curso_id": "...", "nombre": "..."}]
+    cursos: list
+    omitidos: list = []   # ids de clases que el usuario no eligio
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -216,42 +217,37 @@ async def _buscar_carpeta_existente(headers: dict, nombre: str, parent_id: str) 
     return None
 
 
-# ✅ NUEVA FUNCIÓN HELPER: Crear carpetas automáticamente para clases nuevas
+
 async def _asegurar_carpetas_clases_nuevas(user_id: str, tareas_classroom: list):
     """
-    Revisa las tareas recién sincronizadas de Classroom y crea la carpeta de
-    Drive para cualquier curso que todavía no tenga una vinculada. Así no
-    depende de que el usuario pase por el onboarding otra vez.
+    Solo corre si el usuario aceptó las carpetas de Drive en el onboarding
+    (existe drive_root_folder_id) y respeta las clases que omitió o quitó.
     """
+    config = obtener_config(user_id)
+    root_id = config.get("drive_root_folder_id")
+    if not root_id:
+        return
+    omitidos = set(config.get("drive_cursos_omitidos") or [])
+
     cursos_en_tareas = {
         (t.get("curso_id"), t.get("curso"))
         for t in tareas_classroom
-        if t.get("curso_id")
+        if t.get("curso_id") and t.get("curso_id") not in omitidos
     }
     if not cursos_en_tareas:
         return
 
     try:
         headers = await get_google_headers(user_id)
-        config = obtener_config(user_id)
-        root_id = config.get("drive_root_folder_id")
-
-        if not root_id:
-            tona_id = await _crear_carpeta_drive(headers, "Tona · Clases")
-            root_id = await _crear_carpeta_drive(headers, "materias", parent_id=tona_id)
-            guardar_config(user_id, {"drive_root_folder_id": root_id})
-
         for curso_id, nombre_curso in cursos_en_tareas:
             if obtener_carpeta_clase(user_id, curso_id):
-                continue  # ya tiene carpeta, no hacer nada
-
+                continue
             nombre = nombre_curso or "Clase sin nombre"
             folder_id = await _buscar_carpeta_existente(headers, nombre, root_id)
             if not folder_id:
                 folder_id = await _crear_carpeta_drive(headers, nombre, parent_id=root_id)
-
             guardar_carpeta_clase(user_id, curso_id, nombre, folder_id)
-            print(f"📁 Carpeta creada automáticamente para clase nueva: {nombre}")
+            print(f"📁 Carpeta creada para clase nueva: {nombre}")
     except Exception as e:
         print(f"⚠️ Error asegurando carpetas de clases nuevas para {user_id}: {e}")
 
@@ -275,7 +271,7 @@ async def crear_estructura_clases(
         if not root_id:
             tona_id = await _crear_carpeta_drive(headers, "Tona · Clases")
             root_id = await _crear_carpeta_drive(headers, "materias", parent_id=tona_id)
-            guardar_config(user_id, {"drive_root_folder_id": root_id})
+            guardar_config(user_id, {"drive_cursos_omitidos": body.omitidos})
 
         creadas = []
         for curso in body.cursos:
@@ -315,6 +311,10 @@ async def quitar_carpeta_clase(
     real de Drive, para no arriesgar archivos que el usuario ya tenga guardados ahí.
     """
     eliminar_carpeta_clase(user_id, curso_id)
+    config = obtener_config(user_id)
+    omitidos = set(config.get("drive_cursos_omitidos") or [])
+    omitidos.add(curso_id)
+    guardar_config(user_id, {"drive_cursos_omitidos": list(omitidos)})
     return {"eliminado": True}
 
 
@@ -631,7 +631,7 @@ async def _obtener_classroom(user_id: str) -> list:
 
             cursos = resp.json().get("courses", [])
 
-            for curso in cursos[:5]:
+            for curso in cursos[:8]:
                 curso_id = curso["id"]
                 nombre_curso = curso.get("name", "Curso")
 
@@ -762,129 +762,11 @@ async def _obtener_calendar(user_id: str) -> list:
 # ── Gmail ─────────────────────────────────────────────────────────────────────
 
 
-@router.get("/gmail")
-async def obtener_gmail(
-    max_resultados: int = 10,
-    user_id: str = Depends(verificar_identidad)
-):
-    cached = obtener_cache(user_id, "gmail")
-    if cached:
-        return cached
-
-    try:
-        headers = await get_google_headers(user_id)
-
-        async with httpx.AsyncClient() as client:
-            # Solo no leídos
-            resp = await client.get(
-                "https://gmail.googleapis.com/gmail/v1/users/me/messages",
-                headers=headers,
-                params={
-                    "q":          "",
-                    "maxResults": max_resultados,
-                },
-            )
-            if resp.status_code != 200:
-                return {"correos": [], "total_no_leidos": 0}
-
-            mensajes_ids = resp.json().get("messages", [])
-            correos      = []
-
-            for m in mensajes_ids[:8]:
-                resp_m = await client.get(
-                    f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{m['id']}",
-                    headers=headers,
-                    params={"format": "metadata", "metadataHeaders": ["Subject", "From", "Date"]},
-                )
-                if resp_m.status_code != 200:
-                    continue
-
-                data    = resp_m.json()
-                headers_msg = {h["name"]: h["value"] for h in data.get("payload", {}).get("headers", [])}
-
-                correos.append({
-                    "id":      m["id"],
-                    "asunto":  headers_msg.get("Subject", "Sin asunto"),
-                    "de":      headers_msg.get("From", ""),
-                    "fecha":   headers_msg.get("Date", "")[:16],
-                    "snippet": data.get("snippet", "")[:120],
-                    "leido":   False,
-                })
-
-        resultado = {
-            "correos":          correos,
-            "total_no_leidos":  len(mensajes_ids),
-        }
-        guardar_cache(user_id, "gmail", resultado, ttl_minutos=15)
-        return resultado
-
-    except Exception as e:
-        print(f"Error Gmail: {e}")
-        return {"correos": [], "total_no_leidos": 0}
-
-
-
-@router.get("/gmail/buscar")
-async def buscar_gmail_por_tema(
-    tema: str,
-    dias: int = 14,
-    user_id: str = Depends(verificar_identidad)
-):
-    """
-    Busca correos por tema, filtrando por antigüedad (Gmail hace el filtro nativo).
-    Si el usuario no especifica días, default a 14 (2 semanas).
-    """
-    try:
-        headers=await get_google_headers(user_id)
-        fecha_desde=(datetime.now() - timedelta(days=dias)).strftime("%Y/%m/%d")
-        query=f"{tema} after:{fecha_desde}"
-
-        async with httpx.AsyncClient() as client:
-            resp=await client.get(
-                "https://gmail.googleapis.com/gmail/v1/users/me/messages",
-                headers=headers,
-                params={
-                   "q": query,
-                    "maxResults":15,
-                },
-
-            )
-            if resp.status_code != 200:
-                return {"correos": [], "total": 0}
-            
-            mensajes_ids=resp.json().get("messages",[])
-            correos=[]
-
-            for m in mensajes_ids[:10]:
-                resp_m=await client.get(
-                    f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{m['id']}",    
-                    headers=headers,
-                    params={"format": "metadata", "metadataHeaders": ["Subject", "From", "Date"]},
-
-                )
-                if resp_m.status_code != 200:
-                    continue
-
-                data=resp_m.json()
-                headers_msg ={h["name"]: h["value"] for h in data.get("payload", {}).get("headers", [])}
-
-                correos.append({
-                    "id": m["id"],
-                    "asunto": headers_msg.get("Subject", "Sin asunto"),
-                    "de": headers_msg.get("From", ""),
-                    "fecha": headers_msg.get("Date", "")[:16],
-                    "snippet": data.get("snippet", "")[:150],
-
-                })
-        return {"correos": correos, "total": len(correos), "tema":tema, "dias": dias}
-    except Exception as e:
-        print(f"Error buscando Gmail: {e}")
-        return {"correos": [], "total": 0}
     
 class EnviarCorreoRequest(BaseModel):
-    para:str
-    asunto:str
-    cuerpo:str
+    para: str
+    asunto: str
+    cuerpo: str
 
 
 @router.post("/gmail/enviar")
@@ -892,36 +774,38 @@ async def enviar_correo(
     body: EnviarCorreoRequest,
     user_id: str = Depends(verificar_identidad)
 ):
-    """
-    Envía un correo real usando el scope gmail.send ya autorizado.
-    """
+    """Envía un correo con gmail.send. Solo se llama tras confirmación explícita del usuario."""
+    para = body.para.strip()
+    if not _re.fullmatch(r"[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+", para):
+        raise HTTPException(status_code=400, detail="Dirección de correo inválida")
+    asunto = " ".join(body.asunto.split())
+
     try:
-        headers=await get_google_headers(user_id)
+        headers = await get_google_headers(user_id)
 
-        mensaje= MIMEText(body.cuerpo)
-        mensaje["to"]=body.para
-        mensaje["subject"]=body.asunto
-
-        raw=base64.urlsafe_b64encode(mensaje.as_bytes()).decode()
+        mensaje = MIMEText(body.cuerpo, "plain", "utf-8")
+        mensaje["to"] = para
+        mensaje["subject"] = asunto
+        raw = base64.urlsafe_b64encode(mensaje.as_bytes()).decode()
 
         async with httpx.AsyncClient() as client:
-            resp=await client.post(
+            resp = await client.post(
                 "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
                 headers={**headers, "Content-Type": "application/json"},
                 json={"raw": raw},
-
             )
 
         if resp.status_code not in (200, 201):
-            raise HTTPException(status_code=500, detail=f"Error enviando correo: {resp.text}")
-        
-        return{"enviado":True, "para":body.para, "asunto":body.asunto}
-    
+            print(f"❌ Gmail send: {resp.status_code} {resp.text}")
+            raise HTTPException(status_code=502, detail="No se pudo enviar el correo")
+
+        return {"enviado": True, "para": para, "asunto": asunto}
+
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error enviando correo: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"❌ Error enviando correo: {e}")
+        raise HTTPException(status_code=500, detail="Error enviando el correo")
 
 
 # ── Sitios monitoreados ───────────────────────────────────────────────────────

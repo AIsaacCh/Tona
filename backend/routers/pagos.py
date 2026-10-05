@@ -184,6 +184,7 @@ async def iniciar_checkout_invitado(body: CrearCheckoutInvitadoBody):
         url = crear_checkout_invitado(body.claim_token)
         return {"url": url}
     except stripe.error.StripeError as e:
+        print(f"❌ Error de Stripe creando checkout invitado: {type(e).__name__}: {e}")
         raise HTTPException(status_code=502, detail="Error comunicando con Stripe")
 
 

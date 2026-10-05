@@ -132,8 +132,12 @@ async def revisar_posibles_entregas():
                     print(f"[Tona] Tarea {t.get('titulo')} ya tiene archivo vinculado: {vinculado['archivo_nombre']}")
                     continue
 
-                # SEGUNDO: Buscar en Drive si no tiene archivo vinculado
-                resultado = await buscar_entrega_en_drive(curso_id=curso_id, titulo=t.get("titulo", ""), user_id=user_id)
+                
+                try:
+                    resultado = await buscar_entrega_en_drive(curso_id=curso_id, titulo=t.get("titulo", ""), user_id=user_id)
+                except Exception as e:
+                    print(f"[Tona] Sin acceso a Drive para {user_id}, se omite: {e}")
+                    break
                 candidatos = resultado.get("candidatos", [])
                 mejor = candidatos[0] if candidatos else None
 

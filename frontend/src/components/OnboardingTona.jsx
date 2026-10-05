@@ -30,7 +30,7 @@ const FEATURES = [
   {
     id: "correo",
     titulo: "Correo y avisos",
-    texto: "Reviso tu Gmail, busco correos por tema y puedo enviar mensajes por ti.",
+    texto: "Redacto correos y los envío cuando tú me lo pides, siempre con tu confirmación. También vigilo páginas web y te aviso de novedades.",
     icono: "pulso",
   },
   {
@@ -387,9 +387,11 @@ function PanelPersonalizacion({ userId, esPrimeraVez, onCompletado }) {
 
   function agregarSitio() {
     if (!sitioUrl.trim() || !sitioAlias.trim()) return;
+    let url = sitioUrl.trim();
+    if (!/^https?:\/\//i.test(url)) url = "https://" + url;
     setSitiosAgregados((prev) => [
       ...prev,
-      { url: sitioUrl.trim(), alias: sitioAlias.trim(), frecuencia: sitioPeriodo },
+      { url, alias: sitioAlias.trim(), frecuencia: sitioPeriodo },
     ]);
     setSitioUrl("");
     setSitioAlias("");
@@ -398,8 +400,9 @@ function PanelPersonalizacion({ userId, esPrimeraVez, onCompletado }) {
 
   async function guardarConfig() {
     setGuardando(true);
+    setErrorGuardado("");
     try {
-      await fetch(`${API}/agent/config`, {
+      const resp = await fetch(`${API}/agent/config`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -409,14 +412,16 @@ function PanelPersonalizacion({ userId, esPrimeraVez, onCompletado }) {
           tono: config.tono,
         }),
       });
+      if (!resp.ok) throw new Error(`config ${resp.status}`);
 
       for (const sitio of sitiosAgregados) {
-        await fetch(`${API}/tasks/sitios`, {
+        const r = await fetch(`${API}/tasks/sitios`, {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(sitio),
         });
+        if (!r.ok) console.warn("No se pudo guardar el sitio:", sitio.alias, r.status);
       }
 
       anime({
@@ -427,6 +432,7 @@ function PanelPersonalizacion({ userId, esPrimeraVez, onCompletado }) {
       });
     } catch (e) {
       console.error("Error guardando config:", e);
+      setErrorGuardado("No se pudo guardar tu configuración. Revisa tu conexión e inténtalo de nuevo.");
       setGuardando(false);
     }
   }
@@ -631,6 +637,9 @@ function PanelPersonalizacion({ userId, esPrimeraVez, onCompletado }) {
           </div>
         )}
 
+        {pasoActual.tipo === "final" && errorGuardado && (
+          <div style={{ fontSize: 11, color: T.amaranto, marginBottom: 12 }}>{errorGuardado}</div>
+        )}
         {pasoActual.tipo === "final" && (
           <button
             onClick={guardarConfig}
@@ -739,14 +748,16 @@ function PanelClasesClassroom({ userId, onCompletado }) {
     setGuardando(true);
     setError("");
     try {
-      await fetch(`${API}/tasks/drive/estructura`, {
+      const resp = await fetch(`${API}/tasks/drive/estructura`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           cursos: elegidas.map((c) => ({ curso_id: c.id, nombre: c.nombre })),
+          omitidos: cursos.filter((c) => !seleccionados.has(c.id)).map((c) => c.id),
         }),
       });
+      if (!resp.ok) throw new Error(`estructura ${resp.status}`);
       onCompletado?.();
     } catch (e) {
       console.error("Error creando estructura de Drive:", e);

@@ -1,7 +1,7 @@
 # Términos y Condiciones de Uso — Tona
 
-**Última actualización:** 26 de agosto de 2026
-**Versión:** 1.3
+**Última actualización:** 5 de octubre de 2026
+**Versión:** 1.4
 
 ---
 
@@ -24,8 +24,8 @@ El Servicio está dirigido **exclusivamente a personas mayores de 18 años**. Al
 Tona te permite, entre otras funciones:
 
 - Sincronizar y organizar tareas, calendario y materiales de **Google Classroom** y **Google Calendar**.
-- Gestionar **documentos de Google Drive** que tú vincules explícitamente a través de la función de "vincular doc", que requiere tu autorización expresa en cada ocasión.
-- Interactuar con un agente de IA (basado en Gemini, vía Google Cloud Vertex AI) para crear tareas, eventos, notas, buscar correos, redactar y enviar correos.
+- Crear y gestionar **carpetas y documentos en tu Google Drive**: las carpetas de tus clases, los documentos que Tona crea a petición tuya y los documentos que tú vinculas explícitamente a través de la función de "vincular doc".
+- Interactuar con un agente de IA (basado en Gemini, vía Google Cloud Vertex AI) para crear tareas, eventos y notas, y para redactar y enviar correos con tu confirmación.
 - Conectar y consultar contenido de **Notion** (opcional).
 - Colaborar en tiempo real con otros usuarios de Tona mediante salas de trabajo compartido.
 - Recibir monitoreo de páginas web que tú configuras, para avisos de becas, convocatorias, etc.
@@ -50,37 +50,36 @@ Al conectar tu cuenta de Google, Tona solicita los siguientes permisos (*scopes*
 | Scope solicitado | Alcance real del permiso |
 |---|---|
 | `openid`, `userinfo.email`, `userinfo.profile` | Identificarte y mostrar tu nombre, correo y foto de perfil. |
-| `calendar` | Acceso de **lectura y escritura sobre todos tus calendarios de Google**, no solo sobre eventos que Tona haya creado. Tona lo usa para mostrar tu agenda y crear recordatorios que tú confirmas, pero el permiso concedido a nivel técnico es más amplio que ese uso. |
+| `calendar.events` | Ver y editar los eventos de tus calendarios de Google. No permite crear, borrar ni compartir calendarios completos, ni cambiar su configuración. Tona lo usa para mostrar tu agenda (calendario principal) y crear eventos que tú pides y confirmas, pero el permiso concedido a nivel técnico es más amplio que ese uso. |
 | `classroom.courses.readonly` | Lectura de tus cursos de Classroom. |
-| `classroom.coursework.me` | Lectura y gestión de tus propias tareas de Classroom. |
-| `classroom.coursework.me.readonly` | Lectura de tu propio trabajo de curso. |
+| `classroom.coursework.me` | Lectura y gestión de tus propias tareas de Classroom. Tona no entrega tareas por ti. |
 | `classroom.student-submissions.me.readonly` | Lectura del estado de tus propias entregas. |
-| `drive.file` | Acceso **solo** a los archivos individuales que tú abres o creas con Tona mediante el selector de Google (Picker). No da acceso al resto de tu Drive. |
-| `documents` | Lectura y edición del contenido de los Google Docs a los que Tona tiene acceso mediante el punto anterior. |
-| `gmail.send` | Envío de correos en tu nombre — únicamente los que tú redactas o apruebas explícitamente. |
-| `gmail.readonly` | **Lectura del contenido completo de tu Gmail** (no solo metadatos): asunto, remitente, cuerpo del mensaje y adjuntos. Este es un *scope restringido* según la clasificación de Google, que exige mayores estándares de manejo de datos de nuestra parte (ver Sección 5.2 y el Aviso de Privacidad, Sección 5.1). |
+| `drive.file` | Acceso **solo** a los archivos que Tona crea y a los que tú abres con Tona mediante el selector de Google (Picker). No da acceso al resto de tu Drive. |
+| `documents` | Ver, editar, crear y eliminar tus documentos de Google Docs. Es un permiso de Google que, a nivel técnico, abarca todos tus Docs; Tona solo lo usa sobre los documentos que creó o que tú vinculaste. |
+| `gmail.send` | Envío de correos en tu nombre — únicamente los que tú le pides redactar, y solo después de que confirmes su contenido. **No permite leer, listar ni buscar tus correos.** |
 
 **Importante sobre Google Drive y Docs:**
 
-Tona **no solicita acceso permanente a tu Google Drive ni a Google Docs**. En lugar de eso, cuando deseas vincular un documento existente o crear uno nuevo, Tona te muestra un selector (Google Picker) que tú controlas. Solo en ese momento, y con tu acción explícita de seleccionar o crear un documento, Tona obtiene acceso a **ese documento específico** que tú elegiste. Este acceso se limita al documento seleccionado y no se extiende al resto de tu Drive.
+Tona **no solicita acceso a todo tu Google Drive**. Solo puede ver y modificar los archivos que ella misma crea y los que tú abres con Tona mediante el selector de Google (Picker), que tú controlas. Esto incluye:
+
+- Las carpetas de tus clases: durante la configuración inicial puedes pedir que Tona cree una carpeta «Tona · Clases» con una subcarpeta por cada clase que elijas. Si activaste esta función, Tona también crea la subcarpeta de clases nuevas que aparezcan en tu Classroom, salvo las que omitas o quites.
+- Los documentos que Tona crea dentro de esas carpetas a petición tuya.
+- Los documentos que tú vinculas con el Picker.
+- Una revisión periódica, en segundo plano, de las carpetas de clases que Tona creó, para sugerirte archivos relacionados con tareas próximas a vencer.
 
 Tona **nunca**:
-- Accede a documentos que no hayas vinculado explícitamente.
-- Elimina, modifica o comparte documentos sin tu acción directa.
-- Escanea tu Drive en busca de archivos sin tu intervención.
-- Lee tu Gmail de forma continua o en segundo plano; solo consulta correos cuando tú se lo pides al agente en el momento.
+- Accede a documentos que no haya creado ella ni hayas vinculado tú explícitamente.
+- Elimina, modifica o comparte documentos sin una petición directa tuya.
+- Escanea tu Drive completo: solo revisa las carpetas de clases que Tona creó.
+- Lee, lista ni busca tus correos: el permiso de Gmail solo permite enviar.
 
-**Tona nunca envía correos, entrega tareas ni elimina documentos sin una acción explícita tuya.** Las acciones irreversibles (como entregar en Classroom o enviar un correo) siempre requieren tu confirmación directa antes de ejecutarse.
+**Tona nunca envía correos ni elimina documentos sin una petición explícita tuya.** Los correos, además, siempre te muestran destinatario, asunto y contenido, y esperan tu confirmación antes de enviarse. Tona no entrega tareas por ti: te abre la tarea en Classroom para que la entregues tú.
 
 Si conectas **Notion**, aplican adicionalmente los términos de uso de Notion para el contenido que compartes con la integración.
 
 ### 5.1 Cumplimiento con la Política de Datos de Usuario de Google
 
-El uso de las APIs de Google dentro de Tona está sujeto a la [Política de Datos de Usuario de los Servicios de API de Google](https://developers.google.com/terms/api-services-user-data-policy), incluyendo sus requisitos de **Uso Limitado ("Limited Use")**: los datos obtenidos de Gmail, Calendar, Classroom, Drive y Docs se usan exclusivamente para proveerte las funciones de Tona descritas en estos Términos, no se venden, no se usan con fines publicitarios y no son leídos por personas salvo en las excepciones descritas en el Aviso de Privacidad (soporte que tú solicitas, seguridad, cumplimiento legal, o datos agregados y anonimizados).
-
-### 5.2 Scopes restringidos y verificación de Google
-
-`gmail.readonly` está clasificado por Google como un scope **restringido**. Esto significa, entre otras cosas, que conforme el número de usuarios de Tona crece, Google puede exigirnos completar procesos adicionales de verificación y evaluación de seguridad para mantener este acceso habilitado. Esto es un requisito de la plataforma de Google hacia nosotros como desarrolladores, y no cambia los compromisos que ya te hacemos en estos Términos y en el Aviso de Privacidad sobre cómo tratamos tus datos.
+El uso de las APIs de Google dentro de Tona está sujeto a la [Política de Datos de Usuario de los Servicios de API de Google](https://developers.google.com/terms/api-services-user-data-policy), incluyendo sus requisitos de **Uso Limitado ("Limited Use")**: los datos obtenidos de Calendar, Classroom, Drive y Docs se usan exclusivamente para proveerte las funciones de Tona descritas en estos Términos, no se venden, no se usan con fines publicitarios y no son leídos por personas salvo en las excepciones descritas en el Aviso de Privacidad (soporte que tú solicitas, seguridad, cumplimiento legal, o datos agregados y anonimizados). El permiso de Gmail (`gmail.send`) se usa únicamente para enviar los correos que tú apruebas.
 
 ---
 
@@ -110,6 +109,7 @@ Tona permite crear salas de trabajo compartido con hasta 3 participantes mediant
 
 - Las respuestas y acciones del agente son generadas automáticamente por un modelo de lenguaje (Gemini, vía Google Cloud Vertex AI) y **pueden contener errores, imprecisiones u omisiones**.
 - Tona **no sustituye el criterio académico del usuario, de sus profesores o de su institución educativa**. Es tu responsabilidad verificar la información antes de usarla en trabajos, entregas o decisiones académicas.
+- Eres responsable de revisar el contenido de los correos antes de confirmar su envío.
 - El uso de Tona para completar tareas académicas debe cumplir con las **políticas de integridad académica de tu institución**. Tona no es responsable de las consecuencias derivadas de un uso que infrinja dichas políticas.
 - No garantizamos disponibilidad ininterrumpida del motor de IA, ya que depende de servicios de terceros (Google Cloud).
 
@@ -124,6 +124,7 @@ Al usar Tona, te comprometes a **no**:
 - Interferir con la operación del Servicio (ataques de denegación de servicio, ingeniería inversa del backend, scraping automatizado no autorizado).
 - Compartir contenido que infrinja derechos de propiedad intelectual de terceros a través de las funciones de documentos o notas.
 - Usar la función de colaboración para compartir contenido dañino, acosar a otros participantes o distribuir malware.
+- Usar el envío de correos para spam, suplantación de identidad, acoso o cualquier comunicación ilegal.
 
 El incumplimiento de esta sección puede resultar en la suspensión o terminación de tu cuenta sin reembolso.
 

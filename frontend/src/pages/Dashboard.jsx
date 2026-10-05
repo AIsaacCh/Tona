@@ -12,7 +12,7 @@ import { useSearchParams } from "react-router-dom";
 import { FlashMensaje, ConfirmacionAccion, IndicadorPensando, TarjetaLinks } from "../components/agentes/Categoria1";
 import { FormNuevaTarea, FormNuevoRecordatorio, FormNuevaNota, TarjetaExamen, TarjetaArchivo, NotificacionUrgente } from "../components/agentes/Categoria3y4";
 import { ConfirmarCreacion } from "../components/agentes/ConfirmarCreacion";
-import { VistaListaTareas, VistaGmail, VistaCalendario, VistaHorario, VistaMaterias, VistaArchivosDrive } from "../components/agentes/Categoria2";
+import { VistaListaTareas, VistaCalendario, VistaHorario, VistaMaterias, VistaArchivosDrive } from "../components/agentes/Categoria2";
 import OnboardingTona from "../components/OnboardingTona";
 import PanelConfiguracion from "../components/PanelConfiguracion";
 import PanelDocs from "../components/PanelDocs";
@@ -807,7 +807,7 @@ function DashboardPrincipal({ userId, params, panelConfig, setPanelConfig, bloqu
       <NotificacionUrgente />
       <ConfirmarCreacion />
       <VistaArchivosDrive />
-      <VistaGmail />
+      
 
       {modoUI === "compacto" && (
         <>

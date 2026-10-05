@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import anime from 'animejs'
 import EsferaTona from '../components/EsferaTona'
-import LaptopHero, { NavBar } from '../components/LaptopHero'
+import LaptopHero from '../components/LaptopHero'
 import { DemoTareas, DemoHorario, DemoDocs, DemoCorreo, DemoVoz } from '../components/WidgetsCapacidades'
 import FondoProfundidad from '../components/FondoProfundidad'
 
@@ -33,7 +33,7 @@ function Footer() {
         <a href="/legal/privacidad" style={{ color: 'rgba(255, 255, 255, 0.99)', textDecoration: 'none' }}>
           Aviso de Privacidad
         </a>
-        <a href="mailto:corteshernandezangelisaac@gmail.com." style={{ color: 'rgba(237, 235, 230, 0.99)', textDecoration: 'none' }}>
+        <a href="mailto:corteshernandezangelisaac@gmail.com" style={{ color: 'rgba(237, 235, 230, 0.99)', textDecoration: 'none' }}>
           Contacto
         </a>
       </div>
@@ -41,9 +41,6 @@ function Footer() {
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// Hook: revela una sección con inclinación 3D suave al entrar en vista
-// ─────────────────────────────────────────────────────────────────────────
 function useRevelado(delay = 0) {
   const ref = useRef(null)
   useEffect(() => {
@@ -74,9 +71,7 @@ function useRevelado(delay = 0) {
   return ref
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// Hook: inclinación 3D al mover el mouse sobre la tarjeta (efecto vivo)
-// ─────────────────────────────────────────────────────────────────────────
+
 function useTilt(intensidad = 8) {
   const ref = useRef(null)
   useEffect(() => {
@@ -145,7 +140,7 @@ const FEATURES = [
   { numero: '01', titulo: 'Tareas y calendario', texto: 'Organiza tus tareas de Classroom, eventos de Calendar y pendientes propios en un solo lugar — sin duplicados, sin perder el hilo.', Demo: DemoTareas },
   { numero: '02', titulo: 'Tu horario, siempre a la mano', texto: 'Guarda tu horario de clases y sabe qué sigue en tu día, sin que tengas que ir a buscarlo.', Demo: DemoHorario },
   { numero: '03', titulo: 'Documentos con ayuda de IA', texto: 'Crea, edita y recibe sugerencias sobre tus documentos directamente desde la conversación.', Demo: DemoDocs },
-  { numero: '04', titulo: 'Correo y avisos', texto: 'Revisa tu Gmail, busca correos por tema y redacta mensajes por ti, cuando tú lo pidas.', Demo: DemoCorreo },
+  { numero: '04', titulo: 'Correos y avisos', texto: 'Redacta correos y los envía solo cuando tú lo pides y confirmas. También vigila las páginas de tu escuela y te avisa de novedades.', Demo: DemoCorreo },
   { numero: '05', titulo: 'Habla con Tona', texto: 'Escríbele o simplemente háblale. Te escucha, entiende el contexto y te responde con voz.', Demo: DemoVoz },
 ]
 
@@ -169,17 +164,15 @@ function DescripcionApp() {
         color: 'rgba(237,235,230,0.55)', fontWeight: 300,
       }}>
         Tona es un asistente académico basado en inteligencia artificial para estudiantes
-        universitarios. Organiza tus tareas de Google Classroom, tu calendario, tus documentos
-        y tu correo de Gmail en un solo lugar, y puedes hablarle por texto o por voz para
-        resolver tus pendientes académicos.
+        universitarios. Organiza tus tareas de Google Classroom, tu calendario y tus
+        documentos en un solo lugar, y puedes hablarle por texto o por voz para resolver
+        tus pendientes académicos. También puede redactar y enviar correos por ti cuando
+        se lo pides y lo confirmas.
       </p>
     </section>
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// BANNER — vista pequeña de la esfera, flotando suavemente
-// ─────────────────────────────────────────────────────────────────────────
 function BannerEsfera() {
   const ref = useRevelado()
   const floatRef = useRef(null)
@@ -223,9 +216,7 @@ function BannerEsfera() {
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// FILA DE FEATURE — con inclinación 3D al pasar el mouse
-// ─────────────────────────────────────────────────────────────────────────
+
 function FilaFeature({ numero, titulo, texto, Demo, invertido }) {
   const revelaRef = useRevelado()
   const tiltRef = useTilt(6)
@@ -291,14 +282,14 @@ function SeccionPrecio({ onEntrar }) {
     'Tareas de Classroom, Calendar y pendientes propios',
     'Horario, calificaciones y materias en un solo lugar',
     'Documentos con ayuda de IA',
-    'Gmail y envío de correos',
     'Voz: háblale y te responde',
     'Sitios monitoreados y avisos automáticos',
+    'Envío de correos con tu confirmación',
   ]
 
   return (
     <section style={{ maxWidth: '480px', margin: '0 auto', padding: '40px 24px 130px' }}>
-      <ReglaNumerada numero="06" texto="SUSCRIPCIÓN" />
+      <ReglaNumerada numero="05" texto="SUSCRIPCIÓN" />
 
       <div
         ref={(node) => { ref.current = node; tiltRef.current = node }}
@@ -398,7 +389,18 @@ export default function Landing() {
   return (
     <div className="tona-app" style={{ minHeight: '100vh', width: '100%', overflowY: 'auto', overflowX: 'hidden', position: 'relative' }}>
       <FondoProfundidad />
-      <NavBar onEntrar={irALogin} />
+            <button
+        onClick={irALogin}
+        style={{
+          position: 'fixed', top: '20px', right: '24px', zIndex: 50,
+          padding: '9px 20px', background: 'transparent',
+          border: `1px solid ${JADE}`, color: JADE_LIGHT,
+          borderRadius: '30px', fontFamily: FONT, fontSize: '13px',
+          letterSpacing: '0.03em', cursor: 'pointer', fontWeight: 500,
+        }}
+      >
+        Iniciar sesión
+      </button>
       <DescripcionApp />
       <LaptopHero />
       <BannerEsfera />

@@ -94,7 +94,23 @@ def es_cancelacion(mensaje: str) -> bool:
     m = mensaje.strip().lower()
     return any(c in m for c in CANCELACIONES)
 
-# ✅ FIX: Detectar preguntas de listado en ambos idiomas
+def _armar_confirmacion_correo(campos: dict):
+    para = campos.get("para", "")
+    asunto = campos.get("asunto", "")
+    cuerpo = campos.get("cuerpo", "")
+    vista = cuerpo if len(cuerpo) <= 300 else cuerpo[:300] + "..."
+    pregunta = f"¿Envío este correo?\nPara: {para}\nAsunto: {asunto}\n\n{vista}"
+    payload = {
+        "pregunta": pregunta,
+        "onSi": "enviar_correo",
+        "onNo": None,
+        "labelSi": "Sí, enviar",
+        "labelNo": "Cancelar",
+        "contexto": {"para": para, "asunto": asunto, "cuerpo": cuerpo},
+    }
+    return "confirmar", payload, pregunta
+
+
 PREGUNTAS_LISTADO_NOTION_ES = {
     "cuáles", "cuales", "qué páginas", "que paginas", "cuál tengo",
     "cual tengo", "qué tengo", "que tengo", "no sé", "no se",
@@ -121,8 +137,6 @@ OVERRIDES_MODO_UI = {
     "abrir_docs": "completo",
     "abrir_docs_con_titulo": "completo",
     "abrir_doc_especifico": "completo",
-    "ver_gmail": "completo",
-    "buscar_correos_tema": "completo",
     "ver_archivos_drive": "completo",
     "ver_calendario": "completo",
 }
@@ -466,16 +480,12 @@ def obtener_sugerencia_entrega_para_mostrar(user_id: str) -> dict:
 
 def construir_contexto_ultimo_resultado(user_id: str) -> str:
     r = obtener_cache(user_id, "ultimo_resultado")
-    if not r or not r.get("items"):
+    if not r or r.get("tipo") != "archivos_drive" or not r.get("items"):
         return ""
-    tipo, items = r.get("tipo"), r["items"][:10]
-    lineas = [f'ÚLTIMO RESULTADO MOSTRADO AL USUARIO (tipo: {tipo}, de la búsqueda más reciente — '
-              f'si el usuario pide abrir/entregar/eliminar algo de aquí, USA ESTOS DATOS, no busques de nuevo):']
-    for it in items:
-        if tipo == "archivos_drive":
-            lineas.append(f"  - id={it.get('id')} nombre=\"{it.get('nombre')}\"")
-        else:
-            lineas.append(f"  - id={it.get('id')} asunto=\"{it.get('asunto')}\" de={it.get('de','')}")
+    lineas = ['ÚLTIMO RESULTADO MOSTRADO AL USUARIO (tipo: archivos_drive, de la búsqueda más reciente — '
+              'si el usuario pide abrir/entregar/eliminar algo de aquí, USA ESTOS DATOS, no busques de nuevo):']
+    for it in r["items"][:10]:
+        lineas.append(f"  - id={it.get('id')} nombre=\"{it.get('nombre')}\"")
     return "\n".join(lineas)
 
 
@@ -868,11 +878,11 @@ async def chat(
             else:
                 flujo["campos"][campo] = extraccion.get("valor", request.mensaje)
                 
-                # ✅ FIX: Mapear acción en inglés a español si es necesario
+                
                 accion_original = flujo["accion_objetivo"]
                 accion_espanol = MAPEO_ACCIONES.get(accion_original, accion_original)
                 
-                # ✅ VALIDACIÓN: Verificar que la acción exista en CAMPOS_REQUERIDOS
+                
                 campos_requeridos_accion = CAMPOS_REQUERIDOS.get(accion_espanol)
                 
                 if campos_requeridos_accion is None:
@@ -904,6 +914,8 @@ async def chat(
                                 flujo["campos"].get("consulta", ""),
                             )
                             accion, payload, mensaje = "flash", {"mensaje": respuesta, "tipo": "info"}, respuesta
+                        elif accion_espanol == "enviar_correo":
+                            accion, payload, mensaje = _armar_confirmacion_correo(flujo["campos"])
                         else:
                             dato_creado = await ejecutar_accion_backend(accion_espanol, flujo["campos"], user_id)
                             if dato_creado:
@@ -942,7 +954,7 @@ async def chat(
                 payload_directo = resultado_sugerencia["payload"]
                 mensaje_resp = resultado_sugerencia["mensaje"]
 
-            # ✅ FIX: Cambiar entregar_tarea_real para devolver link en vez de intentar la entrega automática
+            
             elif accion_directa in ("entregar_tarea_real", "confirmar_entrega_real"):
                 tarea_id = payload_directo.get("tarea_id")
                 tareas = obtener_tareas(user_id)
@@ -969,7 +981,18 @@ async def chat(
                     payload_directo = {"mensaje": "No se pudo crear el archivo.", "tipo": "error"}
                     mensaje_resp = "No se pudo crear el archivo."
 
-            elif accion_directa in ("crear_tarea_real", "crear_evento_real", "guardar_config_onboarding", "enviar_correo", "agregar_sitio", "completar_tarea_real", "eliminar_tarea_real", "completar_examen_real"):
+            elif accion_directa == "enviar_correo":
+                dato = await ejecutar_accion_backend("enviar_correo", payload_directo, user_id)
+                if dato:
+                    accion_directa = "flash"
+                    payload_directo = {"mensaje": "Correo enviado.", "tipo": "exito"}
+                    mensaje_resp = "Correo enviado."
+                else:
+                    accion_directa = "flash"
+                    payload_directo = {"mensaje": "No se pudo enviar el correo.", "tipo": "error"}
+                    mensaje_resp = "No se pudo enviar el correo."
+
+            elif accion_directa in ("crear_tarea_real", "crear_evento_real", "guardar_config_onboarding", "agregar_sitio", "completar_tarea_real", "eliminar_tarea_real", "completar_examen_real"):
                 dato = await ejecutar_accion_backend(accion_directa, payload_directo, user_id)
                 if dato:
                     accion_directa = "flash"
@@ -1159,7 +1182,30 @@ El usuario escribió en ESPAÑOL. Debes responder en ESPAÑOL.
             payload = {"mensaje": "No se pudo crear el archivo. Intenta de nuevo.", "tipo": "error"}
         flujo_activo = False
 
-    elif accion in ("crear_tarea_real", "crear_evento_real", "enviar_correo", "agregar_sitio", "registrar_examen"):
+    elif accion == "enviar_correo":
+        datos = payload if isinstance(payload, dict) else {}
+        faltantes = [c for c in ("para", "asunto", "cuerpo") if not datos.get(c)]
+        if faltantes:
+            siguiente = faltantes[0]
+            guardar_flujo(user_id, {
+                "activo": True, "accion_objetivo": "enviar_correo",
+                "campos": datos, "campo_pendiente": siguiente,
+            })
+            accion = "solicitar_dato"
+            payload = {"campo": siguiente, "accion_objetivo": "enviar_correo", "contexto": datos}
+            mensaje = PREGUNTAS_CAMPO[("enviar_correo", siguiente)]
+            flujo_activo = True
+        else:
+            accion, payload, mensaje = _armar_confirmacion_correo(datos)
+            flujo_activo = False
+
+    elif accion in ("ver_gmail", "buscar_correos_tema", "mostrar_gmail"):
+        mensaje = "Tona no lee tu correo; solo puede enviar mensajes cuando tú lo pides."
+        accion = "flash"
+        payload = {"mensaje": mensaje, "tipo": "info"}
+        flujo_activo = False
+
+    elif accion in ("crear_tarea_real", "crear_evento_real", "agregar_sitio", "registrar_examen"):
         dato_creado = await ejecutar_accion_backend(accion, payload, user_id)
         if dato_creado:
             accion = "flash"
@@ -1349,49 +1395,6 @@ El usuario escribió en ESPAÑOL. Debes responder en ESPAÑOL.
             mensaje = "No se encontró el documento a eliminar."
         flujo_activo = False
 
-    elif accion == "buscar_correos_tema":
-        tema = payload.get("tema", "")
-        dias = payload.get("dias", 14)
-        if tema:
-            try:
-                from routers.tasks import buscar_gmail_por_tema
-                data = await buscar_gmail_por_tema(user_id, tema, dias)
-                correos = data.get("correos", [])
-                payload = correos
-                guardar_cache(user_id, "ultimo_resultado", {"tipo": "correos", "items": correos}, ttl_minutos=10)
-                if not mensaje:
-                    if correos:
-                        mensaje = f"Encontré {len(correos)} correo(s) sobre '{tema}' en los últimos {dias} días."
-                    else:
-                        mensaje = f"No encontré correos recientes sobre '{tema}'."
-                flujo_activo = False
-            except Exception as e:
-                print(f"Error buscando correos por tema: {e}")
-                accion = "flash"
-                payload = {"mensaje": "Error buscando correos.", "tipo": "error"}
-                mensaje = "Error buscando correos."
-                flujo_activo = False
-
-    elif accion == "ver_gmail":
-        try:
-            from routers.tasks import obtener_gmail
-            data = await obtener_gmail(user_id=user_id)
-            correos = data.get("correos", [])
-            payload = correos
-            guardar_cache(user_id, "ultimo_resultado", {"tipo": "correos", "items": correos}, ttl_minutos=10)
-            if not mensaje:
-                if correos:
-                    mensaje = f"Tienes {len(correos)} correo(s) sin leer."
-                else:
-                    mensaje = "No tienes correos nuevos sin leer."
-            flujo_activo = False
-        except Exception as e:
-            print(f"Error obteniendo Gmail: {e}")
-            accion = "flash"
-            payload = {"mensaje": "Error obteniendo correos.", "tipo": "error"}
-            mensaje = "Error obteniendo correos."
-            flujo_activo = False
-
     elif accion == "consultar_notion":
         pagina = payload.get("pagina", "") if isinstance(payload, dict) else ""
         consulta = payload.get("consulta", "") if isinstance(payload, dict) else request.mensaje
@@ -1401,7 +1404,7 @@ El usuario escribió en ESPAÑOL. Debes responder en ESPAÑOL.
         mensaje = respuesta
         flujo_activo = False
 
-    elif accion == "ver_archivos_drive":
+    elif accion in ("ver_drive", "ver_archivos_drive"):
         query = payload.get("query", "") if isinstance(payload, dict) else ""
         archivos = await obtener_archivos_drive_real(user_id, query)
         payload = archivos
