@@ -3,17 +3,23 @@ from fastapi.responses import RedirectResponse, JSONResponse
 from google_auth_oauthlib.flow import Flow
 import httpx
 from services.auth_utils import crear_token, establecer_cookie_sesion, verificar_identidad, obtener_user_id_de_cookie
-from services.stripe_service import reclamar_suscripcion_pendiente, obtener_suscripcion
 import os
 import secrets
 from datetime import datetime, timedelta
 from services.db import guardar_usuario, obtener_usuario_por_email, obtener_usuario, guardar_oauth_state, obtener_y_borrar_oauth_state
 from config import settings
 from pydantic import BaseModel
+import time
+from collections import defaultdict, deque
+from services.stripe_service import (
+    reclamar_suscripcion_pendiente, obtener_suscripcion,
+    usuario_ya_uso_prueba, email_ya_uso_prueba,
+)
 
 router = APIRouter()
 
-os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+if settings.ENVIRONMENT != "production":
+    os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 os.environ['OAUTHLIB_RELAX_TOKEN_SCOPE'] = '1'
 
 SCOPES = [
@@ -30,6 +36,29 @@ SCOPES = [
 ]
 
 TERMINOS_VERSION_ACTUAL = "1.4"
+
+
+# ── Límite de consultas por IP (protección básica por instancia) ─────────────
+
+_consultas_por_ip = defaultdict(deque)
+
+
+def _limitar_consultas(request: Request, max_por_minuto: int = 10):
+    ip = (
+        request.headers.get("x-nf-client-connection-ip")
+        or request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+        or (request.client.host if request.client else "desconocida")
+    )
+    ahora = time.time()
+    if len(_consultas_por_ip) > 5000:
+        _consultas_por_ip.clear()
+    cola = _consultas_por_ip[ip]
+    while cola and ahora - cola[0] > 60:
+        cola.popleft()
+    if len(cola) >= max_por_minuto:
+        raise HTTPException(status_code=429, detail="Demasiados intentos, espera un minuto")
+    cola.append(ahora)
+
 
 def crear_flow():
     return Flow.from_client_config(
@@ -48,12 +77,14 @@ def crear_flow():
 
 
 @router.get("/google")
-async def google_login():
+async def google_login(email: str | None = None):
     flow = crear_flow()
+    extra = {"login_hint": email.strip()[:254]} if email else {}
     auth_url, state = flow.authorization_url(
         access_type="offline",
         include_granted_scopes="true",
         prompt="consent",
+        **extra,
     )
     guardar_oauth_state(state, flow.code_verifier)
     response = RedirectResponse(auth_url)
@@ -74,7 +105,8 @@ async def google_callback(code: str, state: str):
     try:
         flow.fetch_token(code=code, check=False)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error al obtener token: {str(e)}")
+        print(f"❌ Error obteniendo token de Google: {e}")
+        raise HTTPException(status_code=400, detail="No se pudo completar el inicio de sesión")
 
     credentials = flow.credentials
 
@@ -116,16 +148,11 @@ async def google_callback(code: str, state: str):
             'terminos_aceptados': None,  # Se llena cuando el usuario acepta
         })
 
-    suscripcion = obtener_suscripcion(user_id)
-    tiene_acceso = suscripcion and suscripcion.get("status") in ("active", "trialing")
-
-    establecer_cookie_sesion_response = RedirectResponse(
-        f"{settings.FRONTEND_URL}/dashboard?user_id={user_id}&name={user_info.get('name', '')}"
-        if tiene_acceso else
-        f"{settings.FRONTEND_URL}/login?necesita_suscripcion=1"
-    )
-    establecer_cookie_sesion(establecer_cookie_sesion_response, user_id)
-    return establecer_cookie_sesion_response
+    # Siempre redirige a /login: ahí el frontend consulta /estado, que ya
+    # reconcilia contra Stripe si el trialing está atrasado en la DB.
+    response = RedirectResponse(f"{settings.FRONTEND_URL}/login")
+    establecer_cookie_sesion(response, user_id)
+    return response
 
 
 
@@ -307,16 +334,27 @@ async def revocar_acceso(user_id: str = Depends(verificar_identidad)):
 
 
 @router.get("/verificar-cuenta")
-async def verificar_cuenta(email: str):
+async def verificar_cuenta(email: str, request: Request):
     """
-    Evalúa P (cuenta existe) y Q (suscripción activa) para un email,
-    SIN crear sesión ni tocar Google. Público a propósito.
+    Para un correo: si la cuenta existe, si tiene suscripción activa y si ya usó su
+    prueba gratuita. No crea sesión ni toca Google. Público, con límite por IP.
     """
-    usuario = obtener_usuario_por_email(email)
-    if not usuario:
-        return {"existe": False, "tiene_suscripcion": False}
+    _limitar_consultas(request)
+    email = email.strip().lower()
+    try:
+        usuario = obtener_usuario_por_email(email)
+        if not usuario:
+            return {"existe": False, "tiene_suscripcion": False, "prueba_usada": email_ya_uso_prueba(email)}
 
-    suscripcion = obtener_suscripcion(usuario["id"])
-    activa = bool(suscripcion) and suscripcion.get("status") in ("active", "trialing")
-
-    return {"existe": True, "tiene_suscripcion": activa}
+        suscripcion = obtener_suscripcion(usuario["id"])
+        activa = bool(suscripcion) and (
+            suscripcion.get("status") in ("active", "trialing") or suscripcion.get("tier") == "lifetime"
+        )
+        return {
+            "existe": True,
+            "tiene_suscripcion": activa,
+            "prueba_usada": usuario_ya_uso_prueba(usuario["id"]),
+        }
+    except Exception as e:
+        print(f"❌ Error en verificar-cuenta: {e}")
+        raise HTTPException(status_code=502, detail="No se pudo verificar el correo")

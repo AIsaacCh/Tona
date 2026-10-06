@@ -3,8 +3,9 @@ import stripe
 from pydantic import BaseModel
 from config import settings
 from services.auth_utils import verificar_identidad
-from services.stripe_service import crear_checkout_session, crear_portal_session, crear_checkout_invitado
+from services.stripe_service import crear_checkout_session, crear_portal_session, crear_checkout_invitado, usuario_ya_uso_prueba
 from typing import Optional
+from datetime import datetime, timezone
 from services.db import (
     obtener_suscripcion, guardar_suscripcion,
     reservar_evento, liberar_evento,
@@ -32,7 +33,20 @@ async def abrir_portal(user_id: str = Depends(verificar_identidad)):
 
 # ── Estado de suscripción ────────────────────────────────────────────────────
 
-# ✅ ELIMINADO: user_id de la URL
+def _trial_vencido(suscripcion: dict) -> bool:
+    fin = suscripcion.get("trial_ends_at")
+    if not fin:
+        return False
+    try:
+        dt = datetime.fromisoformat(str(fin).replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt < datetime.now(timezone.utc)
+    except Exception:
+        return False
+
+
+
 @router.get("/estado")
 async def estado_suscripcion(user_id: str = Depends(verificar_identidad)):
     suscripcion = obtener_suscripcion(user_id)
@@ -50,8 +64,23 @@ async def estado_suscripcion(user_id: str = Depends(verificar_identidad)):
         }
 
     status = suscripcion.get("status", "none")
+
+    # La prueba ya venció pero seguimos en "trialing": confirma con Stripe y corrige
+    sub_id = suscripcion.get("stripe_subscription_id")
+    if status == "trialing" and sub_id and _trial_vencido(suscripcion):
+        try:
+            sub = stripe.Subscription.retrieve(sub_id)
+            status = getattr(sub, "status", status)
+            guardar_suscripcion(user_id, {
+                "status": status,
+                "tier": "premium" if status in ("active", "trialing") else "estudiante",
+            })
+            suscripcion = obtener_suscripcion(user_id) or suscripcion
+        except stripe.error.StripeError as e:
+            print(f"⚠️ No se pudo reconciliar la suscripción {sub_id}: {e}")
+            status = "past_due"
+
     activo = status in ("active", "trialing")
-    bloqueado = not activo
 
     return {
         "status": status,
@@ -59,7 +88,7 @@ async def estado_suscripcion(user_id: str = Depends(verificar_identidad)):
         "trial_ends_at": suscripcion.get("trial_ends_at"),
         "current_period_end": suscripcion.get("current_period_end"),
         "activo": activo,
-        "bloqueado": bloqueado,
+        "bloqueado": not activo,
     }
 
 
@@ -112,6 +141,26 @@ async def stripe_webhook(request: Request):
 
     return {"recibido": True}
 
+
+def _periodo_fin(subscription):
+    """En las versiones nuevas de la API el fin del periodo vive en los items."""
+    ts = getattr(subscription, "current_period_end", None)
+    if ts:
+        return ts
+    try:
+        return subscription["items"]["data"][0]["current_period_end"]
+    except (KeyError, IndexError, TypeError):
+        return None
+
+
+def _subscription_id_de_invoice(invoice):
+    sid = getattr(invoice, "subscription", None)
+    if sid:
+        return sid
+    try:
+        return invoice["parent"]["subscription_details"]["subscription"]
+    except (KeyError, TypeError):
+        return None
 
 # ── Handlers internos ────────────────────────────────────────────────────────
 
@@ -196,7 +245,7 @@ def _manejar_subscription_actualizada(subscription):
     metadata = getattr(subscription, "metadata", None)
     origen = getattr(metadata, "origen", None) if metadata else None
     trial_end = getattr(subscription, "trial_end", None)
-    period_end = getattr(subscription, "current_period_end", None)
+    period_end = _periodo_fin(subscription)
 
     from datetime import datetime, timezone
     trial_ends_at = datetime.fromtimestamp(trial_end, tz=timezone.utc).isoformat() if trial_end else None
@@ -246,7 +295,7 @@ def _manejar_subscription_cancelada(subscription):
 
 
 def _manejar_pago_fallido(invoice):
-    subscription_id = getattr(invoice, "subscription", None)
+    subscription_id = _subscription_id_de_invoice(invoice)
     if not subscription_id:
         return
     sub = stripe.Subscription.retrieve(subscription_id)
@@ -262,41 +311,61 @@ class CrearCheckoutBody(BaseModel):
     promo_token: Optional[str] = None
 
 
-# ✅ ELIMINADO: user_id de la URL
+@router.get("/prueba-disponible")
+async def prueba_disponible(user_id: str = Depends(verificar_identidad)):
+    actual = obtener_suscripcion(user_id) or {}
+    pago_pendiente = bool(actual.get("stripe_subscription_id")) and actual.get("status") in (
+        "past_due", "unpaid", "incomplete"
+    )
+    try:
+        usada = usuario_ya_uso_prueba(user_id)
+    except stripe.error.StripeError as e:
+        print(f"❌ Error de Stripe en prueba-disponible: {type(e).__name__}: {e}")
+        raise HTTPException(status_code=502, detail="Error comunicando con Stripe")
+    return {"prueba_disponible": not usada, "pago_pendiente": pago_pendiente}
+
 @router.post("/crear-checkout")
 async def iniciar_checkout(
     body: CrearCheckoutBody = CrearCheckoutBody(),
     user_id: str = Depends(verificar_identidad)
 ):
-    print(f"🎟️  promo_token recibido: {body.promo_token!r}")
+    es_promo = bool(body.promo_token)
     trial_days = 3
 
-    if body.promo_token:
-        invitacion = validar_token_promo(body.promo_token)
-        if not invitacion:
-            raise HTTPException(status_code=400, detail="El código promocional no es válido o ya expiró")
-        if not reservar_token_promo(body.promo_token, user_id):
-            raise HTTPException(status_code=409, detail="Este código ya fue utilizado")
-        trial_days = invitacion.get("dias_trial", 30)
-    es_promo = bool(body.promo_token)
     try:
+        # Pago pendiente: se regulariza en el portal, no se crea otra suscripción
+        actual = obtener_suscripcion(user_id) or {}
+        if actual.get("stripe_subscription_id") and actual.get("status") in ("past_due", "unpaid", "incomplete"):
+            return {"url": crear_portal_session(user_id), "sin_prueba": True, "via": "portal"}
+
+        if es_promo:
+            invitacion = validar_token_promo(body.promo_token)
+            if not invitacion:
+                raise HTTPException(status_code=400, detail="El código promocional no es válido o ya expiró")
+            if not reservar_token_promo(body.promo_token, user_id):
+                raise HTTPException(status_code=409, detail="Este código ya fue utilizado")
+            trial_days = invitacion.get("dias_trial", 30)
+        elif usuario_ya_uso_prueba(user_id):
+            trial_days = 0   # ya usó su prueba: cobro desde el primer día
+
         url = crear_checkout_session(
             user_id,
             trial_days=trial_days,
             requerir_tarjeta=not es_promo,
             origen="promo" if es_promo else "checkout",
         )
-        return {"url": url}
+        return {"url": url, "sin_prueba": trial_days == 0}
+
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except stripe.error.StripeError as e:
-        print(f"❌ Error de Stripe creando checkout: {e}")
+        print(f"❌ Error de Stripe creando checkout: {type(e).__name__}: {e}")
         raise HTTPException(status_code=502, detail="Error comunicando con Stripe")
     except Exception as e:
         print(f"❌ Error inesperado creando checkout: {e}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Error creando el checkout")
 
 
 # ── Validación pública del token ────────────────────────────────────────────
@@ -317,7 +386,7 @@ class ReclamarBody(BaseModel):
     claim_token: str
 
 
-# ✅ ELIMINADO: user_id de la URL
+
 @router.post("/reclamar")
 async def reclamar_suscripcion(
     body: ReclamarBody,

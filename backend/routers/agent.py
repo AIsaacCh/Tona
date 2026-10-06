@@ -562,41 +562,30 @@ async def enriquecer_payload(accion: str, payload, user_id: str):
     if accion == "ver_calificaciones":
         return CALS_MOCK
 
-    # ✅ CORREGIDO: ver_calendario ahora obtiene eventos reales
+    
     if accion == "ver_calendario":
+        from services.tiempo import hoy_mx
+        hoy = hoy_mx()
+        p = payload if isinstance(payload, dict) else {}
         try:
-            from services.tiempo import hoy_mx
-            hoy = hoy_mx()
-            mes_actual = hoy.month
-            año_actual = hoy.year
-            
-            # Obtener eventos reales del calendario
-            eventos = await _obtener_calendar(user_id)
-            
-            if not eventos:
-                return {
-                    "mes": payload.get("mes", mes_actual) if isinstance(payload, dict) else mes_actual,
-                    "año": payload.get("año", año_actual) if isinstance(payload, dict) else año_actual,
-                    "eventos": [],
-                    "mensaje": "No tienes eventos en tu calendario para los próximos días."
-                }
-            
-            return {
-                "mes": payload.get("mes", mes_actual) if isinstance(payload, dict) else mes_actual,
-                "año": payload.get("año", año_actual) if isinstance(payload, dict) else año_actual,
-                "eventos": eventos,
-                "mensaje": f"Tienes {len(eventos)} eventos en tu calendario."
-            }
-        except Exception as e:
-            print(f"❌ Error en ver_calendario: {e}")
-            import traceback
-            traceback.print_exc()
-            return {
-                "mes": datetime.now().month,
-                "año": datetime.now().year,
-                "eventos": [],
-                "mensaje": "No pude obtener tu calendario. ¿Has autorizado el acceso a Google Calendar?"
-            }
+            mes_pedido = int(p.get("mes") or hoy.month)      # 1-12
+            anio_pedido = int(p.get("año") or hoy.year)
+        except (TypeError, ValueError):
+            mes_pedido, anio_pedido = hoy.month, hoy.year
+
+        eventos = []
+        for e in await _obtener_calendar(user_id):
+            f = e.get("fecha_limite") or ""
+            if len(f) == 10:
+                eventos.append({**e, "dia": int(f[8:10]), "mes": int(f[5:7]) - 1, "año": int(f[:4])})
+
+        return {
+            "mes": mes_pedido - 1,   # el frontend usa meses 0-11
+            "año": anio_pedido,
+            "eventos": eventos,
+            "mensaje": f"Tienes {len(eventos)} eventos en tu calendario." if eventos
+                       else "No tienes eventos en tu calendario para los próximos días.",
+        }
 
     if accion == "crear_doc_con_titulo":
         return payload

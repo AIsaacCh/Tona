@@ -344,47 +344,7 @@ export default function Landing() {
   const irALogin = () => navigate('/login')
 
   
-  async function iniciarSuscripcionDesdeLanding() {
-    try {
-      const respWhoami = await fetch(`${import.meta.env.VITE_API_URL}/auth/whoami`, { credentials: 'include' })
-      const dataWhoami = await respWhoami.json()
 
-      if (dataWhoami.autenticado) {
-        
-        const respEstado = await fetch(`${import.meta.env.VITE_API_URL}/pagos/estado`, { credentials: 'include' })
-        const dataEstado = await respEstado.json()
-
-        if (dataEstado.activo) {
-          window.location.href = `/dashboard?user_id=${dataWhoami.user_id}&name=${encodeURIComponent(dataWhoami.name || '')}`
-          return
-        }
-
-        
-        const respCheckout = await fetch(`${import.meta.env.VITE_API_URL}/pagos/crear-checkout`, {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({}),
-        })
-        const dataCheckout = await respCheckout.json()
-        if (dataCheckout.url) window.location.href = dataCheckout.url
-        return
-      }
-
-      // No tiene cuenta todavía: flujo de invitado normal
-      const claimToken = crypto.randomUUID()
-      localStorage.setItem('tona_claim_pendiente', claimToken)
-      const resp = await fetch(`${import.meta.env.VITE_API_URL}/pagos/crear-checkout-invitado`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ claim_token: claimToken }),
-      })
-      const data = await resp.json()
-      if (data.url) window.location.href = data.url
-    } catch (e) {
-      console.error('Error iniciando suscripción desde landing:', e)
-    }
-  }
 
   return (
     <div className="tona-app" style={{ minHeight: '100vh', width: '100%', overflowY: 'auto', overflowX: 'hidden', position: 'relative' }}>
@@ -412,7 +372,7 @@ export default function Landing() {
         ))}
       </section>
 
-      <SeccionPrecio onEntrar={iniciarSuscripcionDesdeLanding} />
+            <SeccionPrecio onEntrar={irALogin} />
       
       <Footer />
     </div>

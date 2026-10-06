@@ -1,5 +1,4 @@
 import { useRef, useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
 import anime from 'animejs'
 import FondoProfundidad from '../components/FondoProfundidad'
 import EsferaTona from '../components/EsferaTona'
@@ -151,36 +150,123 @@ function TarjetaLogin({ children }) {
   )
 }
 
+const ROJO = '#c0455a'
+
+function Boton({ variante = 'jade', children, onClick, disabled = false, style }) {
+  const [hover, setHover] = useState(false)
+  const activo = hover && !disabled
+  const variantes = {
+    jade: {
+      background: activo
+        ? 'linear-gradient(180deg, rgba(46,201,144,0.16), rgba(46,201,144,0.04))'
+        : 'linear-gradient(180deg, rgba(46,201,144,0.1), rgba(46,201,144,0.02))',
+      border: `1px solid ${activo ? JADE : `${JADE}66`}`,
+      color: JADE_LIGHT,
+    },
+    copal: {
+      background: activo ? `${COPAL}22` : `${COPAL}12`,
+      border: `1px solid ${activo ? COPAL : `${COPAL}55`}`,
+      color: COPAL,
+    },
+    suave: {
+      background: activo ? 'rgba(237,235,230,0.05)' : 'transparent',
+      border: `1px solid ${activo ? 'rgba(237,235,230,0.3)' : 'rgba(237,235,230,0.15)'}`,
+      color: 'rgba(237,235,230,0.5)',
+    },
+  }
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
+        padding: '15px 0', borderRadius: 30, marginBottom: 12,
+        fontFamily: FONT, fontSize: 13, letterSpacing: '0.05em', fontWeight: 500,
+        cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.4 : 1,
+        transition: 'background 0.25s ease, border-color 0.25s ease, opacity 0.25s ease',
+        ...variantes[variante], ...style,
+      }}
+    >
+      {children}
+    </button>
+  )
+}
+
+const MENSAJES = {
+  invalido:              { error: true,  texto: 'Escribe un correo de Google válido.' },
+  demasiados:            { error: true,  texto: 'Demasiados intentos. Espera un minuto e inténtalo de nuevo.' },
+  error:                 { error: true,  texto: 'No pudimos verificar el correo. Inténtalo de nuevo.' },
+  login_sin_cuenta:      { error: true,  texto: 'No encontramos una cuenta con ese correo.' },
+  login_sin_suscripcion: { error: false, texto: 'Tu cuenta existe, pero no tiene una suscripción activa. Inicia sesión y te mostramos cómo activarla.' },
+  nuevo_ya_activo:       { error: false, texto: 'Ese correo ya tiene una cuenta con suscripción activa. Inicia sesión.' },
+  nuevo_prueba_usada:    { error: false, texto: 'Ese correo ya usó su prueba gratuita. Puedes suscribirte: el cobro empieza desde el primer día.' },
+  nuevo_ok:              { error: false, texto: 'Ese correo es nuevo. Tendrás 3 días gratis.' },
+}
+
+function clasificar(modo, d) {
+  if (modo === 'login') {
+    if (!d.existe) return 'login_sin_cuenta'
+    return d.tiene_suscripcion ? 'login_ok' : 'login_sin_suscripcion'
+  }
+  if (d.existe && d.tiene_suscripcion) return 'nuevo_ya_activo'
+  return d.prueba_usada ? 'nuevo_prueba_usada' : 'nuevo_ok'
+}
+
+const estiloEnlaceLegal = {
+  color: JADE, fontFamily: FONT, fontSize: 13, textDecoration: 'none',
+  padding: '8px 20px', border: `1px solid ${JADE}25`, borderRadius: 24,
+  background: `${JADE}08`, display: 'inline-flex', alignItems: 'center', gap: 8,
+}
+
 export default function Login() {
   const izqRef = useRef(null)
   const cardRef = useRef(null)
+
   const [verificandoSesion, setVerificandoSesion] = useState(true)
-  const [cargandoAccion, setCargandoAccion] = useState(null)
-  const [params] = useSearchParams()
-  const necesitaSuscripcion = params.get('necesita_suscripcion') === '1'
-  
-  const [mostrarEmailForm, setMostrarEmailForm] = useState(false)
+  const [sesion, setSesion] = useState(null) // hay sesión pero sin suscripción activa
+  const [cargandoAccion, setCargandoAccion] = useState(false)
+  const [errorAccion, setErrorAccion] = useState('')
+
+  const [vista, setVista] = useState('inicio') // 'inicio' | 'correo'
+  const [modoCorreo, setModoCorreo] = useState('login') // 'login' | 'nuevo'
   const [emailInput, setEmailInput] = useState('')
-  const [mensajeEstado, setMensajeEstado] = useState(null)
+  const [resultado, setResultado] = useState(null)
   const [verificando, setVerificando] = useState(false)
 
-  // Estados para el panel de términos
   const [mostrarPanelTerminos, setMostrarPanelTerminos] = useState(false)
-  const [accionPendiente, setAccionPendiente] = useState(null) // 'login' | 'suscribir'
   const [terminosAceptados, setTerminosAceptados] = useState(false)
-  const [aceptandoTerminos, setAceptandoTerminos] = useState(false)
 
   useEffect(() => {
-    fetch(`${API}/auth/whoami`, { credentials: 'include' })
-      .then(r => r.json())
-      .then(data => {
-        if (data.autenticado) {
-          window.location.href = `/dashboard?user_id=${data.user_id}&name=${encodeURIComponent(data.name || '')}`
-        } else {
+    async function revisarSesion() {
+      try {
+        const who = await (await fetch(`${API}/auth/whoami`, { credentials: 'include' })).json()
+        if (!who.autenticado) {
           setVerificandoSesion(false)
+          return
         }
-      })
-      .catch(() => setVerificandoSesion(false))
+
+        const rEstado = await fetch(`${API}/pagos/estado`, { credentials: 'include' })
+        const estado = rEstado.ok ? await rEstado.json() : null
+        if (estado?.activo) {
+          window.location.href = `/dashboard?user_id=${who.user_id}&name=${encodeURIComponent(who.name || '')}`
+          return
+        }
+
+        const rPrueba = await fetch(`${API}/pagos/prueba-disponible`, { credentials: 'include' })
+        if (rPrueba.ok) {
+          setSesion({ name: who.name, ...(await rPrueba.json()) })
+        } else {
+          setSesion({ name: who.name, error: true })
+        }
+        setVerificandoSesion(false)
+      } catch (e) {
+        console.error('Error revisando sesión:', e)
+        setVerificandoSesion(false)
+      }
+    }
+    revisarSesion()
   }, [])
 
   useEffect(() => {
@@ -189,69 +275,105 @@ export default function Login() {
     anime({ targets: cardRef.current, opacity: [0, 1], translateY: [24, 0], scale: [0.97, 1], duration: 800, delay: 150, easing: 'easeOutExpo' })
   }, [verificandoSesion])
 
-  const [claimTokenActual, setClaimTokenActual] = useState(() => crypto.randomUUID())
-  const suscribirEnProceso = useRef(false)
-
-  async function handleSuscribirse() {
-    if (suscribirEnProceso.current) return
-    suscribirEnProceso.current = true
-    setCargandoAccion('suscribir')
-
-    let token = claimTokenActual
-    let intentos = 0
-
-    while (intentos < 2) {
-      localStorage.setItem('tona_claim_pendiente', token)
-      try {
-        const resp = await fetch(`${API}/pagos/crear-checkout-invitado`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ claim_token: token }),
-        })
-
-        if (resp.status === 409) {
-          token = crypto.randomUUID()
-          setClaimTokenActual(token)
-          intentos++
-          continue
-        }
-
-        const data = await resp.json()
-        if (data.url) {
-          window.location.href = data.url
-          return
-        } else {
-          break
-        }
-      } catch (e) {
-        break
-      }
-    }
-
-    setCargandoAccion(null)
-    suscribirEnProceso.current = false
+  function irAGoogle(email) {
+    setCargandoAccion(true)
+    const hint = email ? `?email=${encodeURIComponent(email)}` : ''
+    window.location.href = `/api/auth/google${hint}`
   }
 
-  async function handleVerificarCuenta() {
-    if (!emailInput.trim()) return
-    setVerificando(true)
-    setMensajeEstado(null)
-    try {
-      const resp = await fetch(`${API}/auth/verificar-cuenta?email=${encodeURIComponent(emailInput.trim())}`)
-      const data = await resp.json()
+  function abrirCorreo(modo) {
+    setModoCorreo(modo)
+    setVista('correo')
+    setResultado(null)
+  }
 
-      if (!data.existe) {
-        setMensajeEstado('no_encontrada')
-      } else if (!data.tiene_suscripcion) {
-        setMensajeEstado('sin_suscripcion')
-      } else {
-        setCargandoAccion('login')
-        window.location.href = `/api/auth/google`
+  function volverAlInicio() {
+    setVista('inicio')
+    setResultado(null)
+    setEmailInput('')
+  }
+
+  async function handleVerificarCorreo() {
+    const email = emailInput.trim().toLowerCase()
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      setResultado({ tipo: 'invalido' })
+      return
+    }
+    setVerificando(true)
+    setResultado(null)
+    try {
+      const resp = await fetch(`${API}/auth/verificar-cuenta?email=${encodeURIComponent(email)}`)
+      if (resp.status === 429) {
+        setResultado({ tipo: 'demasiados' })
+        return
       }
+      if (!resp.ok) throw new Error(`verificar-cuenta ${resp.status}`)
+      const tipo = clasificar(modoCorreo, await resp.json())
+      if (tipo === 'login_ok') {
+        irAGoogle(email)
+        return
+      }
+      setResultado({ tipo, email })
     } catch (e) {
-      console.error('Error verificando cuenta:', e)
+      console.error('Error verificando correo:', e)
+      setResultado({ tipo: 'error' })
     } finally {
       setVerificando(false)
+    }
+  }
+
+  function abrirPanelTerminos() {
+    setTerminosAceptados(false)
+    setMostrarPanelTerminos(true)
+  }
+
+  function cerrarPanelTerminos() {
+    setMostrarPanelTerminos(false)
+    setTerminosAceptados(false)
+  }
+
+  function continuarConGoogleNuevo() {
+    if (!terminosAceptados) return
+    // Aún no hay sesión: la aceptación se registra en el servidor después del login
+    localStorage.setItem('tona_terminos_pendiente', new Date().toISOString())
+    setMostrarPanelTerminos(false)
+    irAGoogle(resultado?.email)
+  }
+
+  async function continuarAlPago() {
+    setCargandoAccion(true)
+    setErrorAccion('')
+    try {
+      const pendiente = localStorage.getItem('tona_terminos_pendiente')
+      if (pendiente) {
+        try {
+          const { version } = await (await fetch(`${API}/auth/terminos-version`)).json()
+          const ra = await fetch(`${API}/auth/aceptar-terminos`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ version, fecha: pendiente }),
+          })
+          if (ra.ok) localStorage.removeItem('tona_terminos_pendiente')
+        } catch (e) {
+          console.error('Error registrando aceptación:', e)
+        }
+      }
+
+      const resp = await fetch(`${API}/pagos/crear-checkout`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+      if (!resp.ok) throw new Error(`crear-checkout ${resp.status}`)
+      const data = await resp.json()
+      if (!data.url) throw new Error('sin url')
+      window.location.href = data.url
+    } catch (e) {
+      console.error('Error abriendo el pago:', e)
+      setErrorAccion('No pudimos abrir el pago. Inténtalo de nuevo en unos segundos.')
+      setCargandoAccion(false)
     }
   }
 
@@ -259,47 +381,21 @@ export default function Login() {
     window.location.href = '/bienvenida'
   }
 
-  // Abre el panel de términos según la acción
-  function abrirPanelTerminos(accion) {
-    setAccionPendiente(accion)
-    setTerminosAceptados(false)
-    setMostrarPanelTerminos(true)
-  }
-
-  // Ejecuta la acción pendiente después de aceptar términos
-  async function ejecutarAccionPendiente() {
-    if (!terminosAceptados) return
-    
-    setAceptandoTerminos(true)
-    
-    try {
-      await fetch(`${API}/auth/aceptar-terminos`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          version: '1.0',
-          fecha: new Date().toISOString(),
-        }),
-      })
-    } catch (e) {
-      console.error('Error registrando aceptación:', e)
-    }
-    
-    setMostrarPanelTerminos(false)
-    setAceptandoTerminos(false)
-    
-    if (accionPendiente === 'login') {
-      setMostrarEmailForm(true)
-    } else if (accionPendiente === 'suscribir') {
-      await handleSuscribirse()
-    }
-    
-    setAccionPendiente(null)
-    setTerminosAceptados(false)
-  }
-
   if (verificandoSesion) return null
+
+  let textoSesion = ''
+  if (sesion?.error) textoSesion = 'No pudimos verificar el estado de tu cuenta. Inténtalo de nuevo.'
+  else if (sesion?.pago_pendiente) textoSesion = 'Tienes un pago pendiente de tu suscripción anterior. Regularízalo para volver a usar Tona.'
+  else if (sesion?.prueba_disponible) textoSesion = 'Tu cuenta está lista. Activa tus 3 días gratis: no se cobra nada durante la prueba.'
+  else if (sesion) textoSesion = 'Ya usaste tu prueba gratuita. Para seguir, suscríbete: el cobro empieza desde el primer día.'
+
+  const etiquetaPago = sesion?.pago_pendiente
+    ? 'Regularizar pago'
+    : sesion?.prueba_disponible ? 'Comenzar prueba gratuita' : 'Suscribirme'
+
+  const textoCorreo = modoCorreo === 'login'
+    ? 'Escribe el correo de Google con el que te registraste en Tona.'
+    : 'Escribe el correo de Google con el que te registrarás en Tona. Después te llevaremos a Google: usa ese mismo correo.'
 
   return (
     <div className="tona-app" style={{
@@ -315,7 +411,6 @@ export default function Login() {
         gridTemplateColumns: 'minmax(0,1fr) minmax(0,0.78fr)', gap: '64px',
         alignItems: 'center', position: 'relative', zIndex: 2,
       }}>
-
         <div ref={izqRef} style={{ opacity: 0, position: 'relative', padding: '30px 34px 30px 0' }}>
           <div style={{
             position: 'absolute', inset: '-10% -6%', zIndex: -1, borderRadius: 40,
@@ -340,8 +435,8 @@ export default function Login() {
             maxWidth: 380, fontSize: 14, lineHeight: 1.8, color: 'rgba(237,235,230,0.5)',
             fontFamily: FONT, fontWeight: 300,
           }}>
-            Un agente de estudio personal que organiza tus tareas, tu horario,
-            tus documentos y tu correo — y te escucha cuando le hablas.
+            Un agente de estudio personal que organiza tus tareas, tu horario y
+            tus documentos, redacta tus correos — y te escucha cuando le hablas.
           </p>
 
           <a href="/" style={{
@@ -361,72 +456,74 @@ export default function Login() {
               textAlign: 'center', fontFamily: FONT, fontWeight: 500, fontSize: 15,
               letterSpacing: '0.28em', color: 'rgba(237,235,230,0.9)', margin: '0 0 16px',
             }}>
-              ACCEDE A TONA
+              {sesion ? 'ACTIVA TU CUENTA' : 'ACCEDE A TONA'}
             </h2>
 
             <p style={{
               textAlign: 'center', fontSize: 13, lineHeight: 1.7, color: 'rgba(237,235,230,0.42)',
-              fontFamily: FONT, fontWeight: 300, maxWidth: 280, margin: '0 auto',
+              fontFamily: FONT, fontWeight: 300, maxWidth: 300, margin: '0 auto',
             }}>
-              Elige una opción para continuar.
+              {sesion ? textoSesion : vista === 'inicio' ? 'Elige una opción para continuar.' : textoCorreo}
             </p>
-
-            {necesitaSuscripcion && (
-              <p style={{ 
-                color: '#c0455a', 
-                fontSize: 12, 
-                textAlign: 'center', 
-                margin: '16px 0 12px', 
-                fontFamily: FONT,
-                background: 'rgba(192, 69, 90, 0.08)',
-                padding: '8px 12px',
-                borderRadius: 8,
-                border: '1px solid rgba(192, 69, 90, 0.2)',
-              }}>
-                Necesitas una suscripción activa para continuar. Elige una opción abajo.
-              </p>
-            )}
 
             <div style={{ flex: 1, minHeight: 30 }} />
 
-            {!mostrarEmailForm ? (
-              <button
-                onClick={() => setMostrarEmailForm(true)}
-                disabled={cargandoAccion !== null}
-                style={{
-                  width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  gap: 12, padding: '16px 0', borderRadius: 30, marginBottom: 12,
-                  background: 'linear-gradient(180deg, rgba(46,201,144,0.1), rgba(46,201,144,0.02))',
-                  border: `1px solid ${JADE}66`, color: JADE_LIGHT,
-                  fontFamily: FONT, fontSize: 13, letterSpacing: '0.08em', fontWeight: 500,
-                  cursor: cargandoAccion ? 'default' : 'pointer',
-                  opacity: cargandoAccion ? 0.4 : 1,
-                  transition: 'background 0.25s ease, border-color 0.25s ease, opacity 0.25s ease',
-                }}
-                onMouseEnter={(e) => {
-                  if (cargandoAccion === null) {
-                    e.currentTarget.style.background = 'linear-gradient(180deg, rgba(46,201,144,0.16), rgba(46,201,144,0.04))'
-                    e.currentTarget.style.borderColor = JADE
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (cargandoAccion === null) {
-                    e.currentTarget.style.background = 'linear-gradient(180deg, rgba(46,201,144,0.1), rgba(46,201,144,0.02))'
-                    e.currentTarget.style.borderColor = `${JADE}66`
-                  }
-                }}
-              >
-                <IconoGoogle />
-                Ya tengo cuenta — Iniciar sesión
-              </button>
-            ) : (
-              <div style={{ marginBottom: 12 }}>
+            {/* Ya inició sesión pero no tiene suscripción activa */}
+            {sesion && (
+              <>
+                {errorAccion && (
+                  <p style={{ color: ROJO, fontSize: 12, textAlign: 'center', fontFamily: FONT, margin: '0 0 10px' }}>
+                    {errorAccion}
+                  </p>
+                )}
+                {sesion.error ? (
+                  <Boton variante="jade" onClick={() => window.location.reload()}>Reintentar</Boton>
+                ) : (
+                  <Boton variante="copal" onClick={continuarAlPago} disabled={cargandoAccion}>
+                    {cargandoAccion ? 'Redirigiendo...' : etiquetaPago}
+                  </Boton>
+                )}
+                <Boton
+                  variante="suave"
+                  onClick={() => { window.location.href = '/api/auth/logout' }}
+                  disabled={cargandoAccion}
+                  style={{ fontSize: 12.5, fontWeight: 400, padding: '13px 0' }}
+                >
+                  Usar otra cuenta (cerrar sesión)
+                </Boton>
+              </>
+            )}
+
+            {/* Pantalla inicial */}
+            {!sesion && vista === 'inicio' && (
+              <>
+                <Boton variante="jade" onClick={() => abrirCorreo('login')} disabled={cargandoAccion}>
+                  <IconoGoogle />
+                  Ya tengo cuenta — Iniciar sesión
+                </Boton>
+                <Boton variante="copal" onClick={() => abrirCorreo('nuevo')} disabled={cargandoAccion}>
+                  Soy nuevo — Suscribirme (3 días gratis)
+                </Boton>
+                <Boton
+                  variante="suave"
+                  onClick={handleTengoCodigo}
+                  disabled={cargandoAccion}
+                  style={{ fontSize: 12.5, fontWeight: 400, padding: '13px 0' }}
+                >
+                  Tengo un código de invitación
+                </Boton>
+              </>
+            )}
+
+            {/* Verificación del correo */}
+            {!sesion && vista === 'correo' && (
+              <div>
                 <input
                   type="email"
                   value={emailInput}
-                  onChange={(e) => setEmailInput(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleVerificarCuenta()}
-                  placeholder="tu@email.com"
+                  onChange={(e) => { setEmailInput(e.target.value); setResultado(null) }}
+                  onKeyDown={(e) => e.key === 'Enter' && !verificando && handleVerificarCorreo()}
+                  placeholder="tu@correo.com"
                   autoFocus
                   style={{
                     width: '100%', boxSizing: 'border-box', padding: '13px 16px', marginBottom: 10,
@@ -436,310 +533,102 @@ export default function Login() {
                   }}
                 />
 
-                {mensajeEstado === 'no_encontrada' && (
-                  <div style={{ marginBottom: 10 }}>
-                    <p style={{ color: '#c0455a', fontSize: 12, fontFamily: FONT, marginBottom: 10, textAlign: 'center' }}>
-                      No encontramos una cuenta con ese correo.
-                    </p>
-                    <button 
-                      onClick={() => abrirPanelTerminos('suscribir')}
-                      style={{ 
-                        width: '100%', padding: '13px 0', borderRadius: 30, 
-                        background: `${COPAL}12`, border: `1px solid ${COPAL}55`, 
-                        color: COPAL, fontFamily: FONT, fontSize: 13, cursor: 'pointer',
-                        transition: 'background 0.25s ease, border-color 0.25s ease',
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = `${COPAL}22`
-                        e.currentTarget.style.borderColor = COPAL
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = `${COPAL}12`
-                        e.currentTarget.style.borderColor = `${COPAL}55`
-                      }}
-                    >
-                      Suscribirme (3 días gratis)
-                    </button>
-                  </div>
+                {resultado && MENSAJES[resultado.tipo] && (
+                  <p style={{
+                    color: MENSAJES[resultado.tipo].error ? ROJO : JADE_LIGHT,
+                    fontSize: 12, fontFamily: FONT, margin: '0 0 12px', textAlign: 'center', lineHeight: 1.6,
+                  }}>
+                    {MENSAJES[resultado.tipo].texto}
+                  </p>
                 )}
 
-                {mensajeEstado === 'sin_suscripcion' && (
-                  <div style={{ marginBottom: 10 }}>
-                    <p style={{ color: JADE_LIGHT, fontSize: 12, fontFamily: FONT, marginBottom: 10, textAlign: 'center' }}>
-                      Tu cuenta existe, pero no tienes una suscripción activa.
-                    </p>
-                    <button 
-                      onClick={() => abrirPanelTerminos('suscribir')}
-                      style={{ 
-                        width: '100%', padding: '13px 0', borderRadius: 30, 
-                        background: `${COPAL}12`, border: `1px solid ${COPAL}55`, 
-                        color: COPAL, fontFamily: FONT, fontSize: 13, cursor: 'pointer',
-                        transition: 'background 0.25s ease, border-color 0.25s ease',
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = `${COPAL}22`
-                        e.currentTarget.style.borderColor = COPAL
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = `${COPAL}12`
-                        e.currentTarget.style.borderColor = `${COPAL}55`
-                      }}
-                    >
-                      Activar suscripción
-                    </button>
-                  </div>
+                {resultado?.tipo === 'login_sin_cuenta' && (
+                  <Boton variante="copal" onClick={() => abrirCorreo('nuevo')}>
+                    Soy nuevo — empezar prueba gratis
+                  </Boton>
                 )}
+                {(resultado?.tipo === 'login_sin_suscripcion' || resultado?.tipo === 'nuevo_ya_activo') && (
+                  <Boton variante="jade" onClick={() => irAGoogle(resultado.email)} disabled={cargandoAccion}>
+                    <IconoGoogle />
+                    Iniciar sesión con Google
+                  </Boton>
+                )}
+                {(resultado?.tipo === 'nuevo_ok' || resultado?.tipo === 'nuevo_prueba_usada') && (
+                  <Boton variante="copal" onClick={abrirPanelTerminos}>Continuar</Boton>
+                )}
+
+                <Boton variante="jade" onClick={handleVerificarCorreo} disabled={verificando || !emailInput.trim()}>
+                  {verificando ? 'Verificando...' : 'Verificar correo'}
+                </Boton>
 
                 <button
-                  onClick={handleVerificarCuenta}
-                  disabled={verificando || !emailInput.trim()}
+                  onClick={volverAlInicio}
                   style={{
-                    width: '100%', padding: '14px 0', borderRadius: 30,
-                    background: 'linear-gradient(180deg, rgba(46,201,144,0.1), rgba(46,201,144,0.02))',
-                    border: `1px solid ${emailInput.trim() ? JADE : 'rgba(237,235,230,0.15)'}`,
-                    color: emailInput.trim() ? JADE_LIGHT : 'rgba(237,235,230,0.3)',
-                    fontFamily: FONT, fontSize: 13, 
-                    cursor: emailInput.trim() && !verificando ? 'pointer' : 'default',
-                    opacity: 1,
-                    transition: 'background 0.25s ease, border-color 0.25s ease, color 0.25s ease',
-                  }}
-                  onMouseEnter={(e) => {
-                    if (emailInput.trim() && !verificando) {
-                      e.currentTarget.style.background = 'linear-gradient(180deg, rgba(46,201,144,0.16), rgba(46,201,144,0.04))'
-                      e.currentTarget.style.borderColor = JADE
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (emailInput.trim() && !verificando) {
-                      e.currentTarget.style.background = 'linear-gradient(180deg, rgba(46,201,144,0.1), rgba(46,201,144,0.02))'
-                      e.currentTarget.style.borderColor = JADE
-                    }
+                    width: '100%', background: 'none', border: 'none', padding: '6px 0',
+                    color: 'rgba(237,235,230,0.4)', fontFamily: FONT, fontSize: 12, cursor: 'pointer',
                   }}
                 >
-                  {verificando ? 'Verificando...' : 'Continuar'}
+                  ← Volver
                 </button>
               </div>
             )}
-
-            <button
-              onClick={() => abrirPanelTerminos('suscribir')}
-              disabled={cargandoAccion !== null}
-              style={{
-                width: '100%', padding: '15px 0', borderRadius: 30, marginBottom: 12,
-                background: `${COPAL}12`, border: `1px solid ${COPAL}55`, color: COPAL,
-                fontFamily: FONT, fontSize: 13, letterSpacing: '0.05em', fontWeight: 500,
-                cursor: cargandoAccion ? 'default' : 'pointer',
-                opacity: cargandoAccion && cargandoAccion !== 'suscribir' ? 0.4 : 1,
-                transition: 'background 0.25s ease, border-color 0.25s ease, opacity 0.25s ease',
-              }}
-              onMouseEnter={(e) => {
-                if (cargandoAccion === null) {
-                  e.currentTarget.style.background = `${COPAL}22`
-                  e.currentTarget.style.borderColor = COPAL
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (cargandoAccion === null) {
-                  e.currentTarget.style.background = `${COPAL}12`
-                  e.currentTarget.style.borderColor = `${COPAL}55`
-                }
-              }}
-            >
-              {cargandoAccion === 'suscribir' ? 'Redirigiendo...' : 'Soy nuevo — Suscribirme (3 días gratis)'}
-            </button>
-
-            <button
-              onClick={handleTengoCodigo}
-              disabled={cargandoAccion !== null}
-              style={{
-                width: '100%', padding: '13px 0', borderRadius: 30,
-                background: 'transparent', border: '1px solid rgba(237,235,230,0.15)',
-                color: 'rgba(237,235,230,0.5)',
-                fontFamily: FONT, fontSize: 12.5,
-                cursor: cargandoAccion ? 'default' : 'pointer',
-                opacity: cargandoAccion ? 0.4 : 1,
-                transition: 'background 0.25s ease, border-color 0.25s ease, opacity 0.25s ease',
-              }}
-              onMouseEnter={(e) => {
-                if (cargandoAccion === null) {
-                  e.currentTarget.style.background = 'rgba(237,235,230,0.05)'
-                  e.currentTarget.style.borderColor = 'rgba(237,235,230,0.3)'
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (cargandoAccion === null) {
-                  e.currentTarget.style.background = 'transparent'
-                  e.currentTarget.style.borderColor = 'rgba(237,235,230,0.15)'
-                }
-              }}
-            >
-              Tengo un código de invitación
-            </button>
           </TarjetaLogin>
         </div>
       </div>
 
       {/* PANEL DE ACEPTACIÓN DE TÉRMINOS Y CONDICIONES */}
       {mostrarPanelTerminos && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          zIndex: 1000,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: 'rgba(0,0,0,0.75)',
-          backdropFilter: 'blur(10px)',
-          WebkitBackdropFilter: 'blur(10px)',
-          padding: '20px',
-        }}
-        onClick={(e) => {
-          if (e.target === e.currentTarget && !aceptandoTerminos) {
-            setMostrarPanelTerminos(false)
-            setAccionPendiente(null)
-            setTerminosAceptados(false)
-          }
-        }}
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1000, display: 'flex',
+            alignItems: 'center', justifyContent: 'center',
+            background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(10px)',
+            WebkitBackdropFilter: 'blur(10px)', padding: '20px',
+          }}
+          onClick={(e) => { if (e.target === e.currentTarget) cerrarPanelTerminos() }}
         >
           <div style={{
-            maxWidth: 580,
-            width: '100%',
-            maxHeight: '85vh',
+            maxWidth: 580, width: '100%', maxHeight: '85vh',
             background: 'linear-gradient(165deg, rgba(20,20,18,0.97), rgba(8,8,8,0.98))',
-            borderRadius: 28,
-            padding: '36px 40px',
-            border: `1px solid ${COPAL}22`,
+            borderRadius: 28, padding: '36px 40px', border: `1px solid ${COPAL}22`,
             boxShadow: '0 40px 100px rgba(0,0,0,0.9), 0 0 40px rgba(0,0,0,0.5)',
-            overflow: 'auto',
-            position: 'relative',
+            overflow: 'auto', position: 'relative',
           }}>
-            {/* TÍTULO */}
             <h2 style={{
-              fontFamily: FONT,
-              fontSize: 22,
-              fontWeight: 500,
-              color: 'rgba(237,235,230,0.92)',
-              margin: '0 0 6px',
-              textAlign: 'center',
-              letterSpacing: '0.05em',
+              fontFamily: FONT, fontSize: 22, fontWeight: 500, color: 'rgba(237,235,230,0.92)',
+              margin: '0 0 6px', textAlign: 'center', letterSpacing: '0.05em',
             }}>
               Términos y Condiciones
             </h2>
-
-            <p style={{
-              textAlign: 'center',
-              fontSize: 13,
-              color: 'rgba(237,235,230,0.4)',
-              fontFamily: FONT,
-              marginBottom: 24,
-            }}>
+            <p style={{ textAlign: 'center', fontSize: 13, color: 'rgba(237,235,230,0.4)', fontFamily: FONT, marginBottom: 24 }}>
               Para continuar, necesitas leer y aceptar nuestros documentos legales.
             </p>
 
-            {/* ENLACES A LOS DOCUMENTOS */}
-            <div style={{
-              display: 'flex',
-              gap: 14,
-              justifyContent: 'center',
-              marginBottom: 28,
-              flexWrap: 'wrap',
-            }}>
-              <a
-                href="/legal/terminos"
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  color: JADE,
-                  fontFamily: FONT,
-                  fontSize: 13,
-                  textDecoration: 'none',
-                  padding: '8px 20px',
-                  border: `1px solid ${JADE}25`,
-                  borderRadius: 24,
-                  background: `${JADE}08`,
-                  transition: 'all 0.2s ease',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 8,
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = `${JADE}15`
-                  e.currentTarget.style.borderColor = `${JADE}50`
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = `${JADE}08`
-                  e.currentTarget.style.borderColor = `${JADE}25`
-                }}
-              >
+            <div style={{ display: 'flex', gap: 14, justifyContent: 'center', marginBottom: 28, flexWrap: 'wrap' }}>
+              <a href="/legal/terminos" target="_blank" rel="noopener noreferrer" style={estiloEnlaceLegal}>
                 📄 Términos y Condiciones
               </a>
-              <a
-                href="/legal/privacidad"
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  color: JADE,
-                  fontFamily: FONT,
-                  fontSize: 13,
-                  textDecoration: 'none',
-                  padding: '8px 20px',
-                  border: `1px solid ${JADE}25`,
-                  borderRadius: 24,
-                  background: `${JADE}08`,
-                  transition: 'all 0.2s ease',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 8,
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = `${JADE}15`
-                  e.currentTarget.style.borderColor = `${JADE}50`
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = `${JADE}08`
-                  e.currentTarget.style.borderColor = `${JADE}25`
-                }}
-              >
+              <a href="/legal/privacidad" target="_blank" rel="noopener noreferrer" style={estiloEnlaceLegal}>
                 🔒 Aviso de Privacidad
               </a>
             </div>
 
-            {/* RESUMEN BREVE */}
             <div style={{
-              background: 'rgba(237,235,230,0.03)',
-              borderRadius: 12,
-              padding: '14px 18px',
-              marginBottom: 24,
-              border: '1px solid rgba(237,235,230,0.06)',
+              background: 'rgba(237,235,230,0.03)', borderRadius: 12, padding: '14px 18px',
+              marginBottom: 24, border: '1px solid rgba(237,235,230,0.06)',
             }}>
-              <p style={{
-                fontSize: 12.5,
-                lineHeight: 1.7,
-                color: 'rgba(237,235,230,0.5)',
-                fontFamily: FONT,
-                margin: 0,
-              }}>
+              <p style={{ fontSize: 12.5, lineHeight: 1.7, color: 'rgba(237,235,230,0.5)', fontFamily: FONT, margin: 0 }}>
                 <strong style={{ color: 'rgba(237,235,230,0.7)' }}>Al aceptar, confirmas que:</strong>
-                <br />
-                • Eres mayor de 18 años.
-                <br />
-                • Has leído y entiendes los Términos y el Aviso de Privacidad.
-                <br />
-                • Aceptas el tratamiento de tus datos según lo descrito.
-                <br />
-                • Tona no es responsable del uso que hagas de la IA.
+                <br />• Eres mayor de 18 años.
+                <br />• Has leído y entiendes los Términos y el Aviso de Privacidad.
+                <br />• Aceptas el tratamiento de tus datos según lo descrito.
+                <br />• Tona no es responsable del uso que hagas de la IA.
               </p>
             </div>
 
-            {/* CASILLA DE ACEPTACIÓN */}
             <label style={{
-              display: 'flex',
-              alignItems: 'flex-start',
-              gap: 14,
-              marginBottom: 24,
-              cursor: 'pointer',
-              padding: '14px 18px',
-              borderRadius: 12,
+              display: 'flex', alignItems: 'flex-start', gap: 14, marginBottom: 24, cursor: 'pointer',
+              padding: '14px 18px', borderRadius: 12,
               background: terminosAceptados ? `${JADE}08` : 'transparent',
               border: `1px solid ${terminosAceptados ? JADE : 'rgba(237,235,230,0.06)'}`,
               transition: 'all 0.25s ease',
@@ -748,97 +637,44 @@ export default function Login() {
                 type="checkbox"
                 checked={terminosAceptados}
                 onChange={(e) => setTerminosAceptados(e.target.checked)}
-                disabled={aceptandoTerminos}
-                style={{
-                  marginTop: 2,
-                  flexShrink: 0,
-                  accentColor: JADE,
-                  cursor: aceptandoTerminos ? 'default' : 'pointer',
-                  width: 18,
-                  height: 18,
-                }}
+                style={{ marginTop: 2, flexShrink: 0, accentColor: JADE, cursor: 'pointer', width: 18, height: 18 }}
               />
               <span style={{
-                fontSize: 13.5,
-                lineHeight: 1.6,
+                fontSize: 13.5, lineHeight: 1.6, fontFamily: FONT, transition: 'color 0.25s ease',
                 color: terminosAceptados ? 'rgba(237,235,230,0.85)' : 'rgba(237,235,230,0.5)',
-                fontFamily: FONT,
-                transition: 'color 0.25s ease',
               }}>
-                He leído y acepto los{' '}
-                <strong style={{ color: JADE }}>Términos y Condiciones</strong>
-                {' '}y el{' '}
-                <strong style={{ color: JADE }}>Aviso de Privacidad</strong>
-                {' '}de Tona.
+                He leído y acepto los <strong style={{ color: JADE }}>Términos y Condiciones</strong> y el{' '}
+                <strong style={{ color: JADE }}>Aviso de Privacidad</strong> de Tona.
               </span>
             </label>
 
-            {/* BOTONES DE ACCIÓN */}
             <div style={{ display: 'flex', gap: 12 }}>
               <button
-                onClick={() => {
-                  setMostrarPanelTerminos(false)
-                  setAccionPendiente(null)
-                  setTerminosAceptados(false)
-                }}
-                disabled={aceptandoTerminos}
+                onClick={cerrarPanelTerminos}
                 style={{
-                  flex: 1,
-                  padding: '14px 0',
-                  borderRadius: 30,
-                  background: 'transparent',
-                  border: '1px solid rgba(237,235,230,0.12)',
-                  color: 'rgba(237,235,230,0.4)',
-                  fontFamily: FONT,
-                  fontSize: 13,
-                  cursor: aceptandoTerminos ? 'default' : 'pointer',
-                  transition: 'all 0.2s ease',
-                }}
-                onMouseEnter={(e) => {
-                  if (!aceptandoTerminos) {
-                    e.currentTarget.style.background = 'rgba(237,235,230,0.05)'
-                    e.currentTarget.style.borderColor = 'rgba(237,235,230,0.25)'
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'transparent'
-                  e.currentTarget.style.borderColor = 'rgba(237,235,230,0.12)'
+                  flex: 1, padding: '14px 0', borderRadius: 30, background: 'transparent',
+                  border: '1px solid rgba(237,235,230,0.12)', color: 'rgba(237,235,230,0.4)',
+                  fontFamily: FONT, fontSize: 13, cursor: 'pointer',
                 }}
               >
                 Cancelar
               </button>
-
               <button
-                onClick={ejecutarAccionPendiente}
-                disabled={!terminosAceptados || aceptandoTerminos}
+                onClick={continuarConGoogleNuevo}
+                disabled={!terminosAceptados}
                 style={{
-                  flex: 1.5,
-                  padding: '14px 0',
-                  borderRadius: 30,
+                  flex: 1.5, padding: '14px 0', borderRadius: 30, border: 'none',
                   background: terminosAceptados ? JADE : 'rgba(237,235,230,0.06)',
-                  border: 'none',
                   color: terminosAceptados ? 'var(--obsidiana)' : 'rgba(237,235,230,0.2)',
-                  fontFamily: FONT,
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: (terminosAceptados && !aceptandoTerminos) ? 'pointer' : 'default',
-                  transition: 'all 0.25s ease',
-                  opacity: 1,
+                  fontFamily: FONT, fontSize: 13, fontWeight: 600,
+                  cursor: terminosAceptados ? 'pointer' : 'default', transition: 'all 0.25s ease',
                 }}
               >
-                {aceptandoTerminos ? 'Procesando...' : (
-                  accionPendiente === 'login' ? 'Continuar con inicio de sesión' : 'Continuar al pago'
-                )}
+                Continuar con Google
               </button>
             </div>
 
-            <p style={{
-              textAlign: 'center',
-              fontSize: 11,
-              color: 'rgba(237,235,230,0.15)',
-              fontFamily: FONT,
-              marginTop: 18,
-            }}>
+            <p style={{ textAlign: 'center', fontSize: 11, color: 'rgba(237,235,230,0.15)', fontFamily: FONT, marginTop: 18 }}>
               Puedes revisar estos documentos en cualquier momento en el pie de página.
             </p>
           </div>

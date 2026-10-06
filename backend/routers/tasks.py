@@ -13,10 +13,12 @@ from services.db import (
 from datetime import datetime, timedelta
 from typing import Optional
 import httpx
+from services.seguridad_url import url_publica_segura
 import uuid
 import hashlib
 from config import settings
 import base64
+import asyncio
 from email.mime.text import MIMEText
 
 router = APIRouter()
@@ -830,6 +832,13 @@ async def crear_sitio(
     if not usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
+    
+    if not await asyncio.to_thread(url_publica_segura, body.url):
+        raise HTTPException(
+            status_code=400,
+            detail="URL no permitida: usa una dirección http(s) pública"
+        )
+
     sitio = agregar_sitio(user_id, {
         "url":               body.url,
         "alias":             body.alias,
@@ -839,8 +848,6 @@ async def crear_sitio(
         "ultima_revision":   None,
     })
     return {"creado": True, "sitio": sitio}
-
-
 
 @router.delete("/sitios/{sitio_id}")
 async def borrar_sitio(

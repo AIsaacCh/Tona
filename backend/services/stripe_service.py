@@ -1,6 +1,6 @@
 import stripe
 from config import settings
-from services.db import obtener_usuario, guardar_usuario, obtener_suscripcion, guardar_suscripcion
+from services.db import obtener_usuario, guardar_usuario, obtener_suscripcion, guardar_suscripcion,obtener_usuario_por_email
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
@@ -40,16 +40,17 @@ def obtener_o_crear_customer(user_id: str) -> str:
 def crear_checkout_session(user_id: str, trial_days: int = 3, requerir_tarjeta: bool = True, origen: str = "checkout") -> str:
     customer_id = obtener_o_crear_customer(user_id)
 
+    # ✅ trial_days=0 significa "sin prueba" — Stripe no admite trial_period_days: 0
+    subscription_data = {"metadata": {"user_id": user_id, "origen": origen}}
+    if trial_days and trial_days > 0:
+        subscription_data["trial_period_days"] = trial_days
+
     session_params = {
         "customer": customer_id,
-        "payment_method_types": ["card"],
         "line_items": [{"price": settings.STRIPE_PRICE_ID, "quantity": 1}],
         "mode": "subscription",
         "metadata": {"user_id": user_id, "origen": origen},
-        "subscription_data": {
-            "trial_period_days": trial_days,
-            "metadata": {"user_id": user_id, "origen": origen},
-        },
+        "subscription_data": subscription_data,
         "success_url": f"{settings.FRONTEND_URL}/dashboard?pago=exito",
         "cancel_url": f"{settings.FRONTEND_URL}/dashboard?pago=cancelado",
     }
@@ -60,9 +61,36 @@ def crear_checkout_session(user_id: str, trial_days: int = 3, requerir_tarjeta: 
     session = stripe.checkout.Session.create(**session_params)
     return session.url
 
+def _email_tuvo_prueba_en_stripe(email: str) -> bool:
+    email = (email or "").strip().lower()
+    if not email:
+        return False
+    # Si Stripe falla, la excepción sube: mejor un error que regalar otra prueba
+    for cliente in stripe.Customer.list(email=email, limit=10).data:
+        subs = stripe.Subscription.list(customer=cliente.id, status="all", limit=10)
+        if any(getattr(sb, "trial_start", None) for sb in subs.data):
+            return True
+    return False
+
+
+def usuario_ya_uso_prueba(user_id: str) -> bool:
+    """True si esta cuenta ya tuvo prueba gratuita (por registro propio o por correo en Stripe)."""
+    s = obtener_suscripcion(user_id) or {}
+    if s.get("trial_ends_at") or s.get("stripe_subscription_id"):
+        return True
+    usuario = obtener_usuario(user_id) or {}
+    return _email_tuvo_prueba_en_stripe(usuario.get("email"))
+
+
+def email_ya_uso_prueba(email: str) -> bool:
+    email = (email or "").strip().lower()
+    usuario = obtener_usuario_por_email(email) if email else None
+    if usuario:
+        return usuario_ya_uso_prueba(usuario["id"])
+    return _email_tuvo_prueba_en_stripe(email)
+
 def crear_checkout_invitado(claim_token: str) -> str:
     session = stripe.checkout.Session.create(
-        payment_method_types=["card"],
         line_items=[{"price": settings.STRIPE_PRICE_ID, "quantity": 1}],
         mode="subscription",
         metadata={"claim_token": claim_token},

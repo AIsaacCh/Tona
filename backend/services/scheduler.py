@@ -13,6 +13,7 @@ from bs4 import BeautifulSoup
 from routers.tasks import buscar_entrega_en_drive
 from services.tiempo import hoy_mx
 import json
+from services.seguridad_url import url_publica_segura
 import re
 import asyncio
 
@@ -249,6 +250,18 @@ def _extraer_contenido_estructurado(html: str) -> str:
 
     return "\n\n".join(secciones)
 
+async def _get_seguro(url: str, max_saltos: int = 3):
+    """GET que valida cada salto de redirección contra IPs internas."""
+    async with httpx.AsyncClient(timeout=15) as client:
+        for _ in range(max_saltos + 1):
+            if not await asyncio.to_thread(url_publica_segura, url):
+                raise ValueError("URL no permitida")
+            resp = await client.get(url, follow_redirects=False)
+            if resp.is_redirect and resp.headers.get("location"):
+                url = str(httpx.URL(url).join(resp.headers["location"]))
+                continue
+            return resp
+    raise ValueError("Demasiadas redirecciones")
 
 async def _revisar_sitio(user_id: str, sitio_id: str) -> dict:
     """
@@ -261,8 +274,7 @@ async def _revisar_sitio(user_id: str, sitio_id: str) -> dict:
         return {"cambio": False, "resumen": "", "sitio": None}
 
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.get(sitio["url"], follow_redirects=True)
+        resp = await _get_seguro(sitio["url"])
 
         if resp.status_code != 200:
             return {"cambio": False, "resumen": "No se pudo acceder al sitio", "sitio": sitio}
@@ -348,7 +360,7 @@ Si tras revisar el texto genuinamente NO hay contenido informativo claro (solo m
 texto repetido de navegación), responde EXACTAMENTE: "SIN_CONTENIDO_CLARO"
 No inventes información que no esté literalmente en el texto. No agregues explicaciones, solo la lista."""
 
-        # ✅ FIX: Ejecutar llamada síncrona en hilo separado para no bloquear el event loop
+        
         respuesta = await asyncio.to_thread(
             cliente.models.generate_content,
             model="gemini-2.5-flash",
